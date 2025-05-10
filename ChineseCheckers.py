@@ -1,6 +1,7 @@
 from __future__ import annotations
 from enum import Enum
 from typing import Optional
+import copy
 
 class Tile(Enum):
     EMPTY = -1
@@ -19,6 +20,11 @@ tile_id_to_symbol = {
     Tile.PLAYER_O: 'O',
     Tile.PLAYER_X_GHOST: 'x',
     Tile.PLAYER_O_GHOST: 'o'
+}
+
+player_to_tile = {
+    Player.PLAYER_X: Tile.PLAYER_X,
+    Player.PLAYER_O: Tile.PLAYER_O
 }
 
 class Point:
@@ -61,11 +67,35 @@ class Board:
         self.board = [[Tile.EMPTY for _ in range(board_size)] for _ in range(board_size)]
         self.current_player = Player.PLAYER_X
         self.home_size = home_size
-        self.use_four_corners_to_jump = True
-        self.no_reverse_moves = True
     
     def set_board(self, board: list[list[Tile]]) -> None:
-        self.board = board
+        self.board = copy.deepcopy(board)
+
+    def copy_board(self, board: Board) -> None:
+        self.board = copy.deepcopy(board.board)
+        self.current_player = board.current_player
+        self.home_size = board.home_size
+    
+    def apply_points(self, points: list[Point], tile: Tile) -> None:
+        '''
+        Applies the given tile to the given points on the board.
+        '''
+        for point in points:
+            x, y = point.x, point.y
+            if self.position_on_main_board(x, y):
+                self.board[x][y] = tile
+    
+    def apply_move(self, move: Move) -> None:
+        '''
+        Applies the given move to the board.
+        '''
+        player_tile = player_to_tile[self.current_player]
+        assert self.position_on_main_board(move.start.x, move.start.y) and self.board[move.start.x][move.start.y] == player_tile, f"Invalid move: {move.start} is not occupied by the current player."
+        # move the piece
+        self.board[move.start.x][move.start.y] = Tile.EMPTY
+        self.board[move.end.x][move.end.y] = player_tile
+        # update the current player
+        self.current_player = Player.PLAYER_O if self.current_player == Player.PLAYER_X else Player.PLAYER_X
     
     def init_corner_triangles(self, triangle_size: int) -> None:
         '''
@@ -219,7 +249,7 @@ class Board:
                 step_moves.append(Move(x, y, x + dx, y + dy))
         return step_moves
     
-    def get_jumps(self, x, y, visited=None):
+    def get_jumps(self, x: int, y: int, use_four_corners_to_jump: bool, visited: set[tuple[int, int]] = None) -> set[Move]:
         '''
         Returns a set of all non-blocked and on-board jump moves from (x, y).
         Uses DFS to find multi-hop jump paths:
@@ -244,26 +274,23 @@ class Board:
                     can_side_jump_on = self.position_in_four_non_main_triangles(jump_x, jump_y)
                     if can_jump_to:
                         jumps.add(Move(x, y, jump_x, jump_y))
-                    if can_jump_to or (self.use_four_corners_to_jump and can_side_jump_on):
-                        deeper_jumps = self.get_jump_moves(jump_x, jump_y, visited) # NOT visited.copy()
+                    if can_jump_to or (use_four_corners_to_jump and can_side_jump_on):
+                        deeper_jumps = self.get_jumps(jump_x, jump_y, use_four_corners_to_jump, visited) # NOT visited.copy()
                         jumps.update(deeper_jumps)                    
         return jumps
 
-    def get_valid_moves(self, x, y):
+    def get_moves(self, x: int, y: int, use_four_corners_to_jump: bool) -> list[Move]:
         '''
         Returns a list of all non-blocked and on-board step and jump moves from (x, y).
-        Optionally, also filters out reverse moves.
         '''
         valid_moves = []
         step_moves = self.get_steps(x, y)
         valid_moves.extend(step_moves)
-        jump_moves = self.get_jumps(x, y)
+        jump_moves = self.get_jumps(x, y, use_four_corners_to_jump)
         valid_moves.extend(jump_moves)
-        if self.no_reverse_moves:
-            valid_moves = [move for move in valid_moves if not move.is_reverse()]
         return valid_moves
     
-    def check_for_winner(self, starting_board: list[list[Tile]]) -> tuple[bool, bool]:
+    def check_for_winner(self, starting_board: Board) -> tuple[bool, bool]:
         '''
         Checks if there is a winner on the board.
         Returns the winning player if there is one, otherwise None.
@@ -271,29 +298,28 @@ class Board:
         The goal area is defined by the opponent's home area.
         It shouldn't be possible to have both players win at the same time (illegal state).
         '''
-        assert (len(starting_board) == len(self.board) and
-        len(starting_board[0]) == len(self.board[0])), "Starting board must be the same size as the current board."
-        
         player_x_goal_filled = True
         player_o_goal_filled = True
         player_x_goal_has_own_piece = False
         player_o_goal_has_own_piece = False
+
+        o_goal_area, x_goal_area = starting_board.get_player_positions()
+
+        # check player o's goal area
+        for o_goal_pos in o_goal_area:
+            x, y = o_goal_pos.x, o_goal_pos.y
+            if self.board[x][y] == Tile.EMPTY:
+                player_o_goal_filled = False
+            elif self.board[x][y] == Tile.PLAYER_O:
+                player_o_goal_has_own_piece = True
         
-        n = len(self.board)
-        for i in range(n):
-            for j in range(n):
-                # check player o's goal area
-                if starting_board[i][j] == Tile.PLAYER_X:
-                    if self.board[i][j] == Tile.EMPTY:
-                        player_o_goal_filled = False
-                    elif self.board[i][j] == Tile.PLAYER_O:
-                        player_o_goal_has_own_piece = True
-                # check player x's goal area
-                elif starting_board[i][j] == Tile.PLAYER_O:
-                    if self.board[i][j] == Tile.EMPTY:
-                        player_x_goal_filled = False
-                    elif self.board[i][j] == Tile.PLAYER_X:
-                        player_x_goal_has_own_piece = True
+        # check player x's goal area
+        for x_goal_pos in x_goal_area:
+            x, y = x_goal_pos.x, x_goal_pos.y
+            if self.board[x][y] == Tile.EMPTY:
+                player_x_goal_filled = False
+            elif self.board[x][y] == Tile.PLAYER_X:
+                player_x_goal_has_own_piece = True
         
         player_x_winner = player_x_goal_filled and player_x_goal_has_own_piece
         player_o_winner = player_o_goal_filled and player_o_goal_has_own_piece
@@ -306,9 +332,146 @@ class Board:
         A draw occurs when a state is repeated.
         '''
         for board in board_history:
-            if self.board == board.board:
+            if self.board == board.board and self.current_player == board.current_player:
                 return True
         return False
+    
+    def get_player_positions(self) -> tuple[list[Point], list[Point]]:
+        '''
+        Returns a list of all positions occupied by each player.
+        '''
+        x_posiitons = []
+        o_posiitons = []
+        for i in range(len(self.board)):
+            for j in range(len(self.board[i])):
+                if self.board[i][j] == Tile.PLAYER_X:
+                    x_posiitons.append(Point(i, j))
+                elif self.board[i][j] == Tile.PLAYER_O:
+                    o_posiitons.append(Point(i, j))
+        return x_posiitons, o_posiitons
+    
+    def num_pieces(self) -> int:
+        '''
+        Returns the number of pieces on the board for each player.
+        '''
+        x_posiitons, o_posiitons = self.get_player_positions()
+        num_x_pieces = len(x_posiitons)
+        num_o_pieces = len(o_posiitons)
+        return num_x_pieces, num_o_pieces
+    
+    def positions_are_filled_by_player(self, positions: list[Point], player: Player) -> bool:
+        '''
+        Returns True if all positions are filled by the given player.
+        '''
+        player_tile = player_to_tile[player]
+        for pos in positions:
+            x, y = pos.x, pos.y
+            if self.position_on_main_board(x, y) and self.board[x][y] != player_tile:
+                return False
+        return True
+    
+    def is_illegal_state(self) -> bool:
+        '''
+        Checks if the game is in an illegal state:
+        - both players have won at the same time
+        - winning conditions for player n are met, and it is player n turn to move
+        - one or more unoccupied positions in a goal area are unreachable due to the opponent's pieces
+        '''
+        # check if both players have won at the same time
+        player_x_winner, player_o_winner = self.check_for_winner(self.board)
+        if player_x_winner and player_o_winner:
+            return True
+        
+        # check if the current player has won
+        if (player_x_winner and self.current_player == Player.PLAYER_X) or (player_o_winner and self.current_player == Player.PLAYER_O):
+            return True
+        
+        # check if there are unreachable positions in the goal area
+        # (only implemented for the set starting boards with 1-6 pieces)
+        num_x_pieces, num_o_pieces = self.num_pieces()
+        if num_x_pieces == 6 and num_o_pieces == 6:
+            # check if there are unreachable positions in the goal area
+            board_size = len(self.board)
+            x_illegal = [Point(0, 1), Point(1, 0), Point(2, 0), Point(0, 2)]
+            o_illegal = [Point(board_size - p.x, board_size - p.y) for p in x_illegal]
+            x_blocking = not self.position_is_blocked(0, 0) and self.positions_are_filled_by_player(x_illegal, Player.PLAYER_X)
+            o_blocking = not self.position_is_blocked(board_size - 1, board_size - 1) and self.positions_are_filled_by_player(o_illegal, Player.PLAYER_O)
+            if x_blocking or o_blocking:
+                return True
+
+        return False
+
+class Game:
+    def __init__(self, board_size: int = 7, home_size: int = 3) -> None:
+        self.board = Board(board_size=board_size, home_size=home_size)
+        self.board_history = []
+
+        # game rules
+        self.use_four_corners_to_jump = True
+        self.no_reverse_moves = True
+        self.no_illegal_moves = True
+        self.no_draw_moves = False
+        self.pass_moves = True
+        
+    def generate_moves_for_current_player(self) -> list[Move]:
+        '''
+        Generates all possible moves for the current player.
+        '''
+        x_positions, o_positions = self.board.get_player_positions()
+        player_positions = x_positions if self.board.current_player == Player.PLAYER_X else o_positions
+
+        # generate all on-board non-blocked moves for each piece
+        moves = []
+        for pos in player_positions:
+            x, y = pos.x, pos.y
+            valid_moves = self.board.get_moves(x, y, self.use_four_corners_to_jump)
+            moves.extend(valid_moves)
+        
+        # remove reverse moves if no_reverse_moves is set
+        if self.no_reverse_moves:
+            moves = [move for move in moves if not move.is_reverse()]
+        
+        # remove moves that lead to an illegal state
+        valid_moves = []
+        if self.no_illegal_moves:
+            for move in moves:
+                # create a copy of the board and apply the move
+                new_board = Board()
+                new_board.copy_board(self.board)
+                new_board.apply_move(move)
+                # check if the move doesn't lead to an illegal state
+                if not new_board.is_illegal_state():
+                    valid_moves.append(move)
+        else:
+            valid_moves = moves
+        moves = valid_moves
+
+        # remove moves that lead to a draw
+        valid_moves = []
+        if self.no_draw_moves:
+            for move in moves:
+                # create a copy of the board and apply the move
+                new_board = Board()
+                new_board.copy_board(self.board)
+                new_board.apply_move(move)
+                # check if the move doesn't lead to a draw
+                if not new_board.check_for_draw(self.board_history):
+                    valid_moves.append(move)
+        else:
+            valid_moves = moves
+        moves = valid_moves
+
+        # create a pass move if needed
+        if len(moves) == 0:
+            if self.pass_moves:
+                pos = player_positions[0]
+                x, y = pos.x, pos.y
+                moves.append(Move(x, y, x, y))
+            else:
+                # TODO: handle this case
+                raise ValueError("No valid moves available for the current player.")
+        
+        return moves
 
 def print_all_starting_boards():
     for i in range(6):
@@ -378,14 +541,13 @@ def visualize_move(sx, sy, ex, ey):
     print(board.board_view())
 
 if __name__ == "__main__":
-    board = Board()
-    board.board[1][2] = Tile.PLAYER_X
-    print(board)
-    print("Current Player:", board.current_player)
-
-    #full_board_viz(5, 2)
-    
-    visualize_move(0, 0, 0, 1)
-    
-    visualize_move(3, 3, 4, 2)
-    visualize_move(3, 3, 4, 4)
+    bs = 7
+    board = Board(board_size=bs, home_size=0)
+    #board.init_by_num_pieces(6)
+    x_illegal = [Point(0, 1), Point(1, 0), Point(2, 0), Point(0, 2)]
+    bs = bs - 1
+    o_illegal = [Point(bs - 0, bs - 1), Point(bs - 1, bs - 0), Point(bs - 2, bs - 0), Point(bs - 0, bs - 2)]
+    board.apply_points(x_illegal, Tile.PLAYER_X)
+    board.apply_points(o_illegal, Tile.PLAYER_O)
+    #board.board[1][2] = Tile.PLAYER_X
+    print(board.board_view())
