@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional
+#from typing import List, Optional
 
 class Tile(Enum):
     EMPTY = -1
@@ -20,13 +20,33 @@ tile_id_to_symbol = {
     Tile.PLAYER_O_GHOST: 'o'
 }
 
+class Point:
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+
+    def __str__(self) -> str:
+        return f"({self.x}, {self.y})"
+class Move:
+    def __init__(self, start_x: int, start_y: int, end_x: int, end_y: int) -> None:
+        self.start = Point(start_x, start_y)
+        self.end = Point(end_x, end_y)
+    
+    def __str__(self) -> str:
+        return f"Move from {self.start} to {self.end}"
+
 class Board:
-    def __init__(self, board_size: int = 7) -> None:
+    def __init__(self, board_size: int = 7, home_size: int = 3) -> None:
         '''
         Creates a new sqaure board with the given size.
         '''
+        assert 0 < home_size < board_size, f"home_size must be between 0 and {board_size}"
         self.board = [[Tile.EMPTY for _ in range(board_size)] for _ in range(board_size)]
         self.current_player = Player.PLAYER_X
+        self.home_size = home_size
+    
+    def set_board(self, board: list[list[Tile]]) -> None:
+        self.board = board
     
     def init_corner_triangles(self, triangle_size: int) -> None:
         '''
@@ -93,16 +113,16 @@ class Board:
             self.board[0][0] = Tile.EMPTY
             self.board[board_size - 1][board_size - 1] = Tile.EMPTY
     
-    def grid_view(self, board: list[list[Tile]]) -> str:
-        board_str = [[tile_id_to_symbol[Tile.EMPTY] for _ in range(len(board))] for _ in range(len(board))]
-        for i, row in enumerate(board):
+    def grid_view(self) -> str:
+        board_str = [[tile_id_to_symbol[Tile.EMPTY] for _ in range(len(self.board))] for _ in range(len(self.board))]
+        for i, row in enumerate(self.board):
             row_str = board_str[i]
             for j in range(len(row)):
                 row_str[j] = tile_id_to_symbol[row[j]]
         return '\n'.join([' '.join(row) for row in board_str])
     
-    def board_view(self, board: list[list[Tile]]) -> str:
-        n = len(board)
+    def board_view(self) -> str:
+        n = len(self.board)
         lines = []
 
         # Top half (including middle)
@@ -111,7 +131,7 @@ class Board:
             for i in range(diag + 1):
                 row = diag - i
                 col = i
-                line += tile_id_to_symbol[board[row][col]] + ' '
+                line += tile_id_to_symbol[self.board[row][col]] + ' '
             lines.append(line.rstrip())
 
         # Bottom half
@@ -120,30 +140,73 @@ class Board:
             for i in range(diag + 1):
                 row = n - 1 - i
                 col = n - diag - 1 + i
-                line += tile_id_to_symbol[board[row][col]] + ' '
+                line += tile_id_to_symbol[self.board[row][col]] + ' '
             lines.append(line.rstrip())
 
         return '\n'.join(lines)
     
     def __str__(self) -> str:
-        return self.grid_view(self.board)
+        return self.grid_view()
     
-    def get_adjacent(self, x, y):
+    def position_on_main_board(self, x: int, y: int) -> bool:
         '''
-        Returns a list of adjacent coordinates.
+        Returns True if the given position is on the board.
+        '''
+        return 0 <= x < len(self.board) and 0 <= y < len(self.board[0])
+    
+    def position_in_four_non_main_triangles(self, x: int, y: int) -> bool:
+        '''
+        Returns True if the given position is in one of the four non-main triangles.
+        '''
+        if self.position_on_main_board(x, y): return False
+        board_size = len(self.board)
+        # check if the position is in the two non-main triangles that extend from the y-axis
+        j_start = 0
+        j_end = board_size + self.home_size
+        for i in range(board_size):
+            if x == i and j_start <= y < j_end:
+                return True
+            if i < self.home_size + 1:
+                j_end -= 1
+            if i >= board_size - self.home_size - 1:
+                j_start -= 1
+        # check if the position is in the two non-main triangles that extend from the x-axis
+        i_start = 0
+        i_end = board_size + self.home_size
+        for j in range(board_size):
+            if y == j and i_start <= x < i_end:
+                return True
+            if j < self.home_size + 1:
+                i_end -= 1
+            if j >= board_size - self.home_size - 1:
+                i_start -= 1
+        return False
+    
+    def position_is_blocked(self, x: int, y: int) -> bool:
+        '''
+        Returns True if the given position is blocked by a piece.
+        '''
+        return self.board[x][y] != Tile.EMPTY
+    
+    def get_steps(self, x: int, y: int) -> list[Move]:
+        '''
+        Returns a list of all non-blocked and on-board step moves from (x, y).
         First four are the four cardinal directions.
         Last two are the diagonals perpendicular to the main TL-BR diagonal.
         '''
-        adj = []
+        step_moves = []
         for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (1, -1), (-1, 1)]:
-            if 0 <= x + dx < len(self.board) and 0 <= y + dy < len(self.board[0]):
-                adj.append((x + dx, y + dy))
-        return adj
+            if self.position_on_main_board(x + dx, y + dy) and not self.position_is_blocked(x + dx, y + dy):
+                step_moves.append(Move(x, y, x + dx, y + dy))
+        return step_moves
     
-    def get_jump_moves(self, x, y, visited=None):
+    def get_jumps(self, x, y, visited=None):
         '''
-        Returns a set of all possible jump moves from (x, y).
-        Uses DFS to find multi-hop jump paths.
+        Returns a set of all non-blocked and on-board jump moves from (x, y).
+        Uses DFS to find multi-hop jump paths:
+        - get all jump moves from (x, y)
+        - for each jump move found, recursively repeat this process
+        - add each jump start to the visited set to prevent infinite loops
         '''
         if visited is None:
             visited = set()
@@ -152,16 +215,14 @@ class Board:
 
         directions = [(-1, 0), (1, 0), (0, -1), (0, 1), (1, -1), (-1, 1)]
         for dx, dy in directions:
-            mid_x, mid_y = x + dx, y + dy
+            step_x, step_y = x + dx, y + dy
             jump_x, jump_y = x + 2*dx, y + 2*dy
 
-            if (0 <= mid_x < len(self.board) and 0 <= mid_y < len(self.board[0]) and
-                0 <= jump_x < len(self.board) and 0 <= jump_y < len(self.board[0])):
-                if self.board[mid_x][mid_y] in [0, 1] and self.board[jump_x][jump_y] == -1:
+            if self.position_on_main_board(step_x, step_y) and self.position_is_blocked(step_x, step_y):
+                if (self.position_on_main_board(jump_x, jump_y) and not self.position_is_blocked(jump_x, jump_y)) or True:
                     if (jump_x, jump_y) not in visited:
                         jumps.add((jump_x, jump_y))
-                        # Recurse to allow chained jumps
-                        deeper_jumps = self.get_jump_moves(jump_x, jump_y, visited.copy())
+                        deeper_jumps = self.get_jump_moves(jump_x, jump_y, visited) # NOT visited.copy()
                         jumps.update(deeper_jumps)
         return jumps
 
@@ -184,12 +245,7 @@ class Board:
 
         return valid_moves
 
-if __name__ == "__main__":
-    import copy
-    board = Board()
-    print(board)
-    print("Current Player:", board.current_player)
-
+def print_all_starting_boards():
     for i in range(6):
         board = Board()
         board.init_by_num_pieces(i + 1)
@@ -201,36 +257,56 @@ if __name__ == "__main__":
         print(board)
         print("----")
 
-    exit()
-    # adjacent test:
-    adj_n = len(board.board)
-    adj_n2 = adj_n // 2
-    adj_board = [[Tile.EMPTY for _ in range(adj_n)] for _ in range(adj_n)]
-    adj_board[adj_n2][adj_n2] = Tile.PLAYER_X
-    adj_pos = board.get_adjacent(adj_n2, adj_n2)
-    for pos in adj_pos:
-        adj_board[pos[0]][pos[1]] = Tile.PLAYER_X_GHOST
-    print(board.board_view(adj_board))
+def step_visualization(board_size=7):
+    board = Board(board_size=board_size)
+    mid = board_size // 2
+    board.board[mid][mid] = Tile.PLAYER_X
+    moves = board.get_steps(mid, mid)
+    for move in moves:
+        board.board[move.end.x][move.end.y] = Tile.PLAYER_X_GHOST
+    print(board)
 
-    board = Board(board_size=7)
+def jump_visualization(board_size=7):
+    board = Board(board_size=board_size)
 
     # Place a test piece in the center
     n = len(board.board)
     mid = n // 2
-    board.board = [[-1 for _ in range(n)] for _ in range(n)]
-    board.board[mid][mid] = board.current_player  # Place current player's piece
-    board.board[mid][mid - 1] = board.current_player
-    board.board[mid - 1][mid - 2] = board.current_player
+    board.board[mid][mid] = Tile.PLAYER_X
+    board.board[mid][mid - 1] = Tile.PLAYER_X
+    board.board[mid - 1][mid - 2] = Tile.PLAYER_X
 
     # Get all valid moves from the center
     valid_moves = board.get_valid_moves(mid, mid)
 
     # Visualize the board: 0 = current player, 1 = valid move
-    test_board = copy.deepcopy(board.board)
-    for x, y in valid_moves:
-        test_board[x][y] = 1
+    for move in valid_moves:
+        board.board[move.end.x][move.end.y] = Tile.PLAYER_X_GHOST
 
     # Print the visualization
-    print(board.board_view(test_board))
+    print(board)
+
+def full_board_viz(main_size, home_size):
+    offset = home_size
+    large_size = main_size + home_size * 2
+    # create  the board for visualization (very big) and the hexagon board to visualize
+    hexagon_board = Board(board_size=main_size, home_size=home_size)
+    large_board = Board(board_size=large_size)
+    # go over all the positions in the large board and set them if they are in the hexagon board
+    for x in range(-home_size, large_size):
+        for y in range(-home_size, large_size):
+            if hexagon_board.position_in_four_non_main_triangles(x, y):
+                large_board.board[x + offset][y + offset] = Tile.PLAYER_O
+            elif hexagon_board.position_on_main_board(x, y):
+                large_board.board[x + offset][y + offset] = Tile.PLAYER_X
+    print(large_board.grid_view())
+    print(large_board.board_view())
 
 
+if __name__ == "__main__":
+    board = Board()
+    board.board[1][2] = Tile.PLAYER_X
+    print(board)
+    print("Current Player:", board.current_player)
+
+    full_board_viz(5, 2)
