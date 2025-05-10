@@ -1,5 +1,6 @@
+from __future__ import annotations
 from enum import Enum
-#from typing import List, Optional
+from typing import Optional
 
 class Tile(Enum):
     EMPTY = -1
@@ -34,16 +35,34 @@ class Move:
     
     def __str__(self) -> str:
         return f"Move from {self.start} to {self.end}"
+    
+    def diagonal_distances(self):
+        '''
+        Returns the distance of the move in the main diagonal and anti-diagonal directions.
+        main diagonal is side-to-side in board view, anti-diagonal is up-down in board view.
+        '''
+        d_main = (self.end.x - self.end.y) - (self.start.x - self.start.y)
+        d_anti = (self.end.x + self.end.y) - (self.start.x + self.start.y)
+        return d_main, d_anti
+
+    def is_reverse(self) -> bool:
+        '''
+        Returns True if the move is a reverse move
+        '''
+        _, forward = self.diagonal_distances()
+        return forward < 0
 
 class Board:
     def __init__(self, board_size: int = 7, home_size: int = 3) -> None:
         '''
         Creates a new sqaure board with the given size.
         '''
-        assert 0 < home_size < board_size, f"home_size must be between 0 and {board_size}"
+        assert 0 <= home_size < board_size, f"home_size must be between 0 and {board_size}"
         self.board = [[Tile.EMPTY for _ in range(board_size)] for _ in range(board_size)]
         self.current_player = Player.PLAYER_X
         self.home_size = home_size
+        self.use_four_corners_to_jump = True
+        self.no_reverse_moves = True
     
     def set_board(self, board: list[list[Tile]]) -> None:
         self.board = board
@@ -218,32 +237,78 @@ class Board:
             step_x, step_y = x + dx, y + dy
             jump_x, jump_y = x + 2*dx, y + 2*dy
 
-            if self.position_on_main_board(step_x, step_y) and self.position_is_blocked(step_x, step_y):
-                if (self.position_on_main_board(jump_x, jump_y) and not self.position_is_blocked(jump_x, jump_y)) or True:
-                    if (jump_x, jump_y) not in visited:
-                        jumps.add((jump_x, jump_y))
+            if (jump_x, jump_y) not in visited:
+                can_jump_over = self.position_on_main_board(step_x, step_y) and self.position_is_blocked(step_x, step_y)
+                if can_jump_over:
+                    can_jump_to = self.position_on_main_board(jump_x, jump_y) and not self.position_is_blocked(jump_x, jump_y)
+                    can_side_jump_on = self.position_in_four_non_main_triangles(jump_x, jump_y)
+                    if can_jump_to:
+                        jumps.add(Move(x, y, jump_x, jump_y))
+                    if can_jump_to or (self.use_four_corners_to_jump and can_side_jump_on):
                         deeper_jumps = self.get_jump_moves(jump_x, jump_y, visited) # NOT visited.copy()
-                        jumps.update(deeper_jumps)
+                        jumps.update(deeper_jumps)                    
         return jumps
 
     def get_valid_moves(self, x, y):
         '''
-        Returns a list of all valid single-step and jump moves from (x, y).
+        Returns a list of all non-blocked and on-board step and jump moves from (x, y).
+        Optionally, also filters out reverse moves.
         '''
-        if self.board[x][y] != self.current_player:
-            return []
-
         valid_moves = []
-        # Single-step adjacent moves
-        for nx, ny in self.get_adjacent(x, y):
-            if self.board[nx][ny] == -1:
-                valid_moves.append((nx, ny))
-
-        # Jump moves
-        jump_moves = self.get_jump_moves(x, y)
+        step_moves = self.get_steps(x, y)
+        valid_moves.extend(step_moves)
+        jump_moves = self.get_jumps(x, y)
         valid_moves.extend(jump_moves)
-
+        if self.no_reverse_moves:
+            valid_moves = [move for move in valid_moves if not move.is_reverse()]
         return valid_moves
+    
+    def check_for_winner(self, starting_board: list[list[Tile]]) -> tuple[bool, bool]:
+        '''
+        Checks if there is a winner on the board.
+        Returns the winning player if there is one, otherwise None.
+        Determines winner by checking if the player's goal area is filled, with at least one piece being the player's piece.
+        The goal area is defined by the opponent's home area.
+        It shouldn't be possible to have both players win at the same time (illegal state).
+        '''
+        assert (len(starting_board) == len(self.board) and
+        len(starting_board[0]) == len(self.board[0])), "Starting board must be the same size as the current board."
+        
+        player_x_goal_filled = True
+        player_o_goal_filled = True
+        player_x_goal_has_own_piece = False
+        player_o_goal_has_own_piece = False
+        
+        n = len(self.board)
+        for i in range(n):
+            for j in range(n):
+                # check player o's goal area
+                if starting_board[i][j] == Tile.PLAYER_X:
+                    if self.board[i][j] == Tile.EMPTY:
+                        player_o_goal_filled = False
+                    elif self.board[i][j] == Tile.PLAYER_O:
+                        player_o_goal_has_own_piece = True
+                # check player x's goal area
+                elif starting_board[i][j] == Tile.PLAYER_O:
+                    if self.board[i][j] == Tile.EMPTY:
+                        player_x_goal_filled = False
+                    elif self.board[i][j] == Tile.PLAYER_X:
+                        player_x_goal_has_own_piece = True
+        
+        player_x_winner = player_x_goal_filled and player_x_goal_has_own_piece
+        player_o_winner = player_o_goal_filled and player_o_goal_has_own_piece
+        
+        return player_x_winner, player_o_winner
+
+    def check_for_draw(self, board_history: list[Board]) -> bool:
+        '''
+        Checks if the game is a draw.
+        A draw occurs when a state is repeated.
+        '''
+        for board in board_history:
+            if self.board == board.board:
+                return True
+        return False
 
 def print_all_starting_boards():
     for i in range(6):
@@ -302,6 +367,15 @@ def full_board_viz(main_size, home_size):
     print(large_board.grid_view())
     print(large_board.board_view())
 
+def visualize_move(sx, sy, ex, ey):
+    move = Move(sx, sy, ex, ey)
+    print(move)
+    print(move.diagonal_distances())
+    board = Board()
+    board.board[sx][sy] = Tile.PLAYER_X
+    board.board[ex][ey] = Tile.PLAYER_X_GHOST
+    print(board.grid_view())
+    print(board.board_view())
 
 if __name__ == "__main__":
     board = Board()
@@ -309,4 +383,9 @@ if __name__ == "__main__":
     print(board)
     print("Current Player:", board.current_player)
 
-    full_board_viz(5, 2)
+    #full_board_viz(5, 2)
+    
+    visualize_move(0, 0, 0, 1)
+    
+    visualize_move(3, 3, 4, 2)
+    visualize_move(3, 3, 4, 4)
