@@ -23,7 +23,7 @@ def generate_next_states(game: Game):
     return states
 
 SAVE_FILE = "dfs_progress.pkl"
-SAVE_INTERVAL = 100
+SAVE_INTERVAL = 1000
 
 def load_progress():
     if os.path.exists(SAVE_FILE):
@@ -31,6 +31,7 @@ def load_progress():
             return pickle.load(f)
     return {
         "stack": [Game(4, 6)],
+        #"stack": [Game(7, 1)],
         "visited": set(),
         "steps": 0,
         "wins": 0,
@@ -41,7 +42,7 @@ def load_progress():
 def save_progress(progress):
     with open(SAVE_FILE, "wb") as f:
         pickle.dump(progress, f)
-    print(f"[{time.strftime('%X')}] Progress saved. Steps: {progress['steps']}")
+    print(f"[{time.strftime('%X')}] Progress saved. Steps: {progress['steps']}, Stack: {len(progress['stack'])} Wins: {progress['wins']}, Losses: {progress['losses']}, Draws: {progress['draws']}")
 
 def dfs():
     progress = load_progress()
@@ -56,10 +57,9 @@ def dfs():
         while stack:
             current = stack.pop()
 
-            state_hash = current.simple_hash()
-            if state_hash in visited:
+            if current in visited:
                 continue
-            visited.add(state_hash)
+            visited.add(current)
             steps += 1
 
             #print(f"Step {steps}")
@@ -75,7 +75,7 @@ def dfs():
                 continue
 
             for next_state in generate_next_states(current):
-                if next_state.simple_hash() not in visited:
+                if next_state not in visited:
                     stack.append(next_state)
 
             if steps % SAVE_INTERVAL == 0:
@@ -88,6 +88,7 @@ def dfs():
                     "draws": draws,
                 })
                 save_progress(progress)
+        save_progress(progress)
 
     except KeyboardInterrupt:
         print("\nInterrupted. Saving progress...")
@@ -101,5 +102,11 @@ def dfs():
         })
         save_progress(progress)
 
+def read_progress():
+    with open(SAVE_FILE, "rb") as f:
+        progress = pickle.load(f)
+    print(f"Steps: {progress['steps']}, Stack: {len(progress['stack'])}, Visited: {len(progress['visited'])}, Wins: {progress['wins']}, Losses: {progress['losses']}, Draws: {progress['draws']}")
+
 if __name__ == "__main__":
     dfs()
+    read_progress()

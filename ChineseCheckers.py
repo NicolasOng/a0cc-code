@@ -447,7 +447,7 @@ class Game:
         self.draw_on_no_moves = False
         self.draw_on_repeated_state = False
 
-        self.save_board_history = not self.draw_on_repeated_state and not self.no_draw_moves
+        self.save_board_history = self.draw_on_repeated_state or self.no_draw_moves
 
         self.movement_rules = {
             'can_jump_out_of_home': self.can_jump_out_of_home,
@@ -636,6 +636,14 @@ class Game:
                            self.no_draw_moves, self.pass_moves,
                            self.draw_on_no_moves, self.draw_on_repeated_state)
         return (board_hash, board_history_hash, game_rules_hash, self.end, self.winner)
+    
+    def __hash__(self):
+        return self.simple_hash().__hash__()
+    
+    def __eq__(self, other):
+        if not isinstance(other, Game):
+            return NotImplemented
+        return self.__hash__() == other.__hash__()
 
 
 def print_all_starting_boards():
