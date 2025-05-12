@@ -426,6 +426,10 @@ class Board:
 
         return False
 
+    def simple_hash(self):
+        hashable_board = tuple(tuple(tile.value for tile in row) for row in self.board)
+        return (hashable_board, self.current_player.value, self.home_size)
+
 class Game:
     def __init__(self, board_size: int = 7, num_pieces: int = 6) -> None:
         self.board = Board(board_size=board_size, home_size=board_to_home_size[board_size])
@@ -434,14 +438,16 @@ class Game:
         self.winner = None
 
         # game rules
-        self.can_jump_out_of_home = True
+        self.can_jump_out_of_home = False
         self.use_four_corners_to_jump = True
-        self.no_reverse_moves = True
-        self.no_illegal_moves = True
+        self.no_reverse_moves = False
+        self.no_illegal_moves = False
         self.no_draw_moves = False
         self.pass_moves = True
-        self.draw_on_no_moves = True
-        self.end_on_repeated_state = True
+        self.draw_on_no_moves = False
+        self.draw_on_repeated_state = False
+
+        self.save_board_history = not self.draw_on_repeated_state and not self.no_draw_moves
 
         self.movement_rules = {
             'can_jump_out_of_home': self.can_jump_out_of_home,
@@ -538,7 +544,7 @@ class Game:
             return
         
         # 3. check if the game is a draw
-        if self.end_on_repeated_state and self.board.check_for_draw(self.board_history):
+        if self.draw_on_repeated_state and self.board.check_for_draw(self.board_history):
             logging.debug(f"Game ended in a draw.")
             self.end = True
             self.winner = None
@@ -608,7 +614,8 @@ class Game:
         self.game_end_check()
 
         # add the board to the history
-        self.board_history.append(copy.deepcopy(self.board))
+        if self.save_board_history:
+            self.board_history.append(copy.deepcopy(self.board))
 
     def visualize_move_ends(self, moves: list[Move]) -> None:
         '''
@@ -620,6 +627,16 @@ class Game:
         for move in moves:
             temp_board.board[move.end.x][move.end.y] = Tile.PLAYER_X_GHOST if self.board.current_player == Player.PLAYER_X else Tile.PLAYER_O_GHOST
         print(temp_board.board_view())
+
+    def simple_hash(self):
+        board_hash = self.board.simple_hash()
+        board_history_hash = tuple(board.simple_hash() for board in self.board_history)
+        game_rules_hash = (self.can_jump_out_of_home, self.use_four_corners_to_jump,
+                           self.no_reverse_moves, self.no_illegal_moves,
+                           self.no_draw_moves, self.pass_moves,
+                           self.draw_on_no_moves, self.draw_on_repeated_state)
+        return (board_hash, board_history_hash, game_rules_hash, self.end, self.winner)
+
 
 def print_all_starting_boards():
     for i in range(6):

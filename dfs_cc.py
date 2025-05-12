@@ -31,7 +31,11 @@ def load_progress():
             return pickle.load(f)
     return {
         "stack": [Game(4, 6)],
+        "visited": set(),
         "steps": 0,
+        "wins": 0,
+        "losses": 0,
+        "draws": 0,
     }
 
 def save_progress(progress):
@@ -42,26 +46,46 @@ def save_progress(progress):
 def dfs():
     progress = load_progress()
     stack = progress["stack"]
+    visited = progress["visited"]
     steps = progress["steps"]
+    wins = progress["wins"]
+    losses = progress["losses"]
+    draws = progress["draws"]
 
     try:
         while stack:
             current = stack.pop()
+
+            state_hash = current.simple_hash()
+            if state_hash in visited:
+                continue
+            visited.add(state_hash)
             steps += 1
 
             #print(f"Step {steps}")
 
             if current.end:
                 #print(f"Reached terminal state.")
+                if current.winner is None:
+                    draws += 1
+                elif current.winner == Player.PLAYER_X:
+                    wins += 1
+                else:
+                    losses += 1
                 continue
 
             for next_state in generate_next_states(current):
-                stack.append(next_state)
+                if next_state.simple_hash() not in visited:
+                    stack.append(next_state)
 
             if steps % SAVE_INTERVAL == 0:
                 progress.update({
                     "stack": stack,
+                    "visited": visited,
                     "steps": steps,
+                    "wins": wins,
+                    "losses": losses,
+                    "draws": draws,
                 })
                 save_progress(progress)
 
@@ -69,7 +93,11 @@ def dfs():
         print("\nInterrupted. Saving progress...")
         progress.update({
             "stack": stack,
+            "visited": visited,
             "steps": steps,
+            "wins": wins,
+            "losses": losses,
+            "draws": draws,
         })
         save_progress(progress)
 
