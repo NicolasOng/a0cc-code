@@ -42,7 +42,7 @@ def load_progress():
 def save_progress(progress):
     with open(SAVE_FILE, "wb") as f:
         pickle.dump(progress, f)
-    print(f"[{time.strftime('%X')}] Progress saved. Steps: {progress['steps']}, Stack: {len(progress['stack'])} Wins: {progress['wins']}, Losses: {progress['losses']}, Draws: {progress['draws']}")
+    print(f"[{time.strftime('%X')}] Progress saved. Steps: {progress['steps']}, Stack: {len(progress['stack'])}, Visited: {len(progress['visited'])}, Wins: {progress['wins']}, Losses: {progress['losses']}, Draws: {progress['draws']}")
 
 def dfs():
     progress = load_progress()
