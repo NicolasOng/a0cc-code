@@ -16,7 +16,7 @@ losses = []
 draws = []
 
 # Regular expression patterns
-timestamp_pattern = r"\[(\d{2}:\d{2}:\d{2})\]"
+timestamp_pattern = r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]"
 data_pattern1 = r"Steps: (\d+), Stack: (\d+) Wins: (\d+), Losses: (\d+), Draws: (\d+)"
 data_pattern2 = r"Steps: (\d+), Stack: (\d+), Visited: (\d+), Wins: (\d+), Losses: (\d+), Draws: (\d+)"
 
@@ -28,7 +28,7 @@ for line in lines:
     
     if time_match:
         time_str = time_match.group(1)
-        time_obj = datetime.strptime(time_str, "%H:%M:%S")
+        time_obj = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
         times.append(time_obj)
     if data_match1:
         steps.append(int(data_match1.group(1)))
