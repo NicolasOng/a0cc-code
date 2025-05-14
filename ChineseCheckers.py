@@ -375,7 +375,7 @@ class Board:
                     o_posiitons.append(Point(i, j))
         return x_posiitons, o_posiitons
     
-    def num_pieces(self) -> int:
+    def num_pieces(self) -> tuple[int, int]:
         '''
         Returns the number of pieces on the board for each player.
         '''
@@ -445,6 +445,8 @@ class Game:
         self.no_draw_moves = False
         self.pass_moves = True
         self.draw_on_no_moves = False
+        # set to True in normal play, False in eg tree search
+        # as DFS saves the board history
         self.draw_on_repeated_state = False
 
         self.save_board_history = self.draw_on_repeated_state or self.no_draw_moves
