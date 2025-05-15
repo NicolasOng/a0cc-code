@@ -1,35 +1,103 @@
-from ChineseCheckers import Game, Board, Move, Point, Player, Tile
+import math
+from ChineseCheckers import Game, Board, Move, Point, Player, Tile, board_to_home_size
 
 import logging
 logging.basicConfig(level=logging.DEBUG)
 logging.basicConfig(level=logging.CRITICAL)
 
-def rank(board: Board) -> int:
-	'''
-	Copied from CCheckers.cpp.
-	'''
-	r = 0
-	l1s, l2s = board.num_pieces()
-'''
-	for i in range(len(s.board)):
+def multinomial(n: int, k1: int, k2: int):
+    '''
+    Copied from CCheckers.cpp.
+    multinomial(n, k1, k2, k3) = \frac{n!}{k1! k2! k3!},
+    where k3 is n - (k1 + k2).
+    first calculates n!/k3!, then multiplies by 1/(k2! k3!)
+    n & k1 & k2 & k3 > 0. k1 & k2 <= 20. 
+    '''
+    k3 = n - (k1 + k2)
+
+    num = 1
+    for i in range(k3 + 1, n + 1):
+        num *= i
+    
+    table = [1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916800, 479001600,
+        6227020800, 87178291200, 1307674368000, 20922789888000, 355687428096000,
+        6402373705728000, 121645100408832000, 2432902008176640000]
+
+    den = table[k1] * table[k2]
+
+    return num // den
+
+def rank_ccstate(board: list[int], to_move: int, num_pieces: int) -> int:
+    '''
+    Copied from CCheckers.cpp.
+    in CCheckers, NUM_PIECES & NUM_SPOTS are defined globally. Here, they are passed in or calculated.
+    '''
+    r = 0
+    l1s, l2s = num_pieces, num_pieces
+    num_spots = len(board)
+    for i in range(len(board)):
         if l1s + l2s <= 0:
             break
-		
-        if s.board[i] == Player.PLAYER_O:
+        
+        if board[i] == 2:
             l2s -= 1
-        if s.board[i] == Player.PLAYER_X:
+        if board[i] == 1:
             if l2s > 0:
-                r = r + multinomial(NUM_SPOTS - i - 1, l1s, l2s - 1)
+                r = r + multinomial(num_spots - i - 1, l1s, l2s - 1)
             l1s -= 1
         else:
             if l2s > 0:
-                r = r + multinomial(NUM_SPOTS - i - 1, l1s, l2s - 1)
+                r = r + multinomial(num_spots - i - 1, l1s, l2s - 1)
             if l1s > 0:
-                r = r + multinomial(NUM_SPOTS - i - 1, l1s - 1, l2s)
+                r = r + multinomial(num_spots - i - 1, l1s - 1, l2s)
     
-	// LSB stores the player to move
-	return (r << 1) + s.toMove;
-	'''
+    return (r << 1) + to_move
+
+def rank_board(board: Board) -> int:
+    num_pieces = board.num_pieces()
+    ccstate_board, to_move = convert_Board_to_CCState(board)
+    return rank_ccstate(ccstate_board, to_move, num_pieces)
+
+def unrank_ccstate(rank: int, num_spots: int, num_pieces: int) -> tuple[bool, list[int], int]:
+    '''
+    Copied from CCheckers.cpp.
+    in CCheckers.cpp, NUM_SPOTS and NUM_PIECES was defined globally.
+    here, they need to be passed in.
+    '''
+    board = [0] * num_spots
+
+    to_move = rank & 0x1
+    rank >>= 1
+
+    l1s, l2s = num_pieces, num_pieces
+    for i in range(num_spots):
+        if l1s + l2s <= 0:
+            break
+        
+        value1 = multinomial(num_spots - i - 1, l1s - 1, l2s) if l1s > 0 else 0
+        value2 = multinomial(num_spots - i - 1, l1s, l2s - 1) if l2s > 0 else 0
+
+        # this block of code guarantees that the element at the ith index gets either 2, 1, 0
+        if rank < value2:
+            # trying to place too many 2s
+            if l2s <= 0: return False, board, to_move
+            board[i] = 2
+            l2s -= 1
+        elif rank < value1 + value2:
+            # trying to place too many 1s
+            if l1s <= 0: return False, board, to_move
+            board[i] = 1
+            rank -= value2
+            l1s -= 1
+        else:
+            board[i] = 0
+            rank -= value1 + value2
+
+    return True, board, to_move
+
+def unrank_board(rank: int, num_spots: int, num_pieces: int) -> Board:
+    _, board, to_move = unrank_ccstate(rank, num_spots, num_pieces)
+    return convert_CCState_to_Board(board, to_move)
 
 def sort_list_by_listed_positions(list1, list2):
     '''
@@ -102,14 +170,37 @@ def grid_to_CCState_order(board: list[list[Tile]]) -> list[int]:
 
     return ccstate_order
 
-def convert_board_to_CCState_old(board: Board) -> tuple[list[int], int]:
-    # todo: I could probably do this quicker by just iterating through the diagonals than creating all the lists.
-    height = len(board.board)
-    width = len(board.board[0])
-    flat_board = [board.board[x][y] for y in range(height) for x in range(width)]
-    _, board = sort_list_by_listed_positions(generate_rect_board_lists(width, height)[0], flat_board)
-    toMove = 0 if board.current_player == Player.PLAYER_X else 1
-    return board, toMove
+def CCState_to_grid_order(board: list[int]) -> list[list[Tile]]:
+    '''
+    Converts a 1D list of integers to a grid of tiles, following the format used in Board.
+    assumes that the board is a square.
+    '''
+    side_length = math.sqrt(len(board))
+    assert side_length.is_integer(), "Board should be a sqaure"
+    side_length = int(side_length)
+
+    width, height = side_length, side_length
+    grid_order = [[Tile.EMPTY for _ in range(width)] for _ in range(height)]
+
+    i = 0
+    for d in range(width + height - 1):  # sum of indices (x + y)
+        logging.debug(f"Processing diagonal {d}")
+        # For each diagonal, we need to find the valid (x, y) pairs
+        for x in range(d + 1):
+            # Calculate y based on the current x and d
+            y = d - x
+            if x < width and y < height:
+                logging.debug(f"\Setting tile ({x}, {y})")
+                if board[i] == 1:
+                    grid_order[y][x] = Tile.PLAYER_X
+                elif board[i] == 2:
+                    grid_order[y][x] = Tile.PLAYER_O
+                i += 1
+            else:
+                logging.debug(f"\tSkipping tile ({x}, {y}) as it is out of bounds")
+
+    return grid_order
+
 
 def convert_Board_to_CCState(board: Board) -> tuple[list[int], int]:
     '''
@@ -118,6 +209,19 @@ def convert_Board_to_CCState(board: Board) -> tuple[list[int], int]:
     new_board = grid_to_CCState_order(board.board)
     toMove = 0 if board.current_player == Player.PLAYER_X else 1
     return new_board, toMove
+
+def convert_CCState_to_Board(board: list[int], to_move: int) -> Board:
+    '''
+    converts a CCState (int list of the board and int for player's turn) to my Board format.
+    assumes that the board is a square.
+    assumes that the home_size follows the board_to_home_size dict.
+    '''
+    grid = CCState_to_grid_order(board)
+    board_size = len(grid)
+    new_board = Board(board_size, board_to_home_size[board_size])
+    new_board.set_board(grid)
+    new_board.current_player = Player.PLAYER_X if to_move == 0 else Player.PLAYER_O
+    return new_board
 
 def check_CCState(board_size, num_pieces):
     '''
@@ -135,30 +239,65 @@ def check_CCState(board_size, num_pieces):
             print(f"Player O at index {i}")
     print("---")
 
+def check_board_conversion(board_size, num_pieces):
+    '''
+    checks that the given board (just the initial ones for now)
+    can be converted to CCState format and back
+    I've checked that CCState conversion works for a few boards,
+    so this is really checking CCState -> grid conversion.
+    '''
+    print(f"board size {board_size} and {num_pieces} pieces")
+    game = Game(board_size=board_size, num_pieces=num_pieces)
+    board_start = game.board
+    board, toMove = convert_Board_to_CCState(board_start)
+    board_end = convert_CCState_to_Board(board, toMove)
+
+    assert board_start.board == board_end.board
+    assert board_start.current_player == board_end.current_player
+    assert board_start.home_size == board_end.home_size
+
+def check_ranking_conversion(board_size, num_pieces):
+    game = Game(board_size=board_size, num_pieces=num_pieces)
+    start_board = game.board
+    ccstate_board, start_to_move = convert_Board_to_CCState(start_board)
+
+    print(start_board.board_view())
+
+    ranking = rank_ccstate(ccstate_board, start_to_move, num_pieces)
+    _, end_board, end_to_move = unrank_ccstate(ranking, len(ccstate_board), num_pieces)
+
+    print(f"Board {board_size}, {num_pieces} has rank {ranking}.")
+
+    print(ccstate_board)
+    print(end_board)
+
+    assert ccstate_board == end_board
+    assert start_to_move == end_to_move
+
+starting_boards = [(11, 10),
+                    (9, 10), (9, 8), (9, 7), (9, 6), (9, 5), (9, 4),
+                    (7, 6), (7, 5), (7, 4), (7, 3), (7, 2), (7, 1),
+                    (6, 6), (6, 4),
+                    (5, 6),
+                    (4, 6), (4, 4), (4, 3), (4, 2),
+                    (3, 1), (3, 2),
+                    (2, 1)]
+
 def check_beginning_ccstates():
-    check_CCState(11, 10)
-    check_CCState(9, 10)
-    check_CCState(9, 8)
-    check_CCState(9, 7)
-    check_CCState(9, 6)
-    check_CCState(9, 5)
-    check_CCState(9, 4)
-    check_CCState(7, 6)
-    check_CCState(7, 5)
-    check_CCState(7, 4)
-    check_CCState(7, 3)
-    check_CCState(7, 2)
-    check_CCState(7, 1)
-    check_CCState(6, 6)
-    check_CCState(6, 4)
-    check_CCState(5, 6)
-    check_CCState(4, 6)
-    check_CCState(4, 4)
-    check_CCState(4, 3)
-    check_CCState(4, 2)
-    check_CCState(3, 1)
-    check_CCState(3, 2)
-    check_CCState(2, 1)
+    for sb in starting_boards:
+        check_CCState(sb[0], sb[1])
+
+def check_board_conversions():
+    for sb in starting_boards:
+        check_board_conversion(sb[0], sb[1])
+
+def check_ranking_conversions():
+    for sb in starting_boards:
+        try:
+            check_ranking_conversion(sb[0], sb[1])
+        except:
+            print("lol")
+
 
 if __name__ == "__main__":
-    check_beginning_ccstates()
+    check_ranking_conversions()
