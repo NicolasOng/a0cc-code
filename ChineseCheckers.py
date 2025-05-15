@@ -32,12 +32,16 @@ player_to_tile = {
 }
 
 board_to_home_size = {
+    2: 0,
+    3: 0,
     4: 0,
     5: 1,
     6: 2,
     7: 3,
     8: 3,
-    9: 4
+    9: 4,
+    10: 4,
+    11: 5,
 }
 
 class Point:
@@ -149,26 +153,41 @@ class Board:
         '''
         triangle_size = 0
         sqaure_size = 0
-        remove_corners = False
+        remove_nn = False
+        remove_0m_m0 = False
+        n = 0
+        m = 0
         # determine the starting formation based on num_pieces
         match num_pieces:
             case 1:
                 triangle_size = 1
             case 2:
                 triangle_size = 2
-                remove_corners = True
+                remove_nn = True
             case 3:
                 triangle_size = 2
             case 4:
                 sqaure_size = 2
             case 5:
                 triangle_size = 3
-                remove_corners = True
+                remove_nn = True
+                n = 1
             case 6:
                 triangle_size = 3
+            case 7:
+                triangle_size = 4
+                remove_nn = True
+                remove_0m_m0 = True
+                n = 1
+                m = 3
+            case 8:
+                triangle_size = 4
+                remove_0m_m0 = True
+                m = 3
             case 9:
                 triangle_size = 4
-                remove_corners = True
+                remove_nn = True
+                n = 1
             case 10:
                 triangle_size = 4
             case _:
@@ -178,10 +197,16 @@ class Board:
             self.init_corner_triangles(triangle_size)
         if sqaure_size > 0:
             self.init_corner_squares(sqaure_size)
-        if remove_corners:
+        if remove_nn:
             board_size = len(self.board)
-            self.board[0][0] = Tile.EMPTY
-            self.board[board_size - 1][board_size - 1] = Tile.EMPTY
+            self.board[n][n] = Tile.EMPTY
+            self.board[board_size - 1 - n][board_size - 1 - n] = Tile.EMPTY
+        if remove_0m_m0:
+            board_size = len(self.board)
+            self.board[0][m] = Tile.EMPTY
+            self.board[m][0] = Tile.EMPTY
+            self.board[board_size - 1][board_size - 1 - m] = Tile.EMPTY
+            self.board[board_size - 1 - m][board_size - 1] = Tile.EMPTY
     
     def grid_view(self) -> str:
         board_str = [[tile_id_to_symbol[Tile.EMPTY] for _ in range(len(self.board))] for _ in range(len(self.board))]
