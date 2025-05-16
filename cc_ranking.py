@@ -41,7 +41,7 @@ def rank_ccstate(board: list[int], to_move: int, num_pieces: int) -> int:
         
         if board[i] == 2:
             l2s -= 1
-        if board[i] == 1:
+        elif board[i] == 1:
             if l2s > 0:
                 r = r + multinomial(num_spots - i - 1, l1s, l2s - 1)
             l1s -= 1
@@ -270,6 +270,7 @@ def check_ranking_conversion(board_size, num_pieces):
 
     print(ccstate_board)
     print(end_board)
+    print("---")
 
     assert ccstate_board == end_board
     assert start_to_move == end_to_move
@@ -296,7 +297,7 @@ def check_ranking_conversions():
         try:
             check_ranking_conversion(sb[0], sb[1])
         except:
-            print("lol")
+            print("ranking/unranking error - likely that the board couldn't be reconstructed accurately.")
 
 
 if __name__ == "__main__":
