@@ -5,98 +5,144 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 logging.basicConfig(level=logging.CRITICAL)
 
-def multinomial(n: int, k1: int, k2: int):
+class RankingBase:
     '''
-    Copied from CCheckers.cpp.
-    multinomial(n, k1, k2, k3) = \frac{n!}{k1! k2! k3!},
-    where k3 is n - (k1 + k2).
-    first calculates n!/k3!, then multiplies by 1/(k2! k3!)
-    n & k1 & k2 & k3 > 0. k1 & k2 <= 20. 
+    RankingBase is a class that provides methods for ranking and unranking.
+    It is focused on the Ranking methods found in the CCheckers class in C++.
     '''
-    k3 = n - (k1 + k2)
 
-    num = 1
-    for i in range(k3 + 1, n + 1):
-        num *= i
-    
-    table = [1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916800, 479001600,
-        6227020800, 87178291200, 1307674368000, 20922789888000, 355687428096000,
-        6402373705728000, 121645100408832000, 2432902008176640000]
+    @staticmethod
+    def multinomial(n: int, k1: int, k2: int):
+        '''
+        Copied from CCheckers.cpp.
+        multinomial(n, k1, k2, k3) = \frac{n!}{k1! k2! k3!},
+        where k3 is n - (k1 + k2).
+        first calculates n!/k3!, then multiplies by 1/(k2! k3!)
+        n & k1 & k2 & k3 > 0. k1 & k2 <= 20. 
+        '''
+        k3 = n - (k1 + k2)
 
-    den = table[k1] * table[k2]
-
-    return num // den
-
-def rank_ccstate(board: list[int], to_move: int, num_pieces: int) -> int:
-    '''
-    Copied from CCheckers.cpp.
-    in CCheckers, NUM_PIECES & NUM_SPOTS are defined globally. Here, they are passed in or calculated.
-    '''
-    r = 0
-    l1s, l2s = num_pieces, num_pieces
-    num_spots = len(board)
-    for i in range(len(board)):
-        if l1s + l2s <= 0:
-            break
+        num = 1
+        for i in range(k3 + 1, n + 1):
+            num *= i
         
-        if board[i] == 2:
-            l2s -= 1
-        elif board[i] == 1:
-            if l2s > 0:
-                r = r + multinomial(num_spots - i - 1, l1s, l2s - 1)
-            l1s -= 1
-        else:
-            if l2s > 0:
-                r = r + multinomial(num_spots - i - 1, l1s, l2s - 1)
-            if l1s > 0:
-                r = r + multinomial(num_spots - i - 1, l1s - 1, l2s)
+        table = [1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916800, 479001600,
+            6227020800, 87178291200, 1307674368000, 20922789888000, 355687428096000,
+            6402373705728000, 121645100408832000, 2432902008176640000]
+
+        den = table[k1] * table[k2]
+
+        return num // den
     
-    return (r << 1) + to_move
+    @staticmethod
+    def get_max_rank(num_spots: int, num_pieces: int) -> int:
+        '''
+        Returns the maximum rank for a given board size and number of pieces, equivalent to CCheckers::getMaxRank().
+        '''
+        return 2 * RankingBase.multinomial(num_spots, num_pieces, num_pieces)
+
+    @staticmethod
+    def rank(board: list[int], to_move: int, num_pieces: int) -> int:
+        '''
+        Copied from CCheckers.cpp.
+        in CCheckers, NUM_PIECES & NUM_SPOTS are defined globally. Here, they are passed in or calculated.
+        '''
+        r = 0
+        l1s, l2s = num_pieces, num_pieces
+        num_spots = len(board)
+        for i in range(len(board)):
+            if l1s + l2s <= 0:
+                break
+            
+            if board[i] == 2:
+                l2s -= 1
+            elif board[i] == 1:
+                if l2s > 0:
+                    r = r + RankingBase.multinomial(num_spots - i - 1, l1s, l2s - 1)
+                l1s -= 1
+            else:
+                if l2s > 0:
+                    r = r + RankingBase.multinomial(num_spots - i - 1, l1s, l2s - 1)
+                if l1s > 0:
+                    r = r + RankingBase.multinomial(num_spots - i - 1, l1s - 1, l2s)
+        
+        return (r << 1) + to_move
+    
+    @staticmethod
+    def unrank(rank: int, num_spots: int, num_pieces: int) -> tuple[bool, list[int], int]:
+        '''
+        Copied from CCheckers.cpp.
+        in CCheckers.cpp, NUM_SPOTS and NUM_PIECES was defined globally.
+        here, they need to be passed in.
+        '''
+        board = [0] * num_spots
+
+        to_move = rank & 0x1
+        rank >>= 1
+
+        l1s, l2s = num_pieces, num_pieces
+        for i in range(num_spots):
+            if l1s + l2s <= 0:
+                break
+            
+            value1 = RankingBase.multinomial(num_spots - i - 1, l1s - 1, l2s) if l1s > 0 else 0
+            value2 = RankingBase.multinomial(num_spots - i - 1, l1s, l2s - 1) if l2s > 0 else 0
+
+            # this block of code guarantees that the element at the ith index gets either 2, 1, 0
+            if rank < value2:
+                # trying to place too many 2s
+                if l2s <= 0: return False, board, to_move
+                board[i] = 2
+                l2s -= 1
+            elif rank < value1 + value2:
+                # trying to place too many 1s
+                if l1s <= 0: return False, board, to_move
+                board[i] = 1
+                rank -= value2
+                l1s -= 1
+            else:
+                board[i] = 0
+                rank -= value1 + value2
+
+        return True, board, to_move
+
+class CCLocalRank12:
+    def rank(self, cc, s) -> int:
+        '''
+        Equivalent to CCLocalRank12::rank(const CCState &s) const in C++.
+        cc: an object with methods rankPlayer, rankPlayerRelative, getMaxSinglePlayerRankRelative
+        s: a CCState-like object with attribute toMove
+        '''
+        r0 = cc.rankPlayer(s, 0)
+        r1 = cc.rankPlayerRelative(s, 1, 0)
+        assert r0 < cc.getMaxSinglePlayerRank()
+        assert r1 >= 0
+        assert r1 < cc.getMaxSinglePlayerRankRelative()
+        return (r0 * cc.getMaxSinglePlayerRankRelative() + r1) * 2 + s.toMove
+
+    def unrank(self, cc, r: int, s) -> bool:
+        '''
+        Equivalent to CCLocalRank12::unrank(int64_t r, CCState &s) const in C++.
+        cc: an object with methods unrankPlayer, unrankPlayerRelative, getMaxSinglePlayerRankRelative
+        r: the rank to unrank
+        s: a CCState-like object to modify (should have attribute toMove)
+        '''
+        toMove = int(r & 1)
+        r >>= 1
+        r0 = r // cc.getMaxSinglePlayerRankRelative()
+        r1 = r % cc.getMaxSinglePlayerRankRelative()
+        cc.unrankPlayer(r0, s, 0)
+        cc.unrankPlayerRelative(r1, s, 1, 0)
+        s.toMove = toMove
+        return True
 
 def rank_board(board: Board) -> int:
-    num_pieces = board.num_pieces()
+    num_pieces, _ = board.num_pieces()
     ccstate_board, to_move = convert_Board_to_CCState(board)
-    return rank_ccstate(ccstate_board, to_move, num_pieces)
-
-def unrank_ccstate(rank: int, num_spots: int, num_pieces: int) -> tuple[bool, list[int], int]:
-    '''
-    Copied from CCheckers.cpp.
-    in CCheckers.cpp, NUM_SPOTS and NUM_PIECES was defined globally.
-    here, they need to be passed in.
-    '''
-    board = [0] * num_spots
-
-    to_move = rank & 0x1
-    rank >>= 1
-
-    l1s, l2s = num_pieces, num_pieces
-    for i in range(num_spots):
-        if l1s + l2s <= 0:
-            break
-        
-        value1 = multinomial(num_spots - i - 1, l1s - 1, l2s) if l1s > 0 else 0
-        value2 = multinomial(num_spots - i - 1, l1s, l2s - 1) if l2s > 0 else 0
-
-        # this block of code guarantees that the element at the ith index gets either 2, 1, 0
-        if rank < value2:
-            # trying to place too many 2s
-            if l2s <= 0: return False, board, to_move
-            board[i] = 2
-            l2s -= 1
-        elif rank < value1 + value2:
-            # trying to place too many 1s
-            if l1s <= 0: return False, board, to_move
-            board[i] = 1
-            rank -= value2
-            l1s -= 1
-        else:
-            board[i] = 0
-            rank -= value1 + value2
-
-    return True, board, to_move
+    return RankingBase.rank(ccstate_board, to_move, num_pieces)
 
 def unrank_board(rank: int, num_spots: int, num_pieces: int) -> Board:
-    _, board, to_move = unrank_ccstate(rank, num_spots, num_pieces)
+    _, board, to_move = RankingBase.unrank(rank, num_spots, num_pieces)
     return convert_CCState_to_Board(board, to_move)
 
 def sort_list_by_listed_positions(list1, list2):
@@ -190,7 +236,7 @@ def CCState_to_grid_order(board: list[int]) -> list[list[Tile]]:
             # Calculate y based on the current x and d
             y = d - x
             if x < width and y < height:
-                logging.debug(f"\Setting tile ({x}, {y})")
+                logging.debug(f"Setting tile ({x}, {y})")
                 if board[i] == 1:
                     grid_order[y][x] = Tile.PLAYER_X
                 elif board[i] == 2:
