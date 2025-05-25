@@ -10,6 +10,74 @@ class RankingBase:
     RankingBase is a class that provides methods for ranking and unranking.
     It is focused on the Ranking methods found in the CCheckers class in C++.
     '''
+    def __init__(self, num_spots: int, num_players: int, num_pieces: int):
+        self.num_spots = num_spots
+        self.num_players = num_players
+        self.num_pieces = num_pieces
+        self.the_sums = self.init_binomial_sums(num_pieces, num_spots)
+        self.binomials = RankingBase.init_binomials(num_spots, num_players, num_pieces)
+    
+    @staticmethod
+    def bi(n: int, k: int) -> int:
+        '''
+        Equivalent to CCheckers::bi(unsigned int n, unsigned int k) const in C++.
+        Computes the binomial coefficient (n choose k) using iterative multiplication.
+        '''
+        num = 1
+        bound = n - k
+        while n > bound:
+            num *= n
+            n -= 1
+        den = 1
+        while k > 1:
+            den *= k
+            k -= 1
+        return num // den
+    
+    @staticmethod
+    def init_binomials(num_spots: int, num_players: int, num_pieces: int) -> list[int]:
+        '''
+        Initializes and returns the binomials as a flat list of binomial coefficients.
+        Equivalent to CCheckers::initBinomial().
+        binomials[x*(num_players*num_pieces+1)+y] = bi(x, y)
+        '''
+        size = (num_spots + 1) * (num_players * num_pieces + 1)
+        binomials = [0] * size
+        for x in range(num_spots + 1):
+            for y in range(num_players * num_pieces + 1):
+                binomials[x * (num_players * num_pieces + 1) + y] = RankingBase.bi(x, y)
+        return binomials
+    
+    def binomial(self, n: int, k: int) -> int:
+        '''
+        Equivalent to CCheckers::binomial(unsigned int n, unsigned int k) const in C++.
+        Returns the precomputed binomial coefficient from the binomials array.
+        binomials[n*(1+num_players*num_pieces)+k]
+        '''
+        idx = n * (1 + self.num_players * self.num_pieces) + k
+        return self.binomials[idx]
+    
+    def init_binomial_sums(self, num_pieces: int, num_spots: int) -> list[int]:
+        '''
+        Initializes and returns the_sums as a flat list of cumulative binomial coefficients.
+        Equivalent to CCheckers::initBinomialSums() for theSums.
+        '''
+        size = (num_pieces + 1) * (num_spots + 1)
+        the_sums = [0] * size
+        for x in range(num_pieces + 1):
+            result = 0
+            for y in range(num_spots + 1):
+                result += self.binomial(y, x)
+                the_sums[x * (num_spots + 1) + y] = result
+        return the_sums
+    
+    def binomial_sum(self, n1: int, n2: int, k: int) -> int:
+        '''
+        Equivalent to CCheckers::binomialSum(unsigned int n1, unsigned int n2, unsigned int k) const in C++.
+        '''
+        idx1 = k * (self.num_spots + 1) + n1
+        idx2 = k * (self.num_spots + 1) + n2
+        return self.the_sums[idx1] - self.the_sums[idx2]
 
     @staticmethod
     def multinomial(n: int, k1: int, k2: int):
@@ -106,8 +174,40 @@ class RankingBase:
 
         return True, board, to_move
 
+    def rank_player(self, s, who: int, num_spots: int, num_pieces: int) -> int:
+        '''
+        Equivalent to CCheckers::rankPlayer(const CCState &s, int who) const in C++.
+        s: a CCState-like object with attribute pieces[who][i]
+        who: player index (0 or 1)
+        num_spots: total number of spots on the board
+        num_pieces: number of pieces per player
+        '''
+        r2 = 0
+        last = num_spots - 1
+        for x in range(num_pieces):
+            idx = num_pieces - 1 - x
+            piece_pos = s.pieces[who][idx]
+            tmp = self.binomial_sum(last, num_spots - piece_pos - 1, idx)
+            r2 += tmp
+            last = num_spots - piece_pos - 1 - 1
+        return r2
+
+class CCDefaultRank:
+    @staticmethod
+    def get_max_rank(num_spots: int, num_pieces: int) -> int:
+        return RankingBase.get_max_rank(num_spots, num_pieces)
+    
+    @staticmethod
+    def rank(board: list[int], to_move: int, num_pieces: int) -> int:
+        return RankingBase.rank(board, to_move, num_pieces)
+    
+    @staticmethod
+    def unrank(rank: int, num_spots: int, num_pieces: int) -> tuple[bool, list[int], int]:
+        return RankingBase.unrank(rank, num_spots, num_pieces)
+
 class CCLocalRank12:
-    def rank(self, cc, s) -> int:
+    @staticmethod
+    def rank(cc, s) -> int:
         '''
         Equivalent to CCLocalRank12::rank(const CCState &s) const in C++.
         cc: an object with methods rankPlayer, rankPlayerRelative, getMaxSinglePlayerRankRelative
@@ -119,8 +219,9 @@ class CCLocalRank12:
         assert r1 >= 0
         assert r1 < cc.getMaxSinglePlayerRankRelative()
         return (r0 * cc.getMaxSinglePlayerRankRelative() + r1) * 2 + s.toMove
-
-    def unrank(self, cc, r: int, s) -> bool:
+    
+    @staticmethod
+    def unrank(cc, r: int, s) -> bool:
         '''
         Equivalent to CCLocalRank12::unrank(int64_t r, CCState &s) const in C++.
         cc: an object with methods unrankPlayer, unrankPlayerRelative, getMaxSinglePlayerRankRelative
