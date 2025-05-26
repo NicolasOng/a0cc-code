@@ -149,6 +149,14 @@ class CCState:
         for x in range(len(self.board)):
             print(f"{self.board[x]} ", end='')
         print()
+    
+    def print_ascii_compact(self) -> None:
+        '''
+        Prints the CCState in a compact ASCII format.
+        '''
+        print(f"{self.to_move + 1}", end='')
+        for x in range(len(self.board)):
+            print(f"{self.board[x]}", end='')
 
 class RankingBase:
     '''

@@ -1,7 +1,6 @@
-from solve_file_loader import read_8byte_array, get_value_2, Outcome
+from solve_file_loader import SolveData, Outcome
 from cc_ranking import CCLocalRank12, CCState, CCDefaultRank
-import numpy.typing as npt
-import numpy as np
+from cc_lookups import CCBaselineSolver
 
 def file_loading_test():
     entries, mem = read_8byte_array("solve-data/CC-SOLVE-BASELINE-49-3.dat")
@@ -14,33 +13,20 @@ def file_loading_test():
     c = get_value_2(mem, 559352639)
     print(f"Value at index 559352639: {c}")
 
-def baseline_lookup(mem: npt.NDArray[np.uint64], s: CCState, r: CCDefaultRank) -> int:
-    rank = r.rank(s)
-    outcome = get_value_2(mem, rank)
-    return outcome
-
 def baseline_solver_test_function():
     num_spots = 49
     num_players = 2
     num_pieces = 3
+    d = CCBaselineSolver("solve-data/CC-SOLVE-BASELINE-49-3.dat", num_spots, num_players, num_pieces)
     l = CCLocalRank12(num_spots, num_players, num_pieces)
-    r = CCDefaultRank(num_spots, num_players, num_pieces)
     s = CCState(num_spots, num_pieces, num_players)
 
-    _, mem = read_8byte_array("solve-data/CC-SOLVE-BASELINE-49-3.dat")
-
-    print(f"Max rank: {l.get_max_rank()}")
-    s.print_ascii()
-
-    iterations = l.get_max_rank()
-    iterations = 100000
-    for x in range(iterations):
+    # set to (0, 10), (10, 20), ...
+    i_start = 10
+    i_end = min(20, l.get_max_rank())
+    for x in range(i_start, i_end):
         l.unrank(x, s)
-        #print(f"Rank {x}:", end='')
-        #s.print_ascii()
-        if baseline_lookup(mem, s, r) == Outcome.ILLEGAL.value:
-            print(f"Illegal state found at rank {x}")
-            s.print_ascii()
-            exit(0)
+        s.print_ascii_compact()
+        print(d.lookup(s))
 
 baseline_solver_test_function()
