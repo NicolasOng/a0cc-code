@@ -139,6 +139,16 @@ class CCState:
         Converts the CCState back to a Board object.
         '''
         return CCState.convert_CCState_to_Board(self.board, self.to_move)
+    
+    def print_ascii(self) -> None:
+        '''
+        Prints the CCState in ASCII format.
+        Equivalent to void CCState::PrintASCII() const in CCheckers.cpp.
+        '''
+        print(f"[{self.to_move + 1}] ", end='')
+        for x in range(len(self.board)):
+            print(f"{self.board[x]} ", end='')
+        print()
 
 class RankingBase:
     '''
@@ -149,8 +159,8 @@ class RankingBase:
         self.num_spots = num_spots
         self.num_players = num_players
         self.num_pieces = num_pieces
-        self.the_sums = self.init_binomial_sums(num_pieces, num_spots)
         self.binomials = RankingBase.init_binomials(num_spots, num_players, num_pieces)
+        self.the_sums = self.init_binomial_sums(num_pieces, num_spots)
     
     @staticmethod
     def bi(n: int, k: int) -> int:
@@ -272,39 +282,42 @@ class RankingBase:
         '''
         Equivalent to bool CCheckers::unrank(int64_t theRank, CCState &s) const in CCheckers.cpp.
         '''
-        board = [0] * self.num_spots
+        # Clear board to zero
+        s.board = [0] * self.num_spots
+        s.pieces = [[0 for _ in range(self.num_pieces)] for _ in range(self.num_players)]
 
-        to_move = rank & 0x1
+        # LSB stores player to move
+        s.to_move = rank & 0x1
         rank >>= 1
 
         l1s, l2s = self.num_pieces, self.num_pieces
-        for i in range(self.num_spots):
-            if l1s + l2s <= 0:
-                break
-            
-            value1 = RankingBase.multinomial(self.num_spots - i - 1, l1s - 1, l2s) if l1s > 0 else 0
-            value2 = RankingBase.multinomial(self.num_spots - i - 1, l1s, l2s - 1) if l2s > 0 else 0
-
-            # this block of code guarantees that the element at the ith index gets either 2, 1, 0
+        i = 0
+        while (l1s + l2s) > 0:
+            if l2s > 0:
+                value2 = RankingBase.multinomial(self.num_spots - i - 1, l1s, l2s - 1)
+            else:
+                value2 = 0
+            if l1s > 0:
+                value1 = RankingBase.multinomial(self.num_spots - i - 1, l1s - 1, l2s)
+            else:
+                value1 = 0
             if rank < value2:
-                # trying to place too many 2s
-                if l2s <= 0: return False
-                board[i] = 2
+                if l2s <= 0:
+                    return False
+                s.board[i] = 2
+                s.pieces[1][l2s - 1] = i
                 l2s -= 1
-            elif rank < value1 + value2:
-                # trying to place too many 1s
-                if l1s <= 0: return False
-                board[i] = 1
+            elif rank < (value1 + value2):
+                if l1s <= 0:
+                    return False
+                s.board[i] = 1
+                s.pieces[0][l1s - 1] = i
                 rank -= value2
                 l1s -= 1
             else:
-                board[i] = 0
-                rank -= value1 + value2
-        
-        s.board = board
-        s.to_move = to_move
-        s.build_pieces_from_board()
-
+                s.board[i] = 0
+                rank -= (value1 + value2)
+            i += 1
         return True
     
     def get_max_single_player_rank(self) -> int:
@@ -487,8 +500,11 @@ class CCLocalRank12:
 
 def rank_board(board: Board) -> int:
     num_pieces, _ = board.num_pieces()
-    ccstate_board, to_move = convert_Board_to_CCState(board)
-    return RankingBase.rank(ccstate_board, to_move, num_pieces)
+    num_spots = board.num_spots()
+    r = CCDefaultRank(num_spots, 2, num_pieces)
+    s = CCState(num_spots, num_pieces, 2)
+    s.initialize_from_board(board)
+    return r.rank(s)
 
 def unrank_board(rank: int, num_spots: int, num_pieces: int) -> Board:
     _, board, to_move = RankingBase.unrank(rank, num_spots, num_pieces)

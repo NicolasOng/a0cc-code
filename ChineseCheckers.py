@@ -409,6 +409,18 @@ class Board:
         num_o_pieces = len(o_posiitons)
         return num_x_pieces, num_o_pieces
     
+    def num_spots(self) -> int:
+        '''
+        Returns the number of spots on the board.
+        '''
+        return len(self.board) * len(self.board[0])
+    
+    def board_sizes(self) -> tuple[int, int]:
+        '''
+        Returns the size of the board.
+        '''
+        return len(self.board), len(self.board[0])
+    
     def positions_are_filled_by_player(self, positions: list[Point], player: Player) -> bool:
         '''
         Returns True if all positions are filled by the given player.
