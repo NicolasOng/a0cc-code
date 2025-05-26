@@ -5,10 +5,145 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 logging.basicConfig(level=logging.CRITICAL)
 
+class CCState:
+    '''
+    A class representing the state of a Chinese Checkers game.
+    This is a simplified version for the purpose of ranking and unranking.
+    Also has methods for converting between Board and CCState formats.
+    Based on the CCState class in CCheckers.h.
+    '''
+    # 1D list of integers representing the board state
+    board: list[int]
+    # List of two lists, each containing indices of pieces for Player X and Player O
+    pieces: list[list[int]]
+    # 0 for Player X, 1 for Player O
+    to_move: int
+
+    def __init__(self, num_spots: int, num_pieces: int, num_players: int):
+        '''
+        Initializes a blank CCState with the given number of spots, pieces, and players.
+        '''
+        self.board = [0] * num_spots
+        self.pieces = [[0 for _ in range(num_pieces)] for _ in range(num_players)]
+        self.to_move = 0
+    
+    @staticmethod
+    def grid_to_CCState_order(board: list[list[Tile]]) -> list[int]:
+        '''
+        Converts a grid of tiles to a 1D list of integers, following the format used in CCState.
+        '''
+        width, height = len(board[0]), len(board)
+        ccstate_order: list[int] = []
+
+        for d in range(width + height - 1):  # sum of indices (x + y)
+            logging.debug(f"Processing diagonal {d}")
+            # For each diagonal, we need to find the valid (x, y) pairs
+            for x in range(d + 1):
+                # Calculate y based on the current x and d
+                y = d - x
+                if x < width and y < height:
+                    logging.debug(f"Appending tile ({x}, {y})")
+                    tile = 0
+                    if board[y][x] == Tile.PLAYER_X:
+                        tile = 1
+                    elif board[y][x] == Tile.PLAYER_O:
+                        tile = 2
+                    ccstate_order.append(tile)
+                else:
+                    logging.debug(f"\tSkipping tile ({x}, {y}) as it is out of bounds")
+
+        return ccstate_order
+    
+    @staticmethod
+    def CCState_to_grid_order(board: list[int]) -> list[list[Tile]]:
+        '''
+        Converts a 1D list of integers to a grid of tiles, following the format used in Board.
+        assumes that the board is a square.
+        '''
+        side_length = math.sqrt(len(board))
+        assert side_length.is_integer(), "Board should be a sqaure"
+        side_length = int(side_length)
+
+        width, height = side_length, side_length
+        grid_order = [[Tile.EMPTY for _ in range(width)] for _ in range(height)]
+
+        i = 0
+        for d in range(width + height - 1):  # sum of indices (x + y)
+            logging.debug(f"Processing diagonal {d}")
+            # For each diagonal, we need to find the valid (x, y) pairs
+            for x in range(d + 1):
+                # Calculate y based on the current x and d
+                y = d - x
+                if x < width and y < height:
+                    logging.debug(f"Setting tile ({x}, {y})")
+                    if board[i] == 1:
+                        grid_order[y][x] = Tile.PLAYER_X
+                    elif board[i] == 2:
+                        grid_order[y][x] = Tile.PLAYER_O
+                    i += 1
+                else:
+                    logging.debug(f"\tSkipping tile ({x}, {y}) as it is out of bounds")
+
+        return grid_order
+
+    @staticmethod
+    def convert_Board_to_CCState(board: Board) -> tuple[list[int], int]:
+        '''
+        Converts a Board object to a 1D list of integers, following the format used in CCState.
+        '''
+        new_board = CCState.grid_to_CCState_order(board.board)
+        toMove = 0 if board.current_player == Player.PLAYER_X else 1
+        return new_board, toMove
+    
+    @staticmethod
+    def convert_CCState_to_Board(board: list[int], to_move: int) -> Board:
+        '''
+        converts a CCState (int list of the board and int for player's turn) to my Board format.
+        assumes that the board is a square.
+        assumes that the home_size follows the board_to_home_size dict.
+        '''
+        grid = CCState.CCState_to_grid_order(board)
+        board_size = len(grid)
+        new_board = Board(board_size, board_to_home_size[board_size])
+        new_board.set_board(grid)
+        new_board.current_player = Player.PLAYER_X if to_move == 0 else Player.PLAYER_O
+        return new_board
+    
+    def build_pieces_from_board(self) -> None:
+        '''
+        Given a 1D board list (CCState format), returns a list of two lists:
+        - pieces[0]: indices of player 1's pieces (value 1)
+        - pieces[1]: indices of player 2's pieces (value 2)
+        The indices are sorted into descending order.
+        '''
+        self.pieces = [[], []]
+        for idx, val in enumerate(self.board):
+            if val == 1:
+                self.pieces[0].append(idx)
+            elif val == 2:
+                self.pieces[1].append(idx)
+        # Sort the pieces in descending order
+        self.pieces[0].sort(reverse=True)
+        self.pieces[1].sort(reverse=True)
+    
+    def initialize_from_board(self, board: Board) -> None:
+        '''
+        Initializes the CCState from a Board.
+        This method populates the pieces attribute based on the board state.
+        '''
+        self.board, self.to_move = CCState.convert_Board_to_CCState(board)
+        self.build_pieces_from_board()
+
+    def get_board(self) -> Board:
+        '''
+        Converts the CCState back to a Board object.
+        '''
+        return CCState.convert_CCState_to_Board(self.board, self.to_move)
+
 class RankingBase:
     '''
     RankingBase is a class that provides methods for ranking and unranking.
-    It is focused on the Ranking methods found in the CCheckers class in C++.
+    It is focused on the Ranking methods found in the CCheckers class in CCheckers.h.
     '''
     def __init__(self, num_spots: int, num_players: int, num_pieces: int):
         self.num_spots = num_spots
@@ -20,7 +155,7 @@ class RankingBase:
     @staticmethod
     def bi(n: int, k: int) -> int:
         '''
-        Equivalent to CCheckers::bi(unsigned int n, unsigned int k) const in C++.
+        Equivalent to int64_t CCheckers::bi(unsigned int n, unsigned int k) const in CCheckers.cpp.
         Computes the binomial coefficient (n choose k) using iterative multiplication.
         '''
         num = 1
@@ -38,7 +173,7 @@ class RankingBase:
     def init_binomials(num_spots: int, num_players: int, num_pieces: int) -> list[int]:
         '''
         Initializes and returns the binomials as a flat list of binomial coefficients.
-        Equivalent to CCheckers::initBinomial().
+        Equivalent to void CCheckers::initBinomial() in CCheckers.cpp.
         binomials[x*(num_players*num_pieces+1)+y] = bi(x, y)
         '''
         size = (num_spots + 1) * (num_players * num_pieces + 1)
@@ -50,7 +185,7 @@ class RankingBase:
     
     def binomial(self, n: int, k: int) -> int:
         '''
-        Equivalent to CCheckers::binomial(unsigned int n, unsigned int k) const in C++.
+        Equivalent to int64_t CCheckers::binomial(unsigned int n, unsigned int k) const in CCheckers.cpp.
         Returns the precomputed binomial coefficient from the binomials array.
         binomials[n*(1+num_players*num_pieces)+k]
         '''
@@ -60,7 +195,7 @@ class RankingBase:
     def init_binomial_sums(self, num_pieces: int, num_spots: int) -> list[int]:
         '''
         Initializes and returns the_sums as a flat list of cumulative binomial coefficients.
-        Equivalent to CCheckers::initBinomialSums() for theSums.
+        Equivalent to void CCheckers::initBinomialSums() in CCheckers.cpp.
         '''
         size = (num_pieces + 1) * (num_spots + 1)
         the_sums = [0] * size
@@ -73,7 +208,7 @@ class RankingBase:
     
     def binomial_sum(self, n1: int, n2: int, k: int) -> int:
         '''
-        Equivalent to CCheckers::binomialSum(unsigned int n1, unsigned int n2, unsigned int k) const in C++.
+        Equivalent to int64_t CCheckers::binomialSum(unsigned int n1, unsigned int n2, unsigned int k) const in CCheckers.cpp.
         '''
         idx1 = k * (self.num_spots + 1) + n1
         idx2 = k * (self.num_spots + 1) + n2
@@ -82,7 +217,7 @@ class RankingBase:
     @staticmethod
     def multinomial(n: int, k1: int, k2: int):
         '''
-        Copied from CCheckers.cpp.
+        Equivalent to int64_t CCheckers::multinomial(unsigned int n, unsigned int k1, unsigned int k2) const in CCheckers.cpp.
         multinomial(n, k1, k2, k3) = \frac{n!}{k1! k2! k3!},
         where k3 is n - (k1 + k2).
         first calculates n!/k3!, then multiplies by 1/(k2! k3!)
@@ -102,29 +237,26 @@ class RankingBase:
 
         return num // den
     
-    @staticmethod
-    def get_max_rank(num_spots: int, num_pieces: int) -> int:
+    def get_max_rank(self) -> int:
         '''
-        Returns the maximum rank for a given board size and number of pieces, equivalent to CCheckers::getMaxRank().
+        Equivalent to int64_t CCheckers::getMaxRank() const in CCheckers.cpp.
         '''
-        return 2 * RankingBase.multinomial(num_spots, num_pieces, num_pieces)
+        return 2 * RankingBase.multinomial(self.num_spots, self.num_pieces, self.num_pieces)
 
-    @staticmethod
-    def rank(board: list[int], to_move: int, num_pieces: int) -> int:
+    def rank(self, s: CCState) -> int:
         '''
-        Copied from CCheckers.cpp.
-        in CCheckers, NUM_PIECES & NUM_SPOTS are defined globally. Here, they are passed in or calculated.
+        Equivalent to int64_t CCheckers::rank(const CCState &s) in CCheckers.cpp.
         '''
         r = 0
-        l1s, l2s = num_pieces, num_pieces
-        num_spots = len(board)
-        for i in range(len(board)):
+        l1s, l2s = self.num_pieces, self.num_pieces
+        num_spots = self.num_spots
+        for i in range(num_spots):
             if l1s + l2s <= 0:
                 break
             
-            if board[i] == 2:
+            if s.board[i] == 2:
                 l2s -= 1
-            elif board[i] == 1:
+            elif s.board[i] == 1:
                 if l2s > 0:
                     r = r + RankingBase.multinomial(num_spots - i - 1, l1s, l2s - 1)
                 l1s -= 1
@@ -134,107 +266,223 @@ class RankingBase:
                 if l1s > 0:
                     r = r + RankingBase.multinomial(num_spots - i - 1, l1s - 1, l2s)
         
-        return (r << 1) + to_move
+        return (r << 1) + s.to_move
     
-    @staticmethod
-    def unrank(rank: int, num_spots: int, num_pieces: int) -> tuple[bool, list[int], int]:
+    def unrank(self, rank: int, s: CCState) -> bool:
         '''
-        Copied from CCheckers.cpp.
-        in CCheckers.cpp, NUM_SPOTS and NUM_PIECES was defined globally.
-        here, they need to be passed in.
+        Equivalent to bool CCheckers::unrank(int64_t theRank, CCState &s) const in CCheckers.cpp.
         '''
-        board = [0] * num_spots
+        board = [0] * self.num_spots
 
         to_move = rank & 0x1
         rank >>= 1
 
-        l1s, l2s = num_pieces, num_pieces
-        for i in range(num_spots):
+        l1s, l2s = self.num_pieces, self.num_pieces
+        for i in range(self.num_spots):
             if l1s + l2s <= 0:
                 break
             
-            value1 = RankingBase.multinomial(num_spots - i - 1, l1s - 1, l2s) if l1s > 0 else 0
-            value2 = RankingBase.multinomial(num_spots - i - 1, l1s, l2s - 1) if l2s > 0 else 0
+            value1 = RankingBase.multinomial(self.num_spots - i - 1, l1s - 1, l2s) if l1s > 0 else 0
+            value2 = RankingBase.multinomial(self.num_spots - i - 1, l1s, l2s - 1) if l2s > 0 else 0
 
             # this block of code guarantees that the element at the ith index gets either 2, 1, 0
             if rank < value2:
                 # trying to place too many 2s
-                if l2s <= 0: return False, board, to_move
+                if l2s <= 0: return False
                 board[i] = 2
                 l2s -= 1
             elif rank < value1 + value2:
                 # trying to place too many 1s
-                if l1s <= 0: return False, board, to_move
+                if l1s <= 0: return False
                 board[i] = 1
                 rank -= value2
                 l1s -= 1
             else:
                 board[i] = 0
                 rank -= value1 + value2
+        
+        s.board = board
+        s.to_move = to_move
+        s.build_pieces_from_board()
 
-        return True, board, to_move
-
-    def rank_player(self, s, who: int, num_spots: int, num_pieces: int) -> int:
+        return True
+    
+    def get_max_single_player_rank(self) -> int:
         '''
-        Equivalent to CCheckers::rankPlayer(const CCState &s, int who) const in C++.
-        s: a CCState-like object with attribute pieces[who][i]
-        who: player index (0 or 1)
-        num_spots: total number of spots on the board
-        num_pieces: number of pieces per player
+        Equivalent to int64_t CCheckers::getMaxSinglePlayerRank() const in CCheckers.cpp.
+        Returns the number of ways to place NUM_PIECES pieces in NUM_SPOTS spots.
+        '''
+        return self.binomial(self.num_spots, self.num_pieces)
+    
+    def get_max_single_player_rank_relative(self) -> int:
+        '''
+        Equivalent to int64_t CCheckers::getMaxSinglePlayerRankRelative() const in CCheckers.cpp.
+        Returns the number of ways to place NUM_PIECES pieces in NUM_SPOTS-NUM_PIECES spots.
+        '''
+        return self.binomial(self.num_spots - self.num_pieces, self.num_pieces)
+    
+    def rank_player(self, s: CCState, who: int) -> int:
+        '''
+        Equivalent to int64_t CCheckers::rankPlayer(const CCState &s, int who) const in CCheckers.cpp.
         '''
         r2 = 0
-        last = num_spots - 1
-        for x in range(num_pieces):
-            idx = num_pieces - 1 - x
+        last = self.num_spots - 1
+        for x in range(self.num_pieces):
+            idx = self.num_pieces - 1 - x
             piece_pos = s.pieces[who][idx]
-            tmp = self.binomial_sum(last, num_spots - piece_pos - 1, idx)
+            tmp = self.binomial_sum(last, self.num_spots - piece_pos - 1, idx)
             r2 += tmp
-            last = num_spots - piece_pos - 1 - 1
+            last = self.num_spots - piece_pos - 1 - 1
         return r2
 
+    def rank_player_relative(self, s: CCState, who: int, relative: int) -> int:
+        '''
+        Equivalent to int64_t CCheckers::rankPlayerRelative(const CCState &s, int who, int relative) const in CCheckers.cpp.
+        This method ranks the pieces of player 'who' relative to player 'relative'.
+        '''
+        mod = [0] * self.num_pieces
+        relPos = 0
+        myPos = 0
+        offset = 0
+        while myPos < self.num_pieces:
+            if relPos < self.num_pieces and s.pieces[relative][self.num_pieces - 1 - relPos] < s.pieces[who][self.num_pieces - 1 - myPos]:
+                relPos += 1
+                offset += 1
+            else:
+                mod[self.num_pieces - 1 - myPos] = s.pieces[who][self.num_pieces - 1 - myPos] - offset
+                myPos += 1
+        r2 = 0
+        last = self.num_spots - 1 - self.num_pieces
+        for x in range(self.num_pieces):
+            idx = self.num_pieces - 1 - x
+            tmp = self.binomial_sum(last, self.num_spots - mod[idx] - 1 - self.num_pieces, idx)
+            r2 += tmp
+            last = self.num_spots - mod[idx] - 1 - self.num_pieces - 1
+        assert r2 >= 0
+        assert r2 < self.get_max_single_player_rank_relative()
+        return r2
+
+    def unrank_player(self, the_rank: int, s: CCState, who: int) -> bool:
+        '''
+        Equivalent to bool CCheckers::unrankPlayer(int64_t theRank, CCState &s, int who) const in CCheckers.cpp.
+        Unranks a single player's pieces from the given rank and updates the board and pieces for that player.
+        '''
+        tag = who + 1
+        ls = self.num_pieces
+        s.board = [0] * self.num_spots
+        # Ensure s.pieces is a list of lists of correct size
+        if not hasattr(s, 'pieces') or len(s.pieces) != self.num_players or any(len(p) != self.num_pieces for p in s.pieces):
+            s.pieces = [[0 for _ in range(self.num_pieces)] for _ in range(self.num_players)]
+        for i in range(self.num_spots):
+            if ls == 0:
+                break
+            value = self.binomial(self.num_spots - i - 1, ls - 1) if ls > 0 else 0
+            if the_rank < value:
+                s.board[i] = tag
+                s.pieces[who][ls - 1] = i
+                ls -= 1
+            else:
+                s.board[i] = 0
+                the_rank -= value
+        for x in range(1, self.num_pieces):
+            assert s.pieces[who][x - 1] > s.pieces[who][x]
+        s.to_move = who
+        return True
+    
+    def unrank_player_relative_helper(self, the_rank: int, s: CCState, who: int) -> None:
+        '''
+        Equivalent to void CCheckers::unrankPlayerRelativeHelper(int64_t theRank, CCState &s, int who) const in CCheckers.cpp.
+        Updates s.pieces[who] in-place based on the rank.
+        '''
+        ls = self.num_pieces
+        i = 0
+        while ls > 0:
+            if ls > 0:
+                value = self.binomial(self.num_spots - i - 1 - self.num_pieces, ls - 1)
+            else:
+                value = 0
+            if the_rank < value:
+                s.pieces[who][ls - 1] = i
+                ls -= 1
+            else:
+                the_rank -= value
+            i += 1
+        for x in range(1, self.num_pieces):
+            assert s.pieces[who][x - 1] > s.pieces[who][x]
+
+    def unrank_player_relative(self, r: int, s: 'CCState', who: int, relative: int) -> bool:
+        '''
+        Equivalent to bool CCheckers::unrankPlayerRelative(int64_t r, CCState &s, int who, int relative) const in CCCheckers.cpp.
+        Puts pieces in relative location inside s, then converts to absolute location, and fills board.
+        '''
+        # Step 1: Put pieces in relative location
+        self.unrank_player_relative_helper(r, s, who)
+
+        # Step 2: Put into absolute location
+        relPos = 0
+        myPos = 0
+        offset = self.num_pieces
+        while myPos < self.num_pieces:
+            if (relPos < self.num_pieces) and (s.pieces[relative][relPos] >= s.pieces[who][myPos] + offset):
+                relPos += 1
+                offset -= 1
+            else:
+                s.pieces[who][myPos] += offset
+                myPos += 1
+
+        # Step 3: Fill values into array
+        for x in range(self.num_pieces):
+            s.board[s.pieces[who][x]] = 1 + who
+        return True
+
 class CCDefaultRank:
-    @staticmethod
-    def get_max_rank(num_spots: int, num_pieces: int) -> int:
-        return RankingBase.get_max_rank(num_spots, num_pieces)
+    '''
+    Equivalent to CCDefaultRank in CCRankings.h.
+    '''
+    def __init__(self, num_spots: int, num_players: int, num_pieces: int):
+        self.rb = RankingBase(num_spots, num_players, num_pieces)
     
-    @staticmethod
-    def rank(board: list[int], to_move: int, num_pieces: int) -> int:
-        return RankingBase.rank(board, to_move, num_pieces)
+    def get_max_rank(self) -> int:
+        return self.rb.get_max_rank()
     
-    @staticmethod
-    def unrank(rank: int, num_spots: int, num_pieces: int) -> tuple[bool, list[int], int]:
-        return RankingBase.unrank(rank, num_spots, num_pieces)
+    def rank(self, s: CCState) -> int:
+        return self.rb.rank(s)
+    
+    def unrank(self, rank: int, s: CCState) -> bool:
+        return self.rb.unrank(rank, s)
 
 class CCLocalRank12:
-    @staticmethod
-    def rank(cc, s) -> int:
-        '''
-        Equivalent to CCLocalRank12::rank(const CCState &s) const in C++.
-        cc: an object with methods rankPlayer, rankPlayerRelative, getMaxSinglePlayerRankRelative
-        s: a CCState-like object with attribute toMove
-        '''
-        r0 = cc.rankPlayer(s, 0)
-        r1 = cc.rankPlayerRelative(s, 1, 0)
-        assert r0 < cc.getMaxSinglePlayerRank()
-        assert r1 >= 0
-        assert r1 < cc.getMaxSinglePlayerRankRelative()
-        return (r0 * cc.getMaxSinglePlayerRankRelative() + r1) * 2 + s.toMove
+    '''
+    Equivalent to CCLocalRank12 in CCRankings.h.
+    '''
+    def __init__(self, num_spots: int, num_players: int, num_pieces: int):
+        self.rb = RankingBase(num_spots, num_players, num_pieces)
     
-    @staticmethod
-    def unrank(cc, r: int, s) -> bool:
+    def get_max_rank(self) -> int:
+        return self.rb.get_max_rank()
+    
+    def rank(self, s: CCState) -> int:
         '''
-        Equivalent to CCLocalRank12::unrank(int64_t r, CCState &s) const in C++.
-        cc: an object with methods unrankPlayer, unrankPlayerRelative, getMaxSinglePlayerRankRelative
-        r: the rank to unrank
-        s: a CCState-like object to modify (should have attribute toMove)
+        Equivalent to int64_t CCLocalRank12::rank(const CCState &s) const in CCRankings.cpp.
+        '''
+        r0 = self.rb.rank_player(s, 0)
+        r1 = self.rb.rank_player_relative(s, 1, 0)
+        assert r0 < self.rb.get_max_single_player_rank()
+        assert r1 >= 0
+        assert r1 < self.rb.get_max_single_player_rank_relative()
+        return (r0 * self.rb.get_max_single_player_rank_relative() + r1) * 2 + s.to_move
+    
+    def unrank(self, r: int, s: CCState) -> bool:
+        '''
+        Equivalent to CCLocalRank12::unrank(int64_t r, CCState &s) const in CCRankings.cpp.
         '''
         toMove = int(r & 1)
         r >>= 1
-        r0 = r // cc.getMaxSinglePlayerRankRelative()
-        r1 = r % cc.getMaxSinglePlayerRankRelative()
-        cc.unrankPlayer(r0, s, 0)
-        cc.unrankPlayerRelative(r1, s, 1, 0)
-        s.toMove = toMove
+        r0 = r // self.rb.get_max_single_player_rank_relative()
+        r1 = r % self.rb.get_max_single_player_rank_relative()
+        self.rb.unrank_player(r0, s, 0)
+        self.rb.unrank_player_relative(r1, s, 1, 0)
+        s.to_move = toMove
         return True
 
 def rank_board(board: Board) -> int:
@@ -290,85 +538,6 @@ def generate_rect_board_lists(width, height):
     localRectToBoard, _ = sort_list_by_listed_positions(localBoardToRect, in_order)
 
     return localRectToBoard, localBoardToRect
-
-def grid_to_CCState_order(board: list[list[Tile]]) -> list[int]:
-    '''
-    Converts a grid of tiles to a 1D list of integers, following the format used in CCState.
-    '''
-    width, height = len(board[0]), len(board)
-    ccstate_order = []
-
-    for d in range(width + height - 1):  # sum of indices (x + y)
-        logging.debug(f"Processing diagonal {d}")
-        # For each diagonal, we need to find the valid (x, y) pairs
-        for x in range(d + 1):
-            # Calculate y based on the current x and d
-            y = d - x
-            if x < width and y < height:
-                logging.debug(f"\Appending tile ({x}, {y})")
-                tile = 0
-                if board[y][x] == Tile.PLAYER_X:
-                    tile = 1
-                elif board[y][x] == Tile.PLAYER_O:
-                    tile = 2
-                ccstate_order.append(tile)
-            else:
-                logging.debug(f"\tSkipping tile ({x}, {y}) as it is out of bounds")
-
-    return ccstate_order
-
-def CCState_to_grid_order(board: list[int]) -> list[list[Tile]]:
-    '''
-    Converts a 1D list of integers to a grid of tiles, following the format used in Board.
-    assumes that the board is a square.
-    '''
-    side_length = math.sqrt(len(board))
-    assert side_length.is_integer(), "Board should be a sqaure"
-    side_length = int(side_length)
-
-    width, height = side_length, side_length
-    grid_order = [[Tile.EMPTY for _ in range(width)] for _ in range(height)]
-
-    i = 0
-    for d in range(width + height - 1):  # sum of indices (x + y)
-        logging.debug(f"Processing diagonal {d}")
-        # For each diagonal, we need to find the valid (x, y) pairs
-        for x in range(d + 1):
-            # Calculate y based on the current x and d
-            y = d - x
-            if x < width and y < height:
-                logging.debug(f"Setting tile ({x}, {y})")
-                if board[i] == 1:
-                    grid_order[y][x] = Tile.PLAYER_X
-                elif board[i] == 2:
-                    grid_order[y][x] = Tile.PLAYER_O
-                i += 1
-            else:
-                logging.debug(f"\tSkipping tile ({x}, {y}) as it is out of bounds")
-
-    return grid_order
-
-
-def convert_Board_to_CCState(board: Board) -> tuple[list[int], int]:
-    '''
-    Converts a Board object to a 1D list of integers, following the format used in CCState.
-    '''
-    new_board = grid_to_CCState_order(board.board)
-    toMove = 0 if board.current_player == Player.PLAYER_X else 1
-    return new_board, toMove
-
-def convert_CCState_to_Board(board: list[int], to_move: int) -> Board:
-    '''
-    converts a CCState (int list of the board and int for player's turn) to my Board format.
-    assumes that the board is a square.
-    assumes that the home_size follows the board_to_home_size dict.
-    '''
-    grid = CCState_to_grid_order(board)
-    board_size = len(grid)
-    new_board = Board(board_size, board_to_home_size[board_size])
-    new_board.set_board(grid)
-    new_board.current_player = Player.PLAYER_X if to_move == 0 else Player.PLAYER_O
-    return new_board
 
 def check_CCState(board_size, num_pieces):
     '''
