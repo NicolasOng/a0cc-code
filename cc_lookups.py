@@ -1,5 +1,5 @@
 from solve_file_loader import SolveData
-from cc_ranking import CCDefaultRank, CCState
+from cc_ranking import CCDefaultRank, CCPSRank12, CCState
 
 class CCBaselineSolver:
     def __init__(self, filename: str, num_spots: int, num_players: int, num_pieces: int):
@@ -7,6 +7,26 @@ class CCBaselineSolver:
         self.r = CCDefaultRank(num_spots, num_players, num_pieces)
     
     def lookup(self, s: CCState) -> int:
+        '''
+        Equivalent to tResult BaselineSolver::Lookup(const CCState &s) const in BaselineSolver.cpp.
+        '''
         rank = self.r.rank(s)
         outcome = self.solve_data.get(rank)
         return outcome
+
+class FullSymmetry:
+    def __init__(self, filename: str, num_spots: int, num_players: int, num_pieces: int):
+        self.solve_data = SolveData(filename)
+        self.r = CCPSRank12(num_spots, num_players, num_pieces)
+    
+    def lookup(self, s: CCState) -> int:
+        '''
+        Equivalent to tResult Solver::Lookup(const CCState &s) const in FullSymmetrySolver.cpp.
+        '''
+        pass
+
+class FasterSymmetry:
+    pass
+
+class ParallelBitCCSolver:
+    pass

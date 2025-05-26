@@ -1,3 +1,4 @@
+from __future__ import annotations
 import math
 from ChineseCheckers import Game, Board, Move, Point, Player, Tile, board_to_home_size
 
@@ -9,8 +10,11 @@ class CCState:
     '''
     A class representing the state of a Chinese Checkers game.
     This is a simplified version for the purpose of ranking and unranking.
-    Also has methods for converting between Board and CCState formats.
     Based on the CCState class in CCheckers.h.
+    Has methods for
+    - converting between Board and CCState formats
+    - printing the state in ASCII format
+    - flipping vertically
     '''
     # 1D list of integers representing the board state
     board: list[int]
@@ -157,6 +161,43 @@ class CCState:
         print(f"{self.to_move + 1}", end='')
         for x in range(len(self.board)):
             print(f"{self.board[x]}", end='')
+    
+    @staticmethod
+    def symmetry_flip_vert(s: CCState) -> None:
+        '''
+        Flip state top to bottom (over/under vertical centerline).
+        Equivalent to CCheckers::SymmetryFlipVert(CCState &s) const in CCheckers.cpp.
+        '''
+        num_spots = len(s.board)
+        num_pieces = len(s.pieces[0])
+        # Reconstruct grid for mapping
+        grid = CCState.CCState_to_grid_order(s.board)
+        width, height = len(grid[0]), len(grid)
+        # Clear board
+        s.board = [0] * num_spots
+        for y in range(num_pieces):
+            # Player 0
+            idx0 = s.pieces[0][y]
+            x0 = idx0 % width
+            y0 = idx0 // width
+            y0_flipped = height - 1 - y0
+            p0 = y0_flipped * width + x0
+            # Player 1
+            idx1 = s.pieces[1][y]
+            x1 = idx1 % width
+            y1 = idx1 // width
+            y1_flipped = height - 1 - y1
+            p1 = y1_flipped * width + x1
+            # Swap and assign
+            s.pieces[0][y] = p1
+            s.pieces[1][y] = p0
+            s.board[p1] = 1
+            s.board[p0] = 2
+        s.pieces[0].sort(reverse=True)
+        s.pieces[1].sort(reverse=True)
+        s.to_move = 1 - s.to_move
+        # Optionally: s.build_pieces_from_board() to verify
+    
 
 class RankingBase:
     '''
@@ -505,6 +546,43 @@ class CCLocalRank12:
         self.rb.unrank_player_relative(r1, s, 1, 0)
         s.to_move = toMove
         return True
+
+class CCPSRank12:
+    '''
+    Equivalent to CCPSRank12 in CCRankings.h.
+    '''
+    def __init__(self, num_spots: int, num_players: int, num_pieces: int):
+        self.rb = RankingBase(num_spots, num_players, num_pieces)
+    
+    def rank(self, s: CCState) -> tuple[int, int, int]:
+        '''
+        Equivalent to int64_t CCPSRank12::rank(const CCState &s, int64_t &r0, int64_t &r1) const in CCRankings.cpp.
+        Returns (rank, r0, r1).
+        '''
+        if s.to_move == 0:
+            r0 = self.rb.rank_player(s, 0)
+            r1 = self.rb.rank_player_relative(s, 1, 0)
+            # Optionally, add asserts as in C++
+            # assert r0 < self.rb.get_max_single_player_rank()
+            # assert r1 >= 0
+            # assert r1 < self.rb.get_max_single_player_rank_relative()
+            return r0 * self.rb.get_max_single_player_rank_relative() + r1, r0, r1
+        elif s.to_move == 1:
+            # Create a copy and flip vertically
+            tmp = CCState(len(s.board), len(s.pieces[0]), len(s.pieces))
+            tmp.board = s.board[:]
+            tmp.pieces = [p[:] for p in s.pieces]
+            tmp.to_move = s.to_move
+            CCState.symmetry_flip_vert(tmp)
+            r0 = self.rb.rank_player(tmp, 0)
+            r1 = self.rb.rank_player_relative(tmp, 1, 0)
+            # Optionally, add asserts as in C++
+            # assert r0 < self.rb.get_max_single_player_rank()
+            # assert r1 >= 0
+            # assert r1 < self.rb.get_max_single_player_rank_relative()
+            return r0 * self.rb.get_max_single_player_rank_relative() + r1, r0, r1
+        else:
+            return -1, -1, -1
 
 def rank_board(board: Board) -> int:
     num_pieces, _ = board.num_pieces()

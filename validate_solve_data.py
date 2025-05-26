@@ -22,8 +22,9 @@ def baseline_solver_test_function():
     s = CCState(num_spots, num_pieces, num_players)
 
     # set to (0, 10), (10, 20), ...
-    i_start = 10
-    i_end = min(20, l.get_max_rank())
+    n = 10000000
+    i_start = 1 * n
+    i_end = min(2 * n, l.get_max_rank())
     for x in range(i_start, i_end):
         l.unrank(x, s)
         s.print_ascii_compact()
