@@ -1,5 +1,5 @@
-from solve_file_loader import SolveData
-from cc_ranking import CCDefaultRank, CCPSRank12, CCState
+from cc.solvedata import SolveData
+from cc.ranking import CCDefaultRank, CCPSRank12, CCState
 from typing import Any
 
 class Group:

@@ -1,6 +1,6 @@
-from solve_file_loader import SolveData, Outcome
-from cc_ranking import CCLocalRank12, CCState, CCDefaultRank
-from cc_lookups import CCBaselineSolver
+from cc.solvedata import SolveData, Outcome
+from cc.ranking import CCLocalRank12, CCState, CCDefaultRank
+from cc.lookups import CCBaselineSolver
 
 def file_loading_test():
     entries, mem = read_8byte_array("solve-data/CC-SOLVE-BASELINE-49-3.dat")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 import math
-from ChineseCheckers import Game, Board, Move, Point, Player, Tile, board_to_home_size
+from cc.core import Game, Board, Move, Point, Player, Tile, board_to_home_size
 
 import logging
 logging.basicConfig(level=logging.DEBUG)

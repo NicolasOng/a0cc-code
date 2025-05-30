@@ -6,7 +6,7 @@ import logging
 #logging.basicConfig(level=logging.DEBUG)
 logging.basicConfig(level=logging.CRITICAL)
 
-from ChineseCheckers import Game, Board, Move, Point, Player, Tile
+from cc.core import Game, Board, Move, Point, Player, Tile
 
 def generate_next_states(game: Game):
     moves = game.start_turn()

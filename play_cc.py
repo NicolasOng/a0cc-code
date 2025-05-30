@@ -1,6 +1,6 @@
 import random
 
-from ChineseCheckers import Game, Board, Move, Point, Player, Tile
+from cc.core import Game, Board, Move, Point, Player, Tile
 
 def get_user_input(max_num):
     while True:
