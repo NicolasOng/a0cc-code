@@ -161,43 +161,6 @@ class CCState:
         print(f"{self.to_move + 1}", end='')
         for x in range(len(self.board)):
             print(f"{self.board[x]}", end='')
-    
-    @staticmethod
-    def symmetry_flip_vert(s: CCState) -> None:
-        '''
-        Flip state top to bottom (over/under vertical centerline).
-        Equivalent to CCheckers::SymmetryFlipVert(CCState &s) const in CCheckers.cpp.
-        '''
-        num_spots = len(s.board)
-        num_pieces = len(s.pieces[0])
-        # Reconstruct grid for mapping
-        grid = CCState.CCState_to_grid_order(s.board)
-        width, height = len(grid[0]), len(grid)
-        # Clear board
-        s.board = [0] * num_spots
-        for y in range(num_pieces):
-            # Player 0
-            idx0 = s.pieces[0][y]
-            x0 = idx0 % width
-            y0 = idx0 // width
-            y0_flipped = height - 1 - y0
-            p0 = y0_flipped * width + x0
-            # Player 1
-            idx1 = s.pieces[1][y]
-            x1 = idx1 % width
-            y1 = idx1 // width
-            y1_flipped = height - 1 - y1
-            p1 = y1_flipped * width + x1
-            # Swap and assign
-            s.pieces[0][y] = p1
-            s.pieces[1][y] = p0
-            s.board[p1] = 1
-            s.board[p0] = 2
-        s.pieces[0].sort(reverse=True)
-        s.pieces[1].sort(reverse=True)
-        s.to_move = 1 - s.to_move
-        # Optionally: s.build_pieces_from_board() to verify
-    
 
 class RankingBase:
     '''

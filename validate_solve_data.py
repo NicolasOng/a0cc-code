@@ -23,8 +23,8 @@ def baseline_solver_test_function():
 
     # set to (0, 10), (10, 20), ...
     n = 10000000
-    i_start = 1 * n
-    i_end = min(2 * n, l.get_max_rank())
+    i_start = 25 * n
+    i_end = min(60 * n, l.get_max_rank())
     for x in range(i_start, i_end):
         l.unrank(x, s)
         s.print_ascii_compact()
