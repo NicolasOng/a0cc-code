@@ -48,7 +48,7 @@ class MCTSNode:
 
 
 class MCTS:
-    def __init__(self, cc, player, sample_size, tau=0):
+    def __init__(self, cc, player, sample_size=64, tau=0):
         self.cc = cc
         self.player = player
         self.sample_size = sample_size
