@@ -92,6 +92,12 @@ class Board:
         self.current_player = Player.PLAYER_X
         self.home_size = home_size
     
+    def clear_board(self) -> None:
+        '''
+        Clears the board, setting all tiles to Tile.EMPTY.
+        '''
+        self.board = [[Tile.EMPTY for _ in range(len(self.board))] for _ in range(len(self.board))]
+    
     def set_board(self, board: list[list[Tile]]) -> None:
         self.board = copy.deepcopy(board)
 
@@ -123,6 +129,22 @@ class Board:
         # update the current player
         self.current_player = Player.PLAYER_O if self.current_player == Player.PLAYER_X else Player.PLAYER_X
     
+    def undo_move(self, move: Move) -> None:
+        '''
+        "Undoes" the given move on the board.
+        Assumes that the move given is the last move made by the previous player.
+        '''
+        player_tile = player_to_tile[Player.PLAYER_O if self.current_player == Player.PLAYER_X else Player.PLAYER_X]
+        logging.debug(f"Undoing move: {move} for player {self.current_player}")
+        assert self.position_on_main_board(move.end.x, move.end.y) and self.board[move.end.x][move.end.y] == player_tile, f"Invalid undo: {move.end} is not occupied by the current player."
+        assert self.position_on_main_board(move.start.x, move.start.y) and self.board[move.start.x][move.start.y] == Tile.EMPTY, f"Invalid undo: {move.start} is occupied."
+        # undo the piece move
+        self.board[move.end.x][move.end.y] = Tile.EMPTY
+        self.board[move.start.x][move.start.y] = player_tile
+        # reverse the current player
+        self.current_player = Player.PLAYER_O if self.current_player == Player.PLAYER_X else Player.PLAYER_X
+        
+
     def init_corner_triangles(self, triangle_size: int) -> None:
         '''
         Populates the board's TL (player x) and BR (player o) corners with pieces.

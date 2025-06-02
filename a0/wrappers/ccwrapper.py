@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional
-from cc.core import Board, board_to_home_size, Player, Move
+from cc.core import Board, board_to_home_size, Player, Move, Tile
 from cc.ranking import CCState as CCStateR, generate_rect_board_lists
 
 BOARD_SIZE = 4
@@ -22,12 +22,31 @@ def board_pos2ccstate_pos(x: int, y: int) -> int:
     """
     return localRectToBoard[x * BOARD_SIZE + y]
 
+def ccstate_pos2board_pos(pos: int) -> tuple[int, int]:
+    """
+    Convert CCState position to board position (x, y).
+    """
+    pos = localBoardToRect[pos]
+    x = pos // BOARD_SIZE
+    y = pos % BOARD_SIZE
+    return x, y
+
 class CCheckers:
     @staticmethod
     def Reset(state: CCState):
         num_pieces, _ = state.board.num_pieces()
         state.board.current_player = Player.PLAYER_X
         state.board.init_by_num_pieces(num_pieces)
+    
+    @staticmethod
+    def Winner(state: CCState) -> int:
+        player_x_winner, player_o_winner = state.board.check_for_winner(starting_board)
+        if state.board.current_player == Player.PLAYER_X and player_o_winner:
+            return 1
+        elif state.board.current_player == Player.PLAYER_O and player_x_winner:
+            return 0
+        else:
+            return -1
 
     @staticmethod
     def Done(state: CCState) -> bool:
@@ -62,6 +81,34 @@ class CCheckers:
         for i in range(len(cc_moves) - 1):
             cc_moves[i].next = cc_moves[i + 1]
         return cc_moves[0] if cc_moves else None
+    
+    @staticmethod
+    def ApplyMove(state: CCState, move: CCMove):
+        start_x, start_y = ccstate_pos2board_pos(move.from_pos)
+        end_x, end_y = ccstate_pos2board_pos(move.to_pos)
+        state.board.apply_move(Move(start_x, start_y, end_x, end_y))
+    
+    @staticmethod
+    def UndoMove(state: CCState, move: CCMove):
+        start_x, start_y = ccstate_pos2board_pos(move.from_pos)
+        end_x, end_y = ccstate_pos2board_pos(move.to_pos)
+        state.board.undo_move(Move(start_x, start_y, end_x, end_y))
+
+    @staticmethod
+    def applyState(state_as_vec: list[list[list[int]]], state: CCState):
+        '''
+        Applies a state represented as a vector to the CCState.
+        state_as_vec is a list of shape (BOARD_SIZE, BOARD_SIZE, 2),
+        where state_as_vec[x][y][0] is 1 if Player X has a piece at (x, y),
+        state_as_vec[x][y][1] is 1 if Player O has a piece at (x, y).
+        '''
+        state.board.clear_board()
+        for x in range(BOARD_SIZE):
+            for y in range(BOARD_SIZE):
+                if state_as_vec[x][y][0] == 1:
+                    state.board.board[x][y] = Tile.PLAYER_X
+                if state_as_vec[x][y][1] == 1:
+                    state.board.board[x][y] = Tile.PLAYER_O
 
 class CCState:
     def __init__(self):
