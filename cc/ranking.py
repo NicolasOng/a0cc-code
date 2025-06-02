@@ -576,9 +576,12 @@ def sort_list_by_listed_positions(list1, list2):
     
     return result1, result2
 
-def generate_rect_board_lists(width, height):
+def generate_rect_board_lists(width: int, height: int) -> tuple[list[int], list[int]]:
     '''
     Generates the localRectToBoard and localBoardToRect lists from ChineseCheckers.h for a board of a given size.
+    localRectToBoard[row * width + col] = board_index
+    localBoardToRect[board_index] = row * width + col
+    This is used to convert between a grid representation and the CCState list representation.
     '''
     in_order = []
     localRectToBoard = []
@@ -682,4 +685,5 @@ def check_ranking_conversions():
 
 
 if __name__ == "__main__":
-    check_ranking_conversions()
+    #check_ranking_conversions()
+    generate_rect_board_lists(4, 4)

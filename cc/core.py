@@ -116,6 +116,7 @@ class Board:
         player_tile = player_to_tile[self.current_player]
         logging.debug(f"Applying move: {move} for player {self.current_player}")
         assert self.position_on_main_board(move.start.x, move.start.y) and self.board[move.start.x][move.start.y] == player_tile, f"Invalid move: {move.start} is not occupied by the current player."
+        assert self.position_on_main_board(move.end.x, move.end.y) and self.board[move.end.x][move.end.y] == Tile.EMPTY, f"Invalid move: {move.end} is occupied."
         # move the piece
         self.board[move.start.x][move.start.y] = Tile.EMPTY
         self.board[move.end.x][move.end.y] = player_tile
@@ -295,7 +296,7 @@ class Board:
                 step_moves.append(Move(x, y, x + dx, y + dy))
         return step_moves
     
-    def get_jumps(self, sx: int, sy: int, x: int, y: int, movement_rules: dict[str, int], visited: set[tuple[int, int]] = None) -> set[Move]:
+    def get_jumps(self, sx: int, sy: int, x: int, y: int, movement_rules: dict[str, bool], visited: set[tuple[int, int]] = None) -> set[Move]:
         '''
         Returns a set of all non-blocked and on-board jump moves from (x, y).
         Uses DFS to find multi-hop jump paths:
@@ -329,7 +330,7 @@ class Board:
                         jumps.update(deeper_jumps)                    
         return jumps
 
-    def get_moves(self, x: int, y: int, movement_rules: dict[str, int]) -> list[Move]:
+    def get_moves(self, x: int, y: int, movement_rules: dict[str, bool]) -> list[Move]:
         '''
         Returns a list of all non-blocked and on-board step and jump moves from (x, y).
         '''
@@ -475,7 +476,9 @@ class Game:
         self.winner = None
 
         # game rules
+        # if true, player can "jump" off the board during chained jumps
         self.can_jump_out_of_home = False
+        # if true, player can use the four non-main corners during chained jumps
         self.use_four_corners_to_jump = True
         self.no_reverse_moves = False
         self.no_illegal_moves = False
