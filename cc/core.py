@@ -485,6 +485,18 @@ class Board:
                 return True
 
         return False
+    
+    def visualize_move_ends(self, moves: list[Move]) -> str:
+        '''
+        Visualizes the end positions of the given moves on the board.
+        Assumes the moves are valid and for the current player.
+        '''
+        temp_board = Board()
+        temp_board.copy_board(self)
+        tile = Tile.PLAYER_X_GHOST if self.current_player == Player.PLAYER_X else Tile.PLAYER_O_GHOST
+        for move in moves:
+            temp_board.board[move.end.x][move.end.y] = tile
+        return temp_board.board_view()
 
     def simple_hash(self):
         hashable_board = tuple(tuple(tile.value for tile in row) for row in self.board)
@@ -493,7 +505,7 @@ class Board:
 class Game:
     def __init__(self, board_size: int = 7, num_pieces: int = 6) -> None:
         self.board = Board(board_size=board_size, home_size=board_to_home_size[board_size])
-        self.board_history = []
+        self.board_history: list[Board] = []
         self.end = False
         self.winner = None
 
@@ -502,15 +514,21 @@ class Game:
         self.can_jump_out_of_home = False
         # if true, player can use the four non-main corners during chained jumps
         self.use_four_corners_to_jump = True
+        # if true, players can't move pieces "backwards" (towards their home area).
         self.no_reverse_moves = False
+        # if true, players can't make moves that lead to an illegal state.
         self.no_illegal_moves = False
+        # if true, players can't make moves that lead to a draw.
         self.no_draw_moves = False
+        # if true, a pass move is allowed when a player has no moves.
         self.pass_moves = True
+        # if false, a player with no moves loses the game. if true, the game ends in a draw.
         self.draw_on_no_moves = False
         # set to True in normal play, False in eg tree search
         # as DFS saves the board history
         self.draw_on_repeated_state = False
 
+        # we need the board history to check for repeated states for draws
         self.save_board_history = self.draw_on_repeated_state or self.no_draw_moves
 
         self.movement_rules = {
@@ -544,9 +562,9 @@ class Game:
             else:
                 moves = [move for move in moves if not move.is_down()]
         
-        # remove moves that lead to an illegal state
-        valid_moves = []
+        # remove moves that lead to an illegal state if no_illegal_moves is set
         if self.no_illegal_moves:
+            valid_moves = []
             for move in moves:
                 # create a copy of the board and apply the move
                 logging.debug(f"Checking if move {move} leads to an illegal state. Current player: {self.board.current_player}")
@@ -556,13 +574,11 @@ class Game:
                 # check if the move doesn't lead to an illegal state
                 if not new_board.is_illegal_state(self.board_history[0]):
                     valid_moves.append(move)
-        else:
-            valid_moves = moves
-        moves = valid_moves
+            moves = valid_moves
 
         # remove moves that lead to a draw
-        valid_moves = []
         if self.no_draw_moves:
+            valid_moves = []
             for move in moves:
                 # create a copy of the board and apply the move
                 new_board = Board()
@@ -571,9 +587,7 @@ class Game:
                 # check if the move doesn't lead to a draw
                 if not new_board.check_for_draw(self.board_history):
                     valid_moves.append(move)
-        else:
-            valid_moves = moves
-        moves = valid_moves
+            moves = valid_moves
 
         # create a pass move if needed
         if self.pass_moves and len(moves) == 0:
@@ -583,16 +597,18 @@ class Game:
         
         return moves
     
-    def game_end_check(self) -> None:
+    def game_end_check(self) -> bool:
         '''
         Checks if the game has ended - either a player has won or the game is a draw.
+        This method should be called after the player has made a move.
         '''
         # 1. check if the board is in an illegal state
         # in this case, the game ends and the player who caused the illegal state loses
+        # the one who caused the illegal state is the last player
         if not self.no_illegal_moves and self.board.is_illegal_state(self.board_history[0]):
             self.end = True
-            self.winner = Player.PLAYER_O if self.board.current_player == Player.PLAYER_X else Player.PLAYER_X
-            return
+            self.winner = self.board.current_player
+            return self.end
         
         # 2. check if a player has won
         # note that I don't check that the last move was made by the player who won,
@@ -601,19 +617,35 @@ class Game:
         if player_x_winner:
             self.end = True
             self.winner = Player.PLAYER_X
-            return
+            return self.end
         if player_o_winner:
             self.end = True
             self.winner = Player.PLAYER_O
-            return
+            return self.end
         
         # 3. check if the game is a draw
-        if self.draw_on_repeated_state and self.board.check_for_draw(self.board_history):
+        if (self.draw_on_repeated_state and
+            not self.no_draw_moves and
+            self.board.check_for_draw(self.board_history)):
             logging.debug(f"Game ended in a draw.")
             self.end = True
             self.winner = None
-            return
-    
+            return self.end
+        
+        # 4. check if the game has ended due to no moves for the next/current player
+        if not self.pass_moves:
+            moves = self.generate_moves_for_current_player()
+            if len(moves) == 0:
+                logging.debug(f"Player {self.board.current_player} has no moves left.")
+                self.end = True
+                if self.draw_on_no_moves:
+                    self.winner = None
+                else:
+                    self.winner = Player.PLAYER_O if self.board.current_player == Player.PLAYER_X else Player.PLAYER_X
+                return self.end
+        
+        return False
+
     def initialize_game(self, num_pieces: int) -> None:
         '''
         Initializes the game with the given number of pieces.
@@ -652,45 +684,28 @@ class Game:
         moves = self.generate_moves_for_current_player()
         logging.debug(f"Player {self.board.current_player} has {len(moves)} moves.")
 
-        # if there are no moves, the game ends
-        # and the winner is the other player (or its a draw)
-        if len(moves) == 0:
-            self.end = True
-            if self.draw_on_no_moves:
-                self.winner = None
-            else:
-                self.winner = Player.PLAYER_O if self.board.current_player == Player.PLAYER_X else Player.PLAYER_X
-            return []
+        # moves is not empty - that check is done in the game_end_check method.
         
         return moves
     
-    def end_turn(self, move: Move) -> None:
+    def end_turn(self, move: Move) -> bool:
         '''
         Ends the turn for the current player.
         Applies the given move to the board and updates the current player.
         '''
-        if self.end: return
+        if self.end: return True
 
         # apply the move to the board
         self.board.apply_move(move)
 
         # check if the game has ended
-        self.game_end_check()
+        ended = self.game_end_check()
 
         # add the board to the history
         if self.save_board_history:
             self.board_history.append(copy.deepcopy(self.board))
-
-    def visualize_move_ends(self, moves: list[Move]) -> None:
-        '''
-        Visualizes the end positions of the given moves on the board.
-        Assumes the moves are valid and for the current player.
-        '''
-        temp_board = Board()
-        temp_board.copy_board(self.board)
-        for move in moves:
-            temp_board.board[move.end.x][move.end.y] = Tile.PLAYER_X_GHOST if self.board.current_player == Player.PLAYER_X else Tile.PLAYER_O_GHOST
-        print(temp_board.board_view())
+        
+        return ended
 
     def simple_hash(self):
         board_hash = self.board.simple_hash()
