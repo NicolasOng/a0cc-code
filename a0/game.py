@@ -1,4 +1,5 @@
 import copy
+import time
 
 from cc.core import Game, Board, Move, Player
 
@@ -23,6 +24,7 @@ class GameData(TypedDict):
     turn_data: list[TurnData]
     ended: bool
     winner: Optional[Player]
+    time: float
 
 def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = None) -> Any:
     '''
@@ -31,13 +33,16 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
     The game will continue until it ends or the turn limit is reached.
     This function returns data about the game and each turn.
     '''
+    start = time.perf_counter()
+
     data: GameData = {
         'game': game,
         'players': players,
         'turn_limit': turn_limit,
         'turn_data': [],
         'ended': False,
-        'winner': None
+        'winner': None,
+        'time': 0.0
     }
 
     turn = 0
@@ -66,5 +71,8 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
     
     data['ended'] = game.end
     data['winner'] = game.winner
+
+    end = time.perf_counter()
+    data['time'] = end - start
 
     return data
