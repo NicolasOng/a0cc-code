@@ -147,60 +147,30 @@ class AlphaZeroModel(nnx.Module):
         # value: (batch_size, 1)
         return value, policy
 
-path = '/home/nicolas/Documents/Data/Research/a0cc/a0cc-repo/my-checkpoints'
-#ckpt_dir = ocp.test_utils.erase_and_create_empty('/home/nicolas/Documents/Data/Research/a0cc/a0cc-repo/my-checkpoints')
-checkpointer = ocp.StandardCheckpointer()
-
-# def save_model(model):
-#     _, state = nnx.split(model)
-#     #nnx.display(state)
-
-#     checkpointer.save(ckpt_dir / 'state', state)
-
-def save_model(model):
-    state = nnx.state(model)
-    # Save the parameters
-    checkpointer = ocp.PyTreeCheckpointer()
-    checkpointer.save(path, state)
-graphdef, state = nnx.split(model)
-
-def load_model(path, model_def):
-    abstract_model = nnx.eval_shape(lambda: AlphaZeroModel(board_size=4, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})))
-    graphdef, abstract_state = nnx.split(abstract_model)
-    print('The abstract NNX state (all leaves are abstract arrays):')
-    nnx.display(abstract_state)
-
-    state_restored = checkpointer.restore(ckpt_dir / 'state', abstract_state)
-    jax.tree.map(np.testing.assert_array_equal, state, state_restored)
-    print('NNX State restored: ')
-    nnx.display(state_restored)
-
-    # The model is now good to use!
-    model = nnx.merge(graphdef, state_restored)
-    assert model(x).shape == (3, 4)
-
-def save_model(model):
+def save_model(filepath, model):
+    # get the state of the model
     _, state = nnx.split(model)
+
     # use pickle to save the state
-    with open(path + '/state.pkl', 'wb') as f:
+    with open(filepath, 'wb') as f:
         pickle.dump(state, f)
 
-def load_model(model):
+def load_model(filepath, model):
     # load the state from the pickle file
-    with open(path + '/state.pkl', 'rb') as f:
+    with open(filepath, 'rb') as f:
         state = pickle.load(f)
-
-    # create a model to get the structure
+    
+    # get the structure of the model
     graphdef, _ = nnx.split(model)
 
     # restore the state
     model = nnx.merge(graphdef, state)
 
-    #model = AlphaZeroModel(board_size=4, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)}))
     return model
 
 def example_usage() -> None:
     board_size = 4
+    filepath = "alphazero_model.pkl"
     x = jnp.ones((1, board_size, board_size, 2), dtype=jnp.float32)
     model = AlphaZeroModel(board_size=board_size, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)}))
     value, policy = model(x)
@@ -210,13 +180,12 @@ def example_usage() -> None:
     print("Value output:", value)
     print("Policy output:", policy)
 
-    # Save model
-    save_model(model)
-    loaded_model = load_model(AlphaZeroModel(board_size=4, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})))
+    print(type(float(value[0, 0])))  # Print the value output
 
-    # # To load, you need an uninitialized model with the same structure
-    # model_def = AlphaZeroModel(board_size=board_size, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)}))
-    # loaded_model = load_model("alphazero_model.nnx", model_def)
+    # Save model
+    save_model(filepath, model)
+    loaded_model = load_model(filepath, AlphaZeroModel(board_size=4, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})))
+
     new_value, new_policy = loaded_model(x)
 
     assert jnp.array_equal(value, new_value)

@@ -537,27 +537,28 @@ class Game:
         }
 
         self.initialize_game(num_pieces)
-        
-    def generate_moves_for_current_player(self) -> list[Move]:
+
+    def generate_moves_for_given_board(self, board: Board) -> list[Move]:
         '''
-        Generates all possible moves for the current player.
+        Generates all possible moves for the given board.
+        Assumes no board history, so no checks for moves that cause draws.
         '''
-        x_positions, o_positions = self.board.get_player_positions()
-        player_positions = x_positions if self.board.current_player == Player.PLAYER_X else o_positions
+        x_positions, o_positions = board.get_player_positions()
+        player_positions = x_positions if board.current_player == Player.PLAYER_X else o_positions
 
         for pos in player_positions:
-            logging.debug(f"Player {self.board.current_player} has piece at {pos}")
+            logging.debug(f"Player {board.current_player} has piece at {pos}")
 
         # generate all on-board non-blocked moves for each piece
         moves = []
         for pos in player_positions:
             x, y = pos.x, pos.y
-            valid_moves = self.board.get_moves(x, y, self.movement_rules)
+            valid_moves = board.get_moves(x, y, self.movement_rules)
             moves.extend(valid_moves)
         
         # remove reverse moves if no_reverse_moves is set
         if self.no_reverse_moves:
-            if self.board.current_player == Player.PLAYER_X:
+            if board.current_player == Player.PLAYER_X:
                 moves = [move for move in moves if not move.is_up()]
             else:
                 moves = [move for move in moves if not move.is_down()]
@@ -569,12 +570,29 @@ class Game:
                 # create a copy of the board and apply the move
                 logging.debug(f"Checking if move {move} leads to an illegal state. Current player: {self.board.current_player}")
                 new_board = Board()
-                new_board.copy_board(self.board)
+                new_board.copy_board(board)
                 new_board.apply_move(move)
                 # check if the move doesn't lead to an illegal state
                 if not new_board.is_illegal_state(self.board_history[0]):
                     valid_moves.append(move)
             moves = valid_moves
+
+        # create a pass move if needed
+        if self.pass_moves and len(moves) == 0:
+            pos = player_positions[0]
+            x, y = pos.x, pos.y
+            moves.append(Move(x, y, x, y))
+        
+        return moves
+        
+    def generate_moves(self) -> list[Move]:
+        '''
+        Generates all possible moves for the current player.
+        '''
+        x_positions, o_positions = self.board.get_player_positions()
+        player_positions = x_positions if self.board.current_player == Player.PLAYER_X else o_positions
+
+        moves = self.generate_moves_for_given_board(self.board)
 
         # remove moves that lead to a draw
         if self.no_draw_moves:
@@ -634,7 +652,7 @@ class Game:
         
         # 4. check if the game has ended due to no moves for the next/current player
         if not self.pass_moves:
-            moves = self.generate_moves_for_current_player()
+            moves = self.generate_moves()
             if len(moves) == 0:
                 logging.debug(f"Player {self.board.current_player} has no moves left.")
                 self.end = True
@@ -681,7 +699,7 @@ class Game:
         if self.end: return []
         
         # generate all possible moves for the current player
-        moves = self.generate_moves_for_current_player()
+        moves = self.generate_moves()
         logging.debug(f"Player {self.board.current_player} has {len(moves)} moves.")
 
         # moves is not empty - that check is done in the game_end_check method.
@@ -706,6 +724,17 @@ class Game:
             self.board_history.append(copy.deepcopy(self.board))
         
         return ended
+    
+    def terminal_state(self, board: Board) -> bool:
+        '''
+        Checks if the given board is a terminal state (or an illegal state).
+        Assumes no game history is available, so no repeated states can be checked for draws.
+        Uses this game's rules to determine if the state is terminal
+        (specifically, the initial board is used for goal areas)
+        '''
+        illegal = board.is_illegal_state(self.board_history[0])
+        player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
+        return illegal or player_x_winner or player_o_winner
 
     def simple_hash(self):
         board_hash = self.board.simple_hash()

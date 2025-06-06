@@ -105,6 +105,7 @@ class MCTS:
         Returns the child of the root node with the highest visit count.
         If there are no children, returns None.
         '''
+        # best_child = max(self.root.children, key=lambda c: c.reward / c.visits if c.visits > 0 else float('-inf'))
         return max(self.root.children, key=lambda c: c.visits) if self.root.children else None
     
     def get_root_children(self) -> list[MCTSNode]:
