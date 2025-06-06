@@ -2,14 +2,21 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 
-from wrappers import ccwrapper as cw
+import orbax.checkpoint as ocp
+import numpy as np
+import pickle
 
 # class for the Residual Block (ResNet)
 class ResidualBlock(nnx.Module):
     def __init__(self, features: int, training: bool, rngs: nnx.Rngs):
         super().__init__()
-        # features is the number of input channels (depth) in the input tensor x, i.e., x.shape[-1].
-        # due to the skip connection, the output tensor will have the same number of channels.
+        '''
+        Initializes the Residual Block.
+        Args:
+        - features: the number of channels (depth) in the input tensor x, i.e., x.shape[-1].
+        - training: whether the model is in training mode (affects batch normalization).
+        - rngs: a nnx.Rngs object containing random number generators for the model.
+        '''
         self.conv1 = nnx.Conv(in_features=features, out_features=features, kernel_size=(3, 3), strides=(1, 1), padding='SAME', use_bias=False, rngs=rngs)
         self.conv2 = nnx.Conv(in_features=features, out_features=features, kernel_size=(3, 3), strides=(1, 1), padding='SAME', use_bias=False, rngs=rngs)
         self.bn1 = nnx.BatchNorm(num_features=features, use_running_average=not training, momentum=0.9, epsilon=1e-5, rngs=rngs)
@@ -34,20 +41,28 @@ class ResidualBlock(nnx.Module):
 
 # class for the Policy Head
 class PolicyHead(nnx.Module):
-    def __init__(self, in_features: int, num_filters: int, training: bool, *, rngs: nnx.Rngs):
+    def __init__(self, board_size: int, in_channels: int, num_filters: int, training: bool, rngs: nnx.Rngs):
+        '''
+        Initializes the Policy Head.
+        Args:
+        - in_channels: the number of channels in the input x.
+        - num_filters: the number of filters in the convolutional layer.
+        - training: whether the model is in training mode (affects batch normalization).
+        - rngs: a nnx.Rngs object containing random number generators for the model.
+        '''
         super().__init__()
-        self.conv = nnx.Conv(in_features=in_features, out_features=num_filters, kernel_size=(1, 1), strides=(1, 1), padding='SAME', use_bias=False, rngs=rngs)
+        self.conv = nnx.Conv(in_features=in_channels, out_features=num_filters, kernel_size=(1, 1), strides=(1, 1), padding='SAME', use_bias=False, rngs=rngs)
         self.bn = nnx.BatchNorm(num_features=num_filters, use_running_average=not training, momentum=0.9, epsilon=1e-5, rngs=rngs)
-        self.dense = nnx.Linear(in_features=cw.BOARD_SIZE*cw.BOARD_SIZE*num_filters, out_features=cw.BOARD_SIZE**4, rngs=rngs)
+        self.dense = nnx.Linear(in_features=board_size*board_size*num_filters, out_features=board_size**4, rngs=rngs)
         self.training = training
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         '''
         Applies the policy head to the input tensor x.
-        The input tensor x is expected to have shape (batch_size, height, width, in_features).
+        The input tensor x is expected to have shape (batch_size, height, width, channels).
         The output tensor will have shape (batch_size, BOARD_SIZE**4).
         '''
-        # (batch_size, height, width, in_features)
+        # (batch_size, height, width, channels)
         x = self.conv(x)
         x = self.bn(x)
         x = jax.nn.relu(x)
@@ -60,7 +75,14 @@ class PolicyHead(nnx.Module):
 
 # class for the Value Head
 class ValueHead(nnx.Module):
-    def __init__(self, in_features: int, training: bool, *, rngs: nnx.Rngs):
+    def __init__(self, in_features: int, training: bool, rngs: nnx.Rngs):
+        '''
+        Initializes the Value Head.
+        Args:
+        - in_features: the number of input features (height * width * channels).
+        - training: whether the model is in training mode (affects batch normalization).
+        - rngs: a nnx.Rngs object containing random number generators for the model.
+        '''
         super().__init__()
         self.dense1 = nnx.Linear(in_features=in_features, out_features=256, rngs=rngs)
         self.dense2 = nnx.Linear(in_features=256, out_features=1, rngs=rngs)
@@ -87,24 +109,32 @@ class ValueHead(nnx.Module):
 
 # class for the AlphaZero model
 class AlphaZeroModel(nnx.Module):
-    def __init__(self, in_features: int, num_filters: int, training: bool, *, rngs: nnx.Rngs):
+    def __init__(self, board_size: int, training: bool, rngs: nnx.Rngs, num_filters: int=256):
+        '''
+        Initializes the AlphaZero model.
+        Args:
+        - board_size: the size of the board (e.g., 7 for a 7x7 board).
+        - training: whether the model is in training mode (affects batch normalization).
+        - rngs: a nnx.Rngs object containing random number generators for the model.
+        - num_filters: the number of filters in the convolutional layers throughout the model.
+        '''
         super().__init__()
-        self.conv = nnx.Conv(in_features=in_features, out_features=num_filters, kernel_size=(3, 3), strides=(1, 1), padding='SAME', use_bias=False, rngs=rngs)
+        self.conv = nnx.Conv(in_features=2, out_features=num_filters, kernel_size=(3, 3), strides=(1, 1), padding='SAME', use_bias=False, rngs=rngs)
         self.bn = nnx.BatchNorm(num_features=num_filters, use_running_average=not training, momentum=0.9, epsilon=1e-5, rngs=rngs)
         self.resblocks = [ResidualBlock(num_filters, training, rngs=rngs) for _ in range(3)]
-        self.policy_head = PolicyHead(num_filters, training, rngs=rngs)
-        self.value_head = ValueHead(num_filters, training, rngs=rngs)
+        self.policy_head = PolicyHead(board_size, num_filters, num_filters, training, rngs=rngs)
+        self.value_head = ValueHead(board_size * board_size * num_filters, training, rngs=rngs)
         self.training = training
 
     def __call__(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
         '''
         Applies the AlphaZero model to the input tensor x.
-        The input tensor x is expected to have shape (batch_size, height, width, in_features).
+        The input tensor x is expected to have shape (batch_size, board_size, board_size, 2).
         The output will be a tuple of two tensors:
         - value: a tensor of shape (batch_size, 1) representing the value of the position.
         - policy: a tensor of shape (batch_size, BOARD_SIZE**4) representing the (unmasked) policy distribution.
         '''
-        # (batch_size, height, width, in_features)
+        # (batch_size, height, width, 2)
         x = self.conv(x)
         x = self.bn(x)
         x = jax.nn.relu(x)
@@ -117,23 +147,77 @@ class AlphaZeroModel(nnx.Module):
         # value: (batch_size, 1)
         return value, policy
 
-def create_model(rng: jax.Array, input_shape: tuple[int, ...], num_filters: int = 256, training: bool = True) -> AlphaZeroModel:
-    rngs = nnx.Rngs({'params': rng})
-    model = AlphaZeroModel(num_filters, training, rngs=rngs)
+path = '/home/nicolas/Documents/Data/Research/a0cc/a0cc-repo/my-checkpoints'
+#ckpt_dir = ocp.test_utils.erase_and_create_empty('/home/nicolas/Documents/Data/Research/a0cc/a0cc-repo/my-checkpoints')
+checkpointer = ocp.StandardCheckpointer()
+
+# def save_model(model):
+#     _, state = nnx.split(model)
+#     #nnx.display(state)
+
+#     checkpointer.save(ckpt_dir / 'state', state)
+
+def save_model(model):
+    state = nnx.state(model)
+    # Save the parameters
+    checkpointer = ocp.PyTreeCheckpointer()
+    checkpointer.save(path, state)
+graphdef, state = nnx.split(model)
+
+def load_model(path, model_def):
+    abstract_model = nnx.eval_shape(lambda: AlphaZeroModel(board_size=4, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})))
+    graphdef, abstract_state = nnx.split(abstract_model)
+    print('The abstract NNX state (all leaves are abstract arrays):')
+    nnx.display(abstract_state)
+
+    state_restored = checkpointer.restore(ckpt_dir / 'state', abstract_state)
+    jax.tree.map(np.testing.assert_array_equal, state, state_restored)
+    print('NNX State restored: ')
+    nnx.display(state_restored)
+
+    # The model is now good to use!
+    model = nnx.merge(graphdef, state_restored)
+    assert model(x).shape == (3, 4)
+
+def save_model(model):
+    _, state = nnx.split(model)
+    # use pickle to save the state
+    with open(path + '/state.pkl', 'wb') as f:
+        pickle.dump(state, f)
+
+def load_model(model):
+    # load the state from the pickle file
+    with open(path + '/state.pkl', 'rb') as f:
+        state = pickle.load(f)
+
+    # create a model to get the structure
+    graphdef, _ = nnx.split(model)
+
+    # restore the state
+    model = nnx.merge(graphdef, state)
+
+    #model = AlphaZeroModel(board_size=4, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)}))
     return model
 
-def forward_pass(model: AlphaZeroModel, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
-    return model(x)
+def example_usage() -> None:
+    board_size = 4
+    x = jnp.ones((1, board_size, board_size, 2), dtype=jnp.float32)
+    model = AlphaZeroModel(board_size=board_size, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)}))
+    value, policy = model(x)
+    print("Value output shape:", value.shape) # (1, 1)
+    print("Policy output shape:", policy.shape) # (1, BOARD_SIZE**4)
 
-def main() -> None:
-    rng = jax.random.PRNGKey(42)
-    input_shape = (1, 5, 5, 1)
-    model = create_model(rng, input_shape)
-    x = jax.random.normal(rng, input_shape)
-    for i in range(10):
-        v, p = forward_pass(model, x)
-        print(v.shape, p.shape)
+    print("Value output:", value)
+    print("Policy output:", policy)
 
-if __name__ == "__main__":
-    main()
+    # Save model
+    save_model(model)
+    loaded_model = load_model(AlphaZeroModel(board_size=4, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})))
 
+    # # To load, you need an uninitialized model with the same structure
+    # model_def = AlphaZeroModel(board_size=board_size, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)}))
+    # loaded_model = load_model("alphazero_model.nnx", model_def)
+    new_value, new_policy = loaded_model(x)
+
+    assert jnp.array_equal(value, new_value)
+    assert jnp.array_equal(new_policy, policy)
