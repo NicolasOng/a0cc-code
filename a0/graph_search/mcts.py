@@ -17,9 +17,10 @@ class MCTSProblem(Protocol):
         '''
         ...
 
-    def get_successors(self, state: Any) -> list[Any]:
+    def get_successors(self, state: Any) -> tuple[list[Any], Optional[list[float]]]:
         '''
         Returns a list of successor states for the given state.
+        Optionally, returns a list of prior probabilities for each successor.
         '''
         ...
 

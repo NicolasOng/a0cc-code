@@ -143,7 +143,6 @@ class Board:
         self.board[move.start.x][move.start.y] = player_tile
         # reverse the current player
         self.current_player = Player.PLAYER_O if self.current_player == Player.PLAYER_X else Player.PLAYER_X
-        
 
     def init_corner_triangles(self, triangle_size: int) -> None:
         '''
@@ -497,6 +496,40 @@ class Board:
         for move in moves:
             temp_board.board[move.end.x][move.end.y] = tile
         return temp_board.board_view()
+    
+    def child_board_to_move(self, child_board: Board) -> Move:
+        """
+        Returns the move that was applied to the board to get to the child board.
+        Assumes that the child board is a valid child of the current board.
+        """
+        # get the differences between the two boards
+        board_size = len(self.board)
+        diffs = [
+            (i, j)
+            for i in range(board_size)
+            for j in range(board_size)
+            if self.board[i][j] != child_board.board[i][j]
+        ]
+
+        # handle the pass move case
+        if len(diffs) == 0:
+            px, po = self.get_player_positions()
+            player_positions = px if self.current_player == Player.PLAYER_X else po
+            pos = player_positions[0]
+            x, y = pos.x, pos.y
+            return Move(x, y, x, y)
+        
+        # if there are not exactly two differences, the move is invalid
+        if len(diffs) != 2:
+            assert False, f"Invalid move: {len(diffs)} differences found, expected 2. Board:\n{self.board_view()}\nChild board:\n{child_board.board_view()}"
+
+        # Determine which is start and which is end
+        (x1, y1), (x2, y2) = diffs
+        if self.board[x1][y1] != Tile.EMPTY and child_board.board[x1][y1] == Tile.EMPTY:
+            start, end = (x1, y1), (x2, y2)
+        else:
+            start, end = (x2, y2), (x1, y1)
+        return Move(start[0], start[1], end[0], end[1])
 
     def simple_hash(self):
         hashable_board = tuple(tuple(tile.value for tile in row) for row in self.board)

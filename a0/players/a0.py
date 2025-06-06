@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any
 import numpy as np
 import jax.numpy as jnp
+import jax
 
 from cc.core import Board, Move, Player, player_to_tile, Game
 from a0.graph_search.mcts import MCTS
@@ -24,7 +25,7 @@ class SearchMoves:
         '''
         return self.player.game.terminal_state(state)
 
-    def get_successors(self, state: Board) -> list[Board]:
+    def get_successors(self, state: Board) -> tuple[list[Board], list[float]]:
         '''
         Returns a list of successor states for the given state.
         '''
@@ -41,9 +42,17 @@ class SearchMoves:
 
             # add the new board to the list of successors
             successors.append(new_board)
-        # TODO: get priors for the successors by using the model
+        
+        # get priors for the successors by using the model
         # useful if MCTS uses PUCT
-        return successors
+        _, policy = self.player.model(board_to_input(state))
+        p = Policy(len(state.board))
+        p.set_logits(policy[0])
+        p.mask_non_legal_moves(moves)
+        p.apply_softmax()
+        successor_priors = p.get_move_probabilities(moves)
+
+        return successors, successor_priors
 
     def get_reward(self, state: Board) -> float:
         '''
@@ -85,8 +94,117 @@ def board_to_input(board: Board) -> jnp.ndarray:
 
     return jnp.array(input_array)
 
-class PolicyDistribution:
-    pass
+class Policy:
+    def __init__(self, board_size: int):
+        self.board_size = board_size
+        self.policy = jnp.zeros((board_size ** 4,), dtype=jnp.float32)
+    
+    def move_to_policy_index(self, move: Move) -> int:
+        '''
+        Converts a Move object to a policy index using row-major position encoding.
+        '''
+        board_size = self.board_size
+        start_pos = move.start.x * board_size + move.start.y
+        end_pos = move.end.x * board_size + move.end.y
+        return start_pos * (board_size * board_size) + end_pos
+
+    def policy_index_to_move(self, index: int) -> Move:
+        '''
+        Converts a policy index to a Move object using row-major position encoding.
+        '''
+        board_size = self.board_size
+        start_pos = index // (board_size * board_size)
+        end_pos = index % (board_size * board_size)
+        start_x = start_pos // board_size
+        start_y = start_pos % board_size
+        end_x = end_pos // board_size
+        end_y = end_pos % board_size
+        return Move(start_x, start_y, end_x, end_y)
+    
+    def set_logits(self, logits: jnp.ndarray) -> None:
+        '''
+        Initializes the policy distribution with the given logits
+        The logits are expected to be a 1D array of shape (BOARD_SIZE**4,).
+        '''
+        assert logits.shape[0] == self.board_size ** 4, \
+            f"Expected logits shape ({self.board_size ** 4},), but got {logits.shape}."
+        self.policy = logits
+
+    def set_logits_from_moves(self, moves: list[Move], values: list[float]) -> None:
+        '''
+        Initializes the policy distribution with the given moves and their corresponding values.
+        The moves are expected to be a list of Move objects, and values is a list of probabilities.
+        '''
+        arr = np.zeros((self.board_size ** 4,), dtype=np.float32)
+        for move, value in zip(moves, values):
+            index = self.move_to_policy_index(move)
+            arr[index] = value
+        self.policy = jnp.array(arr)
+    
+    def mask_non_legal_moves(self, legal_moves: list[Move]) -> None:
+        '''
+        Masks the non-legal moves in the policy distribution.
+        '''
+        # create a 1D mask for the legal moves
+        mask = np.zeros_like(self.policy, dtype=bool)
+        for move in legal_moves:
+            idx = self.move_to_policy_index(move)
+            mask[idx] = True
+        # apply the mask to the logits
+        self.policy = jnp.where(mask, self.policy, -jnp.inf)
+    
+    def apply_softmax(self) -> None:
+        '''
+        Applies the softmax function to the logits to get the policy distribution.
+        '''
+        self.policy = jax.nn.softmax(self.policy)
+    
+    def apply_power_normalize(self, tau: float) -> None:
+        '''
+        Computes the AlphaZero-style softmax over visit counts.
+        Args:
+            tau (float): Temperature parameter (τ). Lower values → more deterministic.
+        '''
+        # Avoid divide-by-zero or NaNs if all counts are zero
+        if jnp.sum(self.policy) == 0:
+            return jnp.ones_like(self.policy) / self.policy.size
+
+        # Apply the (1/τ) power transform
+        powered = self.policy ** (1.0 / tau)
+
+        # Normalize to form a probability distribution
+        self.policy = powered / jnp.sum(powered)
+    
+    def get_move_probability(self, move: Move) -> float:
+        '''
+        Returns the probability of the given move based on the policy distribution.
+        Assumes that the move is valid and exists in the policy distribution.
+        '''
+        index = self.move_to_policy_index(move)
+        return float(self.policy[index])
+    
+    def get_move_probabilities(self, moves: list[Move]) -> list[float]:
+        '''
+        Returns the probabilities of the given moves based on the policy distribution.
+        '''
+        return [self.get_move_probability(move) for move in moves]
+    
+    def get_best_move(self) -> Move:
+        '''
+        Returns the move with the highest probability based on the policy distribution.
+        '''
+        index = jnp.argmax(self.policy)
+        return self.policy_index_to_move(index)
+    
+    def sample_move(self, rng: int) -> Move:
+        '''
+        Samples a move based on the policy distribution.
+        Uses JAX's random choice to sample a move according to the policy probabilities.
+        Assumes that the policy has been normalized to sum to 1.
+        TODO: Can also implement other sampling strategies, like epsilon-greedy or top-k
+        '''
+        index = jax.random.choice(jax.random.PRNGKey(rng), len(self.policy), p=self.policy)
+        return self.policy_index_to_move(index)
 
 class A0Player:
     def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel):
@@ -103,16 +221,20 @@ class A0Player:
         assert len(children) > 0, "No children found in MCTS root node."
 
         # with the root's children, create a policy distribution logits
-        visits = [child.visits for child in children]
+        mcts_root_children_visit_counts = [float(child.visits) for child in children]
+        mcts_root_children_moves = [state.child_board_to_move(child.state) for child in children]
 
-        # create a well-shaped policy ditribution and mask non-legal moves
-        # the legal moves were given
-
+        # create a well-shaped policy ditribution,
+        p = Policy(len(state.board))
+        p.set_logits_from_moves(mcts_root_children_moves, mcts_root_children_visit_counts)
+        # mask non-legal moves,
+        p.mask_non_legal_moves(moves)
         # softmax it to get the policy distribution
+        p.apply_power_normalize(self.temperature)
 
         # select a move based on the policy distribution
-        # (for now, just select the move with the highest probability)
+        # (select the move with the highest probability)
+        selected_move = p.get_best_move()
 
         # return the selected move and the mcts policy distribution
-
-        pass
+        return selected_move, p.policy
