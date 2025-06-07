@@ -19,14 +19,14 @@ class TurnData(TypedDict):
 
 class GameData(TypedDict):
     game: Game
-    players: list[PlayerClass]
+    #players: list[PlayerClass]
     turn_limit: Optional[int]
     turn_data: list[TurnData]
     ended: bool
     winner: Optional[Player]
     time: float
 
-def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = None) -> Any:
+def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = None) -> GameData:
     '''
     Plays a game of chinese checkers with the given players.
     The players should implement the Player protocol, which requires a select_move method.
@@ -37,7 +37,7 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
 
     data: GameData = {
         'game': game,
-        'players': players,
+        #'players': players,
         'turn_limit': turn_limit,
         'turn_data': [],
         'ended': False,
@@ -60,7 +60,14 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
         }
         data['turn_data'].append(turn_data)
 
-        game.end_turn(move)
+        try:
+            game.end_turn(move)
+        except Exception as e:
+            print(game.board.board_view())
+            print(move)
+            print("moves:")
+            for move in moves:
+                print(move)
 
         turn += 1
     

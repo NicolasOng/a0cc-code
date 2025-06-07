@@ -147,7 +147,7 @@ class AlphaZeroModel(nnx.Module):
         # value: (batch_size, 1)
         return value, policy
 
-def save_model(filepath, model):
+def save_model(filepath: str, model: AlphaZeroModel) -> None:
     # get the state of the model
     _, state = nnx.split(model)
 
@@ -155,7 +155,7 @@ def save_model(filepath, model):
     with open(filepath, 'wb') as f:
         pickle.dump(state, f)
 
-def load_model(filepath, model):
+def load_model(filepath: str, model: AlphaZeroModel) -> AlphaZeroModel:
     # load the state from the pickle file
     with open(filepath, 'rb') as f:
         state = pickle.load(f)

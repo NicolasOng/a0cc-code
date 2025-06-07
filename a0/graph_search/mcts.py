@@ -17,7 +17,7 @@ class MCTSProblem(Protocol):
         '''
         ...
 
-    def get_successors(self, state: Any) -> tuple[list[Any], Optional[list[float]]]:
+    def get_successors(self, state: Any) -> tuple[list[Any], list[Optional[float]]]:
         '''
         Returns a list of successor states for the given state.
         Optionally, returns a list of prior probabilities for each successor.
@@ -33,12 +33,13 @@ class MCTSProblem(Protocol):
         ...
 
 class MCTSNode:
-    def __init__(self, state: Any, parent: Optional[MCTSNode]=None):
+    def __init__(self, state: Any, prior: float, parent: Optional[MCTSNode]=None):
         self.state = state
         self.parent = parent
         self.children: list[MCTSNode] = []
         self.visits = 0
         self.reward = 0.0
+        self.prior = prior
     
     def fully_expanded(self) -> bool:
         '''
@@ -53,7 +54,7 @@ class MCTS:
     '''
     def __init__(self, problem: MCTSProblem):
         self.problem = problem
-        self.root = MCTSNode(problem.initial_state())
+        self.root = MCTSNode(problem.initial_state(), 1.0)
 
     def run(self, iterations: int=1000) -> None:
         for _ in range(iterations):
@@ -66,15 +67,17 @@ class MCTS:
             # - a terminal state
             node = self.root
             while node.fully_expanded() and not self.problem.is_terminal(node.state):
-                node = max(node.children, key=self.uct)
+                node = max(node.children, key=self.puct)
             
             # 1.1
             # if the node is not terminal, yet has no children,
             # expand it by generating its successors
             if not self.problem.is_terminal(node.state) and not node.children:
-                successors = self.problem.get_successors(node.state)
-                for succ in successors:
-                    child = MCTSNode(succ, parent=node)
+                successors, priors = self.problem.get_successors(node.state)
+                default_prior = 1.0 / len(successors) if successors else 0.0
+                for succ, prior in zip(successors, priors):
+                    prior = prior if prior is not None else default_prior
+                    child = MCTSNode(succ, prior, parent=node)
                     node.children.append(child)
             
             # 1.2
@@ -96,10 +99,24 @@ class MCTS:
     
     @staticmethod
     def uct(node: MCTSNode) -> float:
+        # prioritize unvisited nodes
         if node.visits == 0:
             return float('inf')
-        parent_visits = node.parent.visits if node.parent else 1
-        return (node.reward / node.visits) + math.sqrt(2 * math.log(parent_visits) / node.visits)
+        # explotation factor
+        exploit = node.reward / node.visits
+        # exploration factor
+        explore = math.sqrt(2) * math.sqrt(math.log(node.parent.visits) / node.visits)
+        return exploit + explore
+    
+    @staticmethod
+    def puct(node: MCTSNode) -> float:
+        c_puct=1.0
+        if node.visits == 0:
+            q_value = 0
+        else:
+            q_value = node.reward / node.visits
+        prior_score = c_puct * node.prior * math.sqrt(node.parent.visits) / (1 + node.visits)
+        return q_value + prior_score
 
     def get_best_root_child(self) -> Optional[MCTSNode]:
         '''

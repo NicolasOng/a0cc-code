@@ -165,6 +165,10 @@ class Policy:
         Args:
             tau (float): Temperature parameter (τ). Lower values → more deterministic.
         '''
+        # remove -inf values (non-legal moves)
+        # this normalization is necessary to avoid NaNs
+        self.policy = jnp.where(self.policy == -jnp.inf, 0.0, self.policy)
+
         # Avoid divide-by-zero or NaNs if all counts are zero
         if jnp.sum(self.policy) == 0:
             return jnp.ones_like(self.policy) / self.policy.size
@@ -224,6 +228,9 @@ class A0Player:
         mcts_root_children_visit_counts = [float(child.visits) for child in children]
         mcts_root_children_moves = [state.child_board_to_move(child.state) for child in children]
 
+        # if sum(mcts_root_children_visit_counts) == 0:
+        #     mcts_root_children_visit_counts = [ 1 for _ in mcts_root_children_visit_counts ] 
+
         # create a well-shaped policy ditribution,
         p = Policy(len(state.board))
         p.set_logits_from_moves(mcts_root_children_moves, mcts_root_children_visit_counts)
@@ -235,6 +242,12 @@ class A0Player:
         # select a move based on the policy distribution
         # (select the move with the highest probability)
         selected_move = p.get_best_move()
+
+        if selected_move.start.x == 0 and selected_move.start.y == 0 and selected_move.end.x == 0 and selected_move.end.y == 0:
+            print(mcts_root_children_visit_counts)
+            print(p.policy)
+            for move in mcts_root_children_moves:
+                print(move)
 
         # return the selected move and the mcts policy distribution
         return selected_move, p.policy
