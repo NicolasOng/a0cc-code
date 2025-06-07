@@ -30,6 +30,7 @@ def _play(game: Game, player, turn_limit: Optional[int] = None) -> GameData:
 
 def self_play(board_size: int, num_pieces: int, player: A0Player, train_set_len: int, game_data_filepath: Optional[str]) -> list[dict[str, Any]]:
     logger.info("Starting self-play to generate training data...")
+    print("Starting self-play to generate training data...")
     # serialize the player model
     player_serialized = dill.dumps(player)
     # use self-play with the model and mcts to generate training data
@@ -51,6 +52,7 @@ def self_play(board_size: int, num_pieces: int, player: A0Player, train_set_len:
         
         # when a game finishes,
         for game_data_future in concurrent.futures.as_completed(futures):
+            print("game finished, starting a new game")
             # start a new game
             game_data_future = executor.submit(
                 _play,
@@ -92,6 +94,7 @@ def self_play(board_size: int, num_pieces: int, player: A0Player, train_set_len:
                 
                 # add it to the training set
                 training_set.append(training_example)
+            print(f"Training set size: {len(training_set)}")
 
             # if the training set is full, cancel all currently running games
             if len(training_set) >= train_set_len:
@@ -104,12 +107,13 @@ def self_play(board_size: int, num_pieces: int, player: A0Player, train_set_len:
         with open(game_data_filepath, 'wb') as f:
             pickle.dump(game_data_list, f)
     
+    print(f"Generated training set of size: {len(training_set)}/{train_set_len}")
     return training_set[:train_set_len]
 
 def train_model(model: AlphaZeroModel, training_set: list[dict[str, Any]], n_batches: int = 10) -> AlphaZeroModel:
     logger.info("Training model on the generated training set...")
     boards = jnp.stack([jnp.array(ex['board']) for ex in training_set])
-    values = jnp.array([ex['value'] for ex in training_set])
+    values = jnp.array([ex['value'] for ex in training_set])[:, None]  # Add [:, None] to make its shape (batch_size, 1)
     policies = jnp.stack([jnp.array(ex['policy']) for ex in training_set])
 
     # Split into n_batches (last batch may be smaller)
@@ -137,12 +141,14 @@ def train_model(model: AlphaZeroModel, training_set: list[dict[str, Any]], n_bat
         masked_policy = jnp.where(batch['policy'], policy, 0)
         policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_policy))
         total_loss = value_loss + policy_loss
-        return total_loss, value_loss, policy_loss
+        # JAX requires the loss function to return a tuple of (loss, aux)
+        # where aux can be any additional information you want to return
+        return total_loss, (value_loss, policy_loss)
     
     @nnx.jit
     def train_step(model: AlphaZeroModel, optimizer: nnx.Optimizer, batch: dict[str, Any]):
         grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
-        (loss, value_loss, policy_loss), grads = grad_fn(model, batch)
+        (loss, (value_loss, policy_loss)), grads = grad_fn(model, batch)
         optimizer.update(grads)
         return loss, value_loss, policy_loss
     
@@ -194,3 +200,4 @@ if __name__ == "__main__":
         train_set_len=32 * 10,
         data_path="a0_data"
     )
+#7:12

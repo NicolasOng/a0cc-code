@@ -8,3 +8,5 @@ logs/
 data/
 plots/
 trained_models/
+app.log
+a0_data/

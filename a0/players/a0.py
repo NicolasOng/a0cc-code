@@ -215,7 +215,7 @@ class A0Player:
         self.model = model
         self.game = Game(board_size=board_size, num_pieces=num_pieces)
         self.temperature = 1.0  # Temperature for exploration in MCTS
-        self.mcts_iterations = 1000
+        self.mcts_iterations = 100
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         # perform mcts and get the root's children
