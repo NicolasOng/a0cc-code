@@ -536,7 +536,7 @@ class Board:
         return (hashable_board, self.current_player.value, self.home_size)
 
 class Game:
-    def __init__(self, board_size: int = 7, num_pieces: int = 6, save_board_history: bool=False) -> None:
+    def __init__(self, board_size: int = 7, num_pieces: int = 6, save_board_history: bool=False, no_reverse_moves: bool=False) -> None:
         self.board = Board(board_size=board_size, home_size=board_to_home_size[board_size])
         self.board_history: list[Board] = []
         self.end = False
@@ -548,7 +548,7 @@ class Game:
         # if true, player can use the four non-main corners during chained jumps
         self.use_four_corners_to_jump = True
         # if true, players can't move pieces "backwards" (towards their home area).
-        self.no_reverse_moves = False
+        self.no_reverse_moves = False or no_reverse_moves
         # if true, players can't make moves that lead to an illegal state.
         self.no_illegal_moves = False
         # if true, players can't make moves that lead to a draw.
@@ -768,6 +768,20 @@ class Game:
         illegal = board.is_illegal_state(self.board_history[0])
         player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
         return illegal or player_x_winner or player_o_winner
+    
+    def get_winner(self, board: Board) -> Player | None:
+        '''
+        Checks if the given board has a winner.
+        Assumes no game history, so no repeated states can be checked for draws.
+        '''
+        if board.is_illegal_state(self.board_history[0]): return None
+        player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
+        cur_player = board.current_player
+        if player_x_winner and cur_player == Player.PLAYER_O:
+            return Player.PLAYER_X
+        if player_o_winner and cur_player == Player.PLAYER_X:
+            return Player.PLAYER_O
+        return None
 
     def simple_hash(self):
         board_hash = self.board.simple_hash()
