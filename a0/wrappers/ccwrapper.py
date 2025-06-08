@@ -1,7 +1,8 @@
 from __future__ import annotations
 from typing import Optional
 from cc.core import Board, board_to_home_size, Player, Move, Tile
-from cc.ranking import CCState as CCStateR, generate_rect_board_lists
+from cc.ranking import CCState as CCStateR, generate_rect_board_lists, CCLocalRank12 as CCLocalRank12R, CCState as CCStateR
+from cc.lookups import CCBaselineSolver
 
 BOARD_SIZE = 4
 NUM_PIECES = 3
@@ -144,4 +145,50 @@ class CCMove:
     def getFrom(self) -> int:
         return self.from_pos
 class CCLocalRank12:
-    pass
+    def __init__(self):
+        self.ranker = CCLocalRank12R(BOARD_SIZE * BOARD_SIZE, 2, NUM_PIECES)
+    
+    def getMaxRank(self) -> int:
+        return self.ranker.get_max_rank()
+    
+    def unrank(self, rank: int, state: CCState) -> None:
+        """
+        Unrank a given rank to a list of positions.
+        """
+        # create a CCStateR object to hold the unranked state
+        state_r = CCStateR(BOARD_SIZE * BOARD_SIZE, NUM_PIECES, 2)
+        self.ranker.unrank(rank, state_r)
+        # get the board from the CCStateR object
+        board = state_r.get_board()
+        # give the board to the CCState object
+        state.board = board
+
+class Solver:
+    def __init__(self, solved_data: str, bool1: bool = True, bool2: bool = False):
+        self.solved_data_fp = solved_data
+        self.solver = CCBaselineSolver(solved_data, BOARD_SIZE * BOARD_SIZE, 2, NUM_PIECES)
+    
+    def lookup(self, state: CCState) -> Optional[int]:
+        """
+        Looks up the rank of the given state in the solved data.
+        Returns None if the state is not found.
+        """
+        # convert the CCState to a CCStateR object
+        state_r = CCStateR(BOARD_SIZE * BOARD_SIZE, NUM_PIECES, 2)
+        state_r.initialize_from_board(state.board)
+        return self.solver.lookup(state_r)
+
+def list_to_ccstate(state_list, player: int) -> CCState:
+    """
+    Converts a list representation of the state to a CCState object.
+    The list should be of length BOARD_SIZE * BOARD_SIZE,
+    where the first half represents Player X and the second half represents Player O.
+    """
+    # the state list is a list/tuple in the CCState format,
+    # with np.int64 values
+    state_list = [int(x) for x in state_list]
+    state_grid = CCStateR.CCState_to_grid_order(state_list)
+    state = CCState()
+    state.board.board = state_grid
+    state.board.current_player = Player.PLAYER_X if player == 0 else Player.PLAYER_O
+    return state

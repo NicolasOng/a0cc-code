@@ -10,3 +10,10 @@ plots/
 trained_models/
 app.log
 a0_data/
+
+neighboring_states/
+iteration_training_states.p
+training_states.p
+random_states.p
+sampled_training_states.p
+sampled_neighboring_states.p
