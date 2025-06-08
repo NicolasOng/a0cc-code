@@ -536,7 +536,7 @@ class Board:
         return (hashable_board, self.current_player.value, self.home_size)
 
 class Game:
-    def __init__(self, board_size: int = 7, num_pieces: int = 6) -> None:
+    def __init__(self, board_size: int = 7, num_pieces: int = 6, save_board_history: bool=False) -> None:
         self.board = Board(board_size=board_size, home_size=board_to_home_size[board_size])
         self.board_history: list[Board] = []
         self.end = False
@@ -552,14 +552,14 @@ class Game:
         # if true, players can't make moves that lead to an illegal state.
         self.no_illegal_moves = False
         # if true, players can't make moves that lead to a draw.
-        self.no_draw_moves = False
+        self.no_draw_moves = False or save_board_history
         # if true, a pass move is allowed when a player has no moves.
         self.pass_moves = True
         # if false, a player with no moves loses the game. if true, the game ends in a draw.
         self.draw_on_no_moves = False
         # set to True in normal play, False in eg tree search
         # as DFS saves the board history
-        self.draw_on_repeated_state = False
+        self.draw_on_repeated_state = False or save_board_history
 
         # we need the board history to check for repeated states for draws
         self.save_board_history = self.draw_on_repeated_state or self.no_draw_moves

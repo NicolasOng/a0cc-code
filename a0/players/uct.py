@@ -2,14 +2,18 @@ from __future__ import annotations
 from typing import Optional, Any
 import random
 
-from cc.core import Game, Board, Move
-from graph_search.mcts import MCTS, MCTSNode
+from cc.core import Game, Board, Move, Player
+from a0.graph_search.mcts import MCTS
 
 class SearchMoves:
     def __init__(self, initial_state: Board, player: UCTPlayer, max_depth: int):
         self._initial_state = initial_state
         self.player = player
         self.max_depth = max_depth
+
+        # get the starting board
+        num_pieces, _ = initial_state.num_pieces()
+        self.starting_board = Game(len(initial_state.board), num_pieces).board
 
     def initial_state(self) -> Board:
         '''
@@ -52,16 +56,28 @@ class SearchMoves:
         Uses a random rollout to determine the reward.
         '''
         current_player = state.current_player
+        current_board = state
         for _ in range(self.max_depth):
-            if self.is_terminal(state):
-                ...
+            # if the state is terminal, return the reward
+            if self.is_terminal(current_board):
+                px, po = current_board.check_for_winner(self.starting_board)
+                winner_is_current_player = (px and current_player == Player.PLAYER_X) or (po and current_player == Player.PLAYER_O)
+                winner_is_opponent = (px and current_player == Player.PLAYER_O) or (po and current_player == Player.PLAYER_X)
+                if winner_is_current_player:
+                    return 1.0
+                elif winner_is_opponent:
+                    return -1.0
+                else:
+                    return 0.0
             
-            moves = self.player.game.generate_moves_for_given_board(state)
+            # if the state is not terminal, perform a random rollout
+            moves = self.player.game.generate_moves_for_given_board(current_board)
             move = random.choice(moves)
             # apply the move to the board
             new_board = Board()
-            new_board.copy_board(state)
+            new_board.copy_board(current_board)
             new_board.apply_move(move)
+            current_board = new_board
         return 0
 
 class UCTPlayer:
@@ -75,7 +91,7 @@ class UCTPlayer:
         mcts = MCTS(SearchMoves(state, self, 100))
         mcts.run(iterations=self.mcts_iterations)
         
-        child: MCTSNode = mcts.get_best_root_child()
+        child = mcts.get_best_root_child()
         if child:
             move = state.child_board_to_move(child.state)
         else:

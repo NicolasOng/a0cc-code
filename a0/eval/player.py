@@ -1,7 +1,7 @@
 from a0.game import PlayerClass, play
 from cc.core import Game, Player
 
-def player_evaluation(player1: PlayerClass, player2: PlayerClass, num_games: int):
+def player_evaluation(board_size: int, num_pieces: int, player1: PlayerClass, player2: PlayerClass, num_games: int):
     '''
     Evaluate two players by playing a series of games between them.
     Returns the number of wins, losses, and draws for each player.
@@ -14,7 +14,7 @@ def player_evaluation(player1: PlayerClass, player2: PlayerClass, num_games: int
     for game_num in range(num_games):
         # play a game
         print(f"Game {game_num + 1}/{num_games}")
-        game_data = play(Game(), [player1, player2], turn_limit=100)
+        game_data = play(Game(board_size, num_pieces, True), [player1, player2], turn_limit=100)
 
         # get the winner of the game
         if game_data['winner'] == Player.PLAYER_X:
