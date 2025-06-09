@@ -17,3 +17,5 @@ training_states.p
 random_states.p
 sampled_training_states.p
 sampled_neighboring_states.p
+test_label2.png
+testing.p
