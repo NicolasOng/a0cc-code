@@ -2,6 +2,13 @@ from cc.solvedata import SolveData
 from cc.ranking import CCDefaultRank, CCPSRank12, CCState
 from typing import Any
 
+result_dict = {
+    2: 'Win',
+    1: 'Loss',
+    0: 'Draw',
+    3: 'Illegal'
+}
+
 class Group:
     def __init__(self):
         self.symmetricRank = -1
