@@ -1,7 +1,11 @@
 import logging
 import sys
+import os
 
-def setup_logging(level: int = 5, process_name: str = "log"):
+def setup_logging(level: int = 5, log_dir: str = "logs/", process_name: str = "log"):
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
     root_logger = logging.getLogger()
     # always capture all logs
     root_logger.setLevel(level)

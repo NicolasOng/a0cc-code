@@ -133,7 +133,14 @@ def generate_winner(ranks: list[int], fn: str = "winner.txt"):
             r.unrank(rank, s)
             board = s.get_board()
             winner = cc.get_winner(board)
-            f.write(f"{rank} {0 if winner == Player.PLAYER_X else 1}\n")
+            if winner == Player.PLAYER_X:
+                pw = 0
+            elif winner == Player.PLAYER_O:
+                pw = 1
+            else:
+                pw = -1
+
+            f.write(f"{rank} {pw}\n")
 
 def validate_solve_data(ranks: list[int]):
     '''
@@ -157,12 +164,14 @@ def validate_solve_data(ranks: list[int]):
 
         result = l.lookup(s)
 
-        if result == 0 or result == 3:
+        if result == 0 or result == 3: # Draw or Illegal
             sd_winner = None
-        elif result == 1:
+        elif result == 1: # Loss
             sd_winner = Player.PLAYER_X if board.current_player == Player.PLAYER_O else Player.PLAYER_O
-        elif result == 2:
+            #sd_winner = Player.PLAYER_X
+        elif result == 2: # Win
             sd_winner = board.current_player
+            #sd_winner = Player.PLAYER_O
         else:
             sd_winner = None  # Handle unexpected result
         
@@ -172,14 +181,15 @@ def validate_solve_data(ranks: list[int]):
         #     print(board.board_view())
         #     print(board.current_player)
         #     s.print_ascii()
-        #     print(f"Mismatch for rank {rank}: Expected winner {sd_winner}, got {winner}")
+        #     print(f"{rank}: Winner {winner} does not match solve data {sd_winner} ({result}).")
         
         if winner == sd_winner:
+            mis_matches += 1
             print("---")
             print(board.board_view())
             print(board.current_player)
             s.print_ascii()
-            print(f"Rank {rank} is valid: Winner {winner} matches solve data {sd_winner}.")
+            print(f"{rank}: Winner {winner} matches solve data {sd_winner} ({result}).")
     
     print(f"Validation complete. Found {mis_matches} mismatches out of {len(ranks)} ranks.")
 
@@ -201,6 +211,6 @@ if __name__ == "__main__":
     
     generate_moves(ranks, dir + "moves.txt")
     generate_done(ranks, dir + "done.txt")
-    generate_winner(ranks, dir + "winner.txt")
+    generate_winner(done_ranks, dir + "winner.txt")
     
     validate_solve_data(done_ranks)
