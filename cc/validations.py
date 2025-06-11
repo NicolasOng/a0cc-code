@@ -2,6 +2,8 @@ import random
 import os
 from typing import Optional, Callable, Any
 
+from tqdm import tqdm
+
 from config import config
 from cc.ranking import CCDefaultRank, CCState
 from cc.core import Game, Player
@@ -28,7 +30,7 @@ def generate_n_random_ranks(n: int, fn: str = "ranks.txt"):
         for rank in ranks:
             f.write(f"{rank}\n")
 
-def generate_done_ranks(n: int, fn: str = "done_ranks.txt"):
+def generate_n_done_ranks(n: int, fn: str = "done_ranks.txt"):
     '''
     Generates a text file with n ranks that are done.
     For 4x4, 3, this is about 6.8% of the total ranks.
@@ -66,6 +68,108 @@ def read_ranks_from_file(fn: str) -> list[int]:
     with open(fn, "r") as f:
         ranks = [int(line.strip()) for line in f.readlines()]
     return ranks
+
+def generate_files(fn: str, ranks: Optional[list[int]], mode: str, num_lines: int, start: int=0) -> None:
+    '''
+    generates a file with the given ranks and mode. If the number of lines exceeds num_lines, creates new files with incrementing suffixes.
+    '''
+    print(f"Generating {mode} for ranks...")
+
+    # objects for state data
+    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
+    s = CCState(config.num_spots, config.num_pieces, config.num_players)
+    cc = Game(config.board_size, config.num_pieces)
+    l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
+
+    # file handling objects
+    base_fn, ext = os.path.splitext(fn)
+    file_idx = 0
+    line_count = 0
+    f = None
+    def open_new_file(idx: int):
+        return open(f"{base_fn}_{idx}{ext}", "w")
+
+    # if ranks is None, use all ranks
+    num_ranks = len(ranks) if ranks else r.get_max_rank()
+    print(num_ranks, "ranks to validate.")
+
+    f = open_new_file(file_idx)
+    try:
+        # loop through the ranks and write the desired information to the file(s)
+        for i in tqdm(range(start, num_ranks)):
+            # if the line count exceeds num_lines, create a new file
+            if line_count >= num_lines:
+                f.close()
+                file_idx += 1
+                f = open_new_file(file_idx)
+                line_count = 0
+            
+            # unrank the rank and the board
+            rank = ranks[i] if ranks else i
+            r.unrank(rank, s)
+            board = s.get_board()
+
+            # depending on the mode, write the desired information to the file
+            if mode == "done":
+                done = cc.terminal_state(board)
+                f.write(f"{rank} {1 if done else 0}\n")
+                line_count += 1
+            
+            elif mode == "winner":
+                winner = cc.get_winner(board)
+                if winner == Player.PLAYER_X:
+                    pw = 0
+                elif winner == Player.PLAYER_O:
+                    pw = 1
+                else:
+                    pw = -1
+                f.write(f"{rank} {pw}\n")
+                line_count += 1
+            
+            elif mode == "moves":
+                moves = cc.generate_moves_for_given_board(board)
+                # TODO: choose a better way to represent moves
+                f.write(f"Rank: {rank}, Moves: {moves}\n")
+                line_count += 1
+            
+            elif mode == "done_full":
+                done = cc.terminal_state(board)
+                if done:
+                    f.write(f"{rank}\n")
+                    line_count += 1
+            
+            elif mode == "winner_full":
+                winner = cc.get_winner(board)
+                if winner == Player.PLAYER_X:
+                    pw = 0
+                elif winner == Player.PLAYER_O:
+                    pw = 1
+                else:
+                    pw = -1
+                if pw != -1:
+                    f.write(f"{rank} {pw}\n")
+                    line_count += 1
+            
+            elif mode == "solvedata":
+                s.print_ascii_compact()
+                print(l.lookup(s))
+    finally:
+        if f:
+            f.close()
+
+def generate_small_validation_files(dir: str, n: int):
+    '''
+    Generates small validation files for the given directory and number of ranks.
+    '''
+    generate_n_random_ranks(n, dir + "ranks.txt")
+    generate_n_done_ranks(n, dir + "ranks_done.txt")
+
+    ranks = read_ranks_from_file(dir + "ranks.txt")
+    done_ranks = read_ranks_from_file(dir + "ranks_done.txt")
+
+    generate_files(dir + "done.txt", ranks, "done", n + 1)
+    generate_files(dir + "winner.txt", done_ranks, "winner", n + 1)
+    #generate_files(dir + "moves.txt", ranks, "moves", n + 1)
 
 def generate_moves(ranks: list[int], fn: str = "moves.txt"):
     '''
@@ -189,39 +293,7 @@ def generate_winner_full(fn: str = "winner_full.txt"):
                 continue
             f.write(f"{rank} {pw}\n")
 
-def compare_lines(l1: str, l2: str, pkg: tuple[CCState, CCDefaultRank, CCBaselineSolver, Game], values_type: str) -> bool:
-    '''
-    Compares two lines of the format "rank, values" and prints the differences.
-    The values are expected to be lists of integers of any size and order (for moves).
-    Assumes l1 is the baseline and l2 is the new implementation.
-    '''
-    rank1, values1 = l1.split(" ", 1)
-    rank2, values2 = l2.split(" ", 1)
-    assert rank1 == rank2, f"Ranks do not match: {rank1} != {rank2}"
-    rank = int(rank1)
-    values1 = sorted(list(set(map(int, values1.strip().split()))))
-    values2 = sorted(list(set(map(int, values2.strip().split()))))
-    (s, r, l, cc) = pkg
-    if values1 != values2:
-        r.unrank(rank, s)
-        board = s.get_board()
-        print("---")
-        print(board.board_view())
-        s.print_ascii()
-        if values_type == "done":
-            done1 = values1[0]
-            done2 = values2[0]
-            print(f"{rank}: expected {'done' if done1 == 1 else 'not done'} ({done1}), got {'done' if done2 == 1 else 'not done'} ({done2})")
-        elif values_type == "winner":
-            winner_dict = {0: Player.PLAYER_X, 1: Player.PLAYER_O, -1: None}
-            winner1 = winner_dict[values1[0]]
-            winner2 = winner_dict[values2[0]]
-            print(f"{rank}: expected winner {winner1} ({values1[0]}), got {winner2} ({values2[0]})")
-        #print(f"Values differ for rank {rank}: values1 = {values1}, values2 = {values2}")
-        return True
-    return False
-
-def parse_line(line: Optional[str], line_no: int, no_input: bool) -> tuple[int | float, Optional[list[int]]]:
+def parse_line(line: Optional[str], line_no: Optional[int], output: Optional[int]) -> tuple[int | float, Optional[list[int]]]:
     '''
     Parses a line from the file and returns the input and output.
     If line is None, returns (None, None).
@@ -229,55 +301,93 @@ def parse_line(line: Optional[str], line_no: int, no_input: bool) -> tuple[int |
     # EOF line ('')
     if not line: return float('inf'), None
     # the rest of the lines ('...\n')
-    if no_input:
-        # if no_input, input is the line number
+    if line_no is not None:
+        # if line number is given, input is the line number
         # output is the sorted list of integers on the line
-        return line_no, sorted(list(set(map(int, line.strip().split()))))
+        return line_no, [output] if output is not None else sorted(list(set(map(int, line.strip().split()))))
     else:
         # if input is present, split the line into input and output
         parts = line.strip().split(" ", 1)
-        return int(parts[0]), sorted(list(set(map(int, parts[1].strip().split()))))
+        return int(parts[0]), [output] if output is not None else sorted(list(set(map(int, parts[1].strip().split()))))
 
-def validate_files(fn1: str, fn2: str, same_ranks: bool, only_values: bool, values_type: str) -> None:
+def print_rank_info(rank: int, s: CCState, r: CCDefaultRank, l: CCBaselineSolver, cc: Game) -> None:
+    '''
+    Prints the rank information for the given rank.
+    This includes the board view, ASCII representation, the done state, the winner, and the outcome.
+    '''
+    # get the info
+    r.unrank(rank, s)
+    board = s.get_board()
+    done = cc.terminal_state(board)
+    winner = cc.get_winner(board)
+    result = l.lookup(s)
+    if result == 0 or result == 3: # Draw or Illegal
+        r_winner = None
+    elif result == 1: # Loss
+        r_winner = Player.PLAYER_O
+    elif result == 2: # Win
+        r_winner = Player.PLAYER_X
+    else:
+        raise ValueError(f"Unexpected result: {result}")
+    illegal = cc.is_illegal_state(board)
+    # print the info
+    print(board.board_view())
+    print(f"Current Player: {board.current_player}")
+    s.print_ascii()
+    print(f"Rank: {rank}, Done: {done}, Winner: {winner}, Result: {r_winner} ({result}), Illegal: {illegal}")
+
+def compare_line(line1: tuple[Optional[int], Optional[list[int]]],
+                 line2: tuple[Optional[int], Optional[list[int]]],
+                 pkg: tuple[CCState, CCDefaultRank, CCBaselineSolver, Game, str]) -> bool:
+    '''
+    Compares two lines of the format (input, output) and prints the differences.
+    Assumes line1 is the baseline and line2 is the new implementation.
+    '''
+    input1, output1 = line1
+    input2, output2 = line2
+    (s, r, l, cc, mode) = pkg
+
+    if input1 is None and input2 is None:
+        raise ValueError("Both inputs are None, this should not happen.")
+    elif input1 is None:
+        print(f"Input/Output {input2}/{output2} is missing in the baseline file.")
+        return True
+    elif input2 is None:
+        print(f"Input/Output {input1}/{output1} is missing in the new implementation file.")
+        return True
+    elif input1 == input2:
+        if output1 != output2:
+            print(f"Inputs match but outputs differ: {input1}/{output1} vs {input2}/{output2}")
+            if mode == "done":
+                rank = input1
+                done1 = output1[0] if output1 else None
+                done2 = output2[0] if output2 else None
+                print_rank_info(rank, s, r, l, cc)
+                print(f"Expected {'done' if done1 == 1 else 'not done'} ({done1}), got {'done' if done2 == 1 else 'not done'} ({done2})")
+                print("---")
+            return True
+        else:
+            return False  # No differences found
+    else:
+        raise ValueError(f"Inputs do not match: {input1}, {input2} (this should not happen)")
+
+def stream_validate(fn1: str, fn2: str, mode: str, no_input: bool, output: Optional[int], parse_line: Callable[[Optional[str], Any, Any], tuple[Any, Any]], compare_line: Callable[[Any, Any, Any], bool]) -> None:
     '''
     Validates two files by checking if they have the same content.
     fn1 is the baseline file and fn2 is the new implementation file.
 
     The files are expected to be in the format "input output" on each line,
-    or if no_input is True, just "output" on each line (input = line number).
+    - if no_input is True, just "output" on each line (input = line number).
+    - if output is given, it is the output of the line (there is no output)
 
     The inputs are expected to be sorted in ascending order.
     (they should be comparable with the < and == operators)
     '''
-    if not os.path.exists(fn1) or not os.path.exists(fn2):
-        print(f"One of the files {fn1} or {fn2} does not exist.")
-        return
-    
     s = CCState(config.num_spots, config.num_pieces, config.num_players)
     r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
     l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
     cc = Game(config.board_size, config.num_pieces)
-    pkg = (s, r, l, cc)
-    
-    num_diff = 0
-    with open(fn1, "r") as f1, open(fn2, "r") as f2:
-        lines1 = f1.readlines()
-        lines2 = f2.readlines()
-        for i, (line1, line2) in enumerate(zip(lines1, lines2)):
-            diff = compare_lines(line1.strip(), line2.strip(), pkg, values_type)
-            if diff: num_diff += 1
-            if diff and not same_ranks and not only_values:
-                break
-        
-        # Check for extra lines in either file
-        longer, shorter, longer_fn = (lines1, lines2, fn1) if len(lines1) > len(lines2) else (lines2, lines1, fn2)
-        if len(longer) > len(shorter):
-            for i in range(len(shorter), len(longer)):
-                print(f"Extra line in {longer_fn} at {i+1}: {longer[i].strip()}")
-                num_diff += 1
-    print(f"Validation complete. Found {num_diff} differences between {fn1} and {fn2}.")
-
-def stream_validate(fn1: str, fn2: str, no_input: bool, parse_line: Callable[[Optional[str]], tuple[Any, Any]], compare_line: Callable[[Any, Any, Any], None]) -> None:
+    pkg = (s, r, l, cc, mode)
     # Stream compare two files line by line, handling missing lines and mismatches.
     # open both files
     with open(fn1, 'r') as f1, open(fn2, 'r') as f2:
@@ -288,16 +398,17 @@ def stream_validate(fn1: str, fn2: str, no_input: bool, parse_line: Callable[[Op
         line_no2 = 0
 
         # loop until both files are exhausted
+        differences = 0
         while line1 or line2:
             # get the input/output from the line in file 1 and file 2
             # if EOF is reached, input should be float('inf'), so we always advance the other file
-            input1, output1 = parse_line(line1)
-            input2, output2 = parse_line(line2)
+            input1, output1 = parse_line(line1, line_no1 if no_input else None, output)
+            input2, output2 = parse_line(line2, line_no2 if no_input else None, output)
 
             # if the inputs are the same, check if the outputs are the same
             if input1 == input2:
                 # log the results of the comparison
-                compare_line((input1, output1), (input2, output2), pkg)
+                diff = compare_line((input1, output1), (input2, output2), pkg)
                 # and advance both files to the next line
                 line1 = f1.readline()
                 line2 = f2.readline()
@@ -306,17 +417,20 @@ def stream_validate(fn1: str, fn2: str, no_input: bool, parse_line: Callable[[Op
             # if the input of file 1 is less than the input of file 2, it means file 2 is missing this input
             elif input1 < input2:
                 # log the input file 1 has that file 2 is missing
-                compare_line((input1, output1), (None, None), pkg)
+                diff = compare_line((input1, output1), (None, None), pkg)
                 # and advance file 1 to the next line
                 line1 = f1.readline()
                 line_no1 += 1
             # if the input of file 2 is less than the input of file 1, it means file 1 is missing this input
             else:
                 # log the input file 2 has that file 1 is missing
-                compare_line((None, None), (input2, output2), pkg)
+                diff = compare_line((None, None), (input2, output2), pkg)
                 # and advance file 2 to the next line
                 line2 = f2.readline()
                 line_no2 += 1
+            # if there was a difference, increment the differences counter
+            if diff: differences += 1
+    print(f"Stream validation complete. Found {differences} differences between {fn1} and {fn2}.")
 
 def validate_solve_data_matches_winner(ranks: Optional[list[int]]):
     '''
@@ -339,11 +453,16 @@ def validate_solve_data_matches_winner(ranks: Optional[list[int]]):
     # print(cc.board.board_view())
 
     mis_matches = 0
-    num_ranks = len(ranks) if ranks else r.get_max_rank() + 1
-    for i in range(num_ranks):
+    num_ranks = len(ranks) if ranks else r.get_max_rank()
+    print(num_ranks, "ranks to validate.")
+    for i in tqdm(range(num_ranks)):
         rank = ranks[i] if ranks else i
 
-        r.unrank(rank, s)
+        try:
+            r.unrank(rank, s)
+        except Exception as e:
+            print(f"Error unranking {rank}: {e}")
+            continue
         board = s.get_board()
 
         if not cc.terminal_state(board):
@@ -369,7 +488,7 @@ def validate_solve_data_matches_winner(ranks: Optional[list[int]]):
             s.print_ascii()
             print(f"{rank}: Winner {winner} does not match solve data {sd_winner} ({result}).")
     
-    print(f"Validation complete. Found {mis_matches} mismatches out of {len(ranks)} ranks.")
+    print(f"Validation complete. Found {mis_matches} mismatches out of {len(ranks) if ranks is not None else num_ranks} ranks.")
 
 if __name__ == "__main__":
     # python -m cc.validations
@@ -379,32 +498,17 @@ if __name__ == "__main__":
         
     # Generate random ranks and done ranks
     n = 1000
-    done_n = int(n / 0.068)  # Adjusted for 6.8% done ranks
-    generate_n_random_ranks(n, dir + "ranks.txt")
-    generate_done_ranks(done_n, dir + "done_ranks.txt")
+    generate_small_validation_files(dir, n)
+    exit()
     
-    ranks = read_ranks_from_file(dir + "ranks.txt")
-    done_ranks = read_ranks_from_file(dir + "done_ranks.txt")
-    print(f"Read {len(ranks)} ranks and {len(done_ranks)} done ranks from files.")
-    
-    generate_moves(ranks, dir + "moves.txt")
-    generate_done(ranks, dir + "done.txt")
-    generate_winner(done_ranks, dir + "winner.txt")
-
-    validate_files(
+    stream_validate(
         dir + "done_baseline.txt",
         dir + "done.txt",
-        same_ranks=True,
-        only_values=False,
-        values_type="done"
+        "done",
+        no_input=False,
+        output=None,
+        parse_line=parse_line,
+        compare_line=compare_line
     )
-
-    # validate_files(
-    #     dir + "winner.txt",
-    #     dir + "winner_baseline.txt",
-    #     same_ranks=True,
-    #     only_values=False,
-    #     values_type="winner"
-    # )
     
-    validate_solve_data_matches_winner(done_ranks)
+    validate_solve_data_matches_winner(None)

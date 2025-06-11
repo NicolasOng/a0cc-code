@@ -552,7 +552,7 @@ class Game:
         # if true, players can't make moves that lead to an illegal state.
         self.no_illegal_moves = False
         # if true, players can't make moves that lead to a draw.
-        self.no_draw_moves = False or save_board_history
+        self.no_draw_moves = False
         # if true, a pass move is allowed when a player has no moves.
         self.pass_moves = True
         # if false, a player with no moves loses the game. if true, the game ends in a draw.
@@ -782,6 +782,12 @@ class Game:
         if player_o_winner and cur_player == Player.PLAYER_X:
             return Player.PLAYER_O
         return None
+    
+    def is_illegal_state(self, board: Board) -> bool:
+        '''
+        Checks if the given board is in an illegal state.
+        '''
+        return board.is_illegal_state(self.board_history[0])
 
     def simple_hash(self):
         board_hash = self.board.simple_hash()
