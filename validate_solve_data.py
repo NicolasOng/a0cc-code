@@ -14,7 +14,7 @@ def file_loading_test():
     print(f"Value at index 559352639: {c}")
 
 def baseline_solver_test_function():
-    num_spots = 49
+    num_spots = 16
     num_players = 2
     num_pieces = 3
     d = CCBaselineSolver("solve-data/CC-SOLVE-BASELINE-49-3.dat", num_spots, num_players, num_pieces)
@@ -23,7 +23,7 @@ def baseline_solver_test_function():
 
     # set to (0, 10), (10, 20), ...
     n = 10000000
-    i_start = 25 * n
+    i_start = 0 * n
     i_end = min(60 * n, l.get_max_rank())
     for x in range(i_start, i_end):
         l.unrank(x, s)
