@@ -53,7 +53,7 @@ def generate_n_done_ranks(n: int, fn: str = "done_ranks.txt"):
             rank = random.randint(0, max_rank)
             r.unrank(rank, s)
             board = s.get_board()
-            done = cc.terminal_state(board)
+            done = cc.done(board)
             if done:
                 f.write(f"{rank}\n")
                 num_done += 1
@@ -91,7 +91,7 @@ def generate_files(fn: str, ranks: Optional[list[int]], mode: str, num_lines: in
 
     # if ranks is None, use all ranks
     num_ranks = len(ranks) if ranks else r.get_max_rank()
-    print(num_ranks, "ranks to validate.")
+    print(num_ranks, "ranks to generate.")
 
     f = open_new_file(file_idx)
     try:
@@ -111,12 +111,12 @@ def generate_files(fn: str, ranks: Optional[list[int]], mode: str, num_lines: in
 
             # depending on the mode, write the desired information to the file
             if mode == "done":
-                done = cc.terminal_state(board)
+                done = cc.done(board)
                 f.write(f"{rank} {1 if done else 0}\n")
                 line_count += 1
             
             elif mode == "winner":
-                winner = cc.get_winner(board)
+                winner = cc.winner(board)
                 if winner == Player.PLAYER_X:
                     pw = 0
                 elif winner == Player.PLAYER_O:
@@ -126,6 +126,11 @@ def generate_files(fn: str, ranks: Optional[list[int]], mode: str, num_lines: in
                 f.write(f"{rank} {pw}\n")
                 line_count += 1
             
+            elif mode == "illegal":
+                illegal = not cc.legal(board)
+                f.write(f"{rank} {1 if illegal else 0}\n")
+                line_count += 1
+            
             elif mode == "moves":
                 moves = cc.generate_moves_for_given_board(board)
                 # TODO: choose a better way to represent moves
@@ -133,13 +138,13 @@ def generate_files(fn: str, ranks: Optional[list[int]], mode: str, num_lines: in
                 line_count += 1
             
             elif mode == "done_full":
-                done = cc.terminal_state(board)
+                done = cc.done(board)
                 if done:
                     f.write(f"{rank}\n")
                     line_count += 1
             
             elif mode == "winner_full":
-                winner = cc.get_winner(board)
+                winner = cc.winner(board)
                 if winner == Player.PLAYER_X:
                     pw = 0
                 elif winner == Player.PLAYER_O:
@@ -151,147 +156,10 @@ def generate_files(fn: str, ranks: Optional[list[int]], mode: str, num_lines: in
                     line_count += 1
             
             elif mode == "solvedata":
-                s.print_ascii_compact()
-                print(l.lookup(s))
+                f.write(s.get_ascii_compact() + f"{l.lookup(s)}\n")
     finally:
         if f:
             f.close()
-
-def generate_small_validation_files(dir: str, n: int):
-    '''
-    Generates small validation files for the given directory and number of ranks.
-    '''
-    generate_n_random_ranks(n, dir + "ranks.txt")
-    generate_n_done_ranks(n, dir + "ranks_done.txt")
-
-    ranks = read_ranks_from_file(dir + "ranks.txt")
-    done_ranks = read_ranks_from_file(dir + "ranks_done.txt")
-
-    generate_files(dir + "done.txt", ranks, "done", n + 1)
-    generate_files(dir + "winner.txt", done_ranks, "winner", n + 1)
-    #generate_files(dir + "moves.txt", ranks, "moves", n + 1)
-
-def generate_moves(ranks: list[int], fn: str = "moves.txt"):
-    '''
-    Generates a text file with n random ranks and their corresponding moves.
-    To validate the moves, generate the same text file with a baseline chinese checkers implementation.
-    '''
-    if os.path.exists(fn):
-        print(f"{fn} already exists, skipping generation.")
-        return
-    
-    print("Generating moves for ranks...")
-    s = CCState(config.num_spots, config.num_pieces, config.num_players)
-    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-    cc = Game(config.board_size, config.num_pieces)
-
-    # generate the moves for each board, and put them in a text file
-    with open(fn, "w") as f:
-        for rank in ranks:
-            r.unrank(rank, s)
-            board = s.get_board()
-            moves = cc.generate_moves_for_given_board(board)
-            # TODO: choose a better way to represent moves
-            f.write(f"Rank: {rank}, Moves: {moves}\n")
-
-def generate_done(ranks: list[int], fn: str = "done.txt"):
-    '''
-    Generates a text file with n random ranks and if the board is done or not.
-    To validate the done states, generate the same text file with a baseline chinese checkers implementation.
-    '''
-    if os.path.exists(fn):
-        print(f"{fn} already exists, skipping generation.")
-        return
-    
-    print("Generating done states for ranks...")
-    s = CCState(config.num_spots, config.num_pieces, config.num_players)
-    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-    cc = Game(config.board_size, config.num_pieces)
-
-    # generate the done decision for each board, and put them in a text file
-    with open(fn, "w") as f:
-        for rank in ranks:
-            r.unrank(rank, s)
-            board = s.get_board()
-            done = cc.terminal_state(board)
-            f.write(f"{rank} {1 if done else 0}\n")
-
-def generate_done_full(fn: str = "done_full.txt"):
-    '''
-    Generates a text file with all the done ranks.
-    Ranks not in the file are considered not done.
-    To validate the done states, generate the same text file with a baseline chinese checkers implementation.
-    '''
-    if os.path.exists(fn):
-        print(f"{fn} already exists, skipping generation.")
-        return
-    print("Generating full done states for all ranks...")
-    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-    s = CCState(config.num_spots, config.num_pieces, config.num_players)
-    cc = Game(config.board_size, config.num_pieces)
-    max_rank = r.get_max_rank()
-    with open(fn, "w") as f:
-        for rank in range(max_rank + 1):
-            r.unrank(rank, s)
-            board = s.get_board()
-            done = cc.terminal_state(board)
-            if done: f.write(f"{rank} {1 if done else 0}\n")
-
-def generate_winner(ranks: list[int], fn: str = "winner.txt"):
-    '''
-    Generates a text file with n random ranks and their corresponding winner.
-    To validate the winners, generate the same text file with a baseline chinese checkers implementation.
-    '''
-    if os.path.exists(fn):
-        print(f"{fn} already exists, skipping generation.")
-        return
-    
-    print("Generating winners for ranks...")
-    s = CCState(config.num_spots, config.num_pieces, config.num_players)
-    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-    cc = Game(config.board_size, config.num_pieces)
-
-    # generate the winner for each board, and put them in a text file
-    with open(fn, "w") as f:
-        for rank in ranks:
-            r.unrank(rank, s)
-            board = s.get_board()
-            winner = cc.get_winner(board)
-            if winner == Player.PLAYER_X:
-                pw = 0
-            elif winner == Player.PLAYER_O:
-                pw = 1
-            else:
-                pw = -1
-
-            f.write(f"{rank} {pw}\n")
-
-def generate_winner_full(fn: str = "winner_full.txt"):
-    '''
-    Generates a text file with all the winners for all ranks.
-    Ranks not done (so no winner) are not in the file.
-    To validate the winners, generate the same text file with a baseline chinese checkers implementation.
-    '''
-    if os.path.exists(fn):
-        print(f"{fn} already exists, skipping generation.")
-        return
-    print("Generating full winners for all ranks...")
-    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-    s = CCState(config.num_spots, config.num_pieces, config.num_players)
-    cc = Game(config.board_size, config.num_pieces)
-    max_rank = r.get_max_rank()
-    with open(fn, "w") as f:
-        for rank in range(max_rank + 1):
-            r.unrank(rank, s)
-            board = s.get_board()
-            winner = cc.get_winner(board)
-            if winner == Player.PLAYER_X:
-                pw = 0
-            elif winner == Player.PLAYER_O:
-                pw = 1
-            else:
-                continue
-            f.write(f"{rank} {pw}\n")
 
 def parse_line(line: Optional[str], line_no: Optional[int], output: Optional[int]) -> tuple[int | float, Optional[list[int]]]:
     '''
@@ -318,8 +186,8 @@ def print_rank_info(rank: int, s: CCState, r: CCDefaultRank, l: CCBaselineSolver
     # get the info
     r.unrank(rank, s)
     board = s.get_board()
-    done = cc.terminal_state(board)
-    winner = cc.get_winner(board)
+    done = cc.done(board)
+    winner = cc.winner(board)
     result = l.lookup(s)
     if result == 0 or result == 3: # Draw or Illegal
         r_winner = None
@@ -329,7 +197,7 @@ def print_rank_info(rank: int, s: CCState, r: CCDefaultRank, l: CCBaselineSolver
         r_winner = Player.PLAYER_X
     else:
         raise ValueError(f"Unexpected result: {result}")
-    illegal = cc.is_illegal_state(board)
+    illegal = not cc.legal(board)
     # print the info
     print(board.board_view())
     print(f"Current Player: {board.current_player}")
@@ -365,6 +233,25 @@ def compare_line(line1: tuple[Optional[int], Optional[list[int]]],
                 print_rank_info(rank, s, r, l, cc)
                 print(f"Expected {'done' if done1 == 1 else 'not done'} ({done1}), got {'done' if done2 == 1 else 'not done'} ({done2})")
                 print("---")
+            elif mode == "solvedata":
+                rank = input1
+                print_rank_info(rank, s, r, l, cc)
+                print(f"Expected solve data output: {output1}, got: {output2}")
+                print("---")
+            elif mode == "winner":
+                rank = input1
+                winner1 = output1[0] if output1 else None
+                winner2 = output2[0] if output2 else None
+                print_rank_info(rank, s, r, l, cc)
+                print(f"Expected winner: {winner1}, got: {winner2}")
+                print("---")
+            elif mode == "illegal":
+                rank = input1
+                illegal1 = output1[0] if output1 else None
+                illegal2 = output2[0] if output2 else None
+                print_rank_info(rank, s, r, l, cc)
+                print(f"Expected {'illegal' if illegal1 == 1 else 'not illegal'} ({illegal1}), got {'illegal' if illegal2 == 1 else 'not illegal'} ({illegal2})")
+                print("---")
             return True
         else:
             return False  # No differences found
@@ -399,7 +286,9 @@ def stream_validate(fn1: str, fn2: str, mode: str, no_input: bool, output: Optio
 
         # loop until both files are exhausted
         differences = 0
+        total_lines = 0
         while line1 or line2:
+            total_lines += 1
             # get the input/output from the line in file 1 and file 2
             # if EOF is reached, input should be float('inf'), so we always advance the other file
             input1, output1 = parse_line(line1, line_no1 if no_input else None, output)
@@ -430,7 +319,7 @@ def stream_validate(fn1: str, fn2: str, mode: str, no_input: bool, output: Optio
                 line_no2 += 1
             # if there was a difference, increment the differences counter
             if diff: differences += 1
-    print(f"Stream validation complete. Found {differences} differences between {fn1} and {fn2}.")
+    print(f"Stream validation complete. Found {differences}/{total_lines} differences between {fn1} and {fn2}.")
 
 def validate_solve_data_matches_winner(ranks: Optional[list[int]]):
     '''
@@ -465,10 +354,10 @@ def validate_solve_data_matches_winner(ranks: Optional[list[int]]):
             continue
         board = s.get_board()
 
-        if not cc.terminal_state(board):
+        if not cc.done(board):
             continue
 
-        winner = cc.get_winner(board)
+        winner = cc.winner(board)
         result = l.lookup(s)
 
         if result == 0 or result == 3: # Draw or Illegal
@@ -490,25 +379,81 @@ def validate_solve_data_matches_winner(ranks: Optional[list[int]]):
     
     print(f"Validation complete. Found {mis_matches} mismatches out of {len(ranks) if ranks is not None else num_ranks} ranks.")
 
-if __name__ == "__main__":
-    # python -m cc.validations
-    dir = config.data_folder + "validations/"
-    if not os.path.exists(dir):
-        os.makedirs(dir)
-        
-    # Generate random ranks and done ranks
-    n = 1000
-    generate_small_validation_files(dir, n)
-    exit()
-    
+def generate_small_validation_files(dir: str, n: int):
+    '''
+    Generates small validation files for the given directory and number of ranks.
+    Delete any existing files in the directory before generating new ones.
+    '''
+    generate_n_random_ranks(n, dir + "ranks.txt")
+    generate_n_done_ranks(n, dir + "ranks_done.txt")
+
+    ranks = read_ranks_from_file(dir + "ranks.txt")
+    done_ranks = read_ranks_from_file(dir + "ranks_done.txt")
+
+    generate_files(dir + "done.txt", ranks, "done", n + 1)
+    generate_files(dir + "winner.txt", done_ranks, "winner", n + 1)
+    generate_files(dir + "illegal.txt", ranks, "illegal", n + 1)
+    #generate_files(dir + "moves.txt", ranks, "moves", n + 1)
+
+def validate_small_files(dir: str):
+    '''
+    Validates the small files in the given directory.
+    '''
+    print("Validating small files...")
     stream_validate(
         dir + "done_baseline.txt",
-        dir + "done.txt",
+        dir + "done_0.txt",
         "done",
         no_input=False,
         output=None,
         parse_line=parse_line,
         compare_line=compare_line
     )
-    
+
+    stream_validate(
+        dir + "winner_baseline.txt",
+        dir + "winner_0.txt",
+        "winner",
+        no_input=False,
+        output=None,
+        parse_line=parse_line,
+        compare_line=compare_line
+    )
+
+    stream_validate(
+        dir + "illegal_baseline.txt",
+        dir + "illegal_0.txt",
+        "illegal",
+        no_input=False,
+        output=None,
+        parse_line=parse_line,
+        compare_line=compare_line
+    )
+
+def generate_large_validation_files(dir: str):
+    generate_files(dir + "solvedata.txt", None, "solvedata", 10**18)
+
+def validate_large_files(dir: str):
+    stream_validate(
+        dir + "solvedata_baseline.txt",
+        dir + "solvedata_0.txt",
+        "solvedata",
+        no_input=True,
+        output=None,
+        parse_line=parse_line,
+        compare_line=compare_line
+    )
+
     validate_solve_data_matches_winner(None)
+
+if __name__ == "__main__":
+    # python -m cc.validations
+    dir = config.data_folder + "validations/"
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    
+    # generate and validate small files
+    # (generate files with your baseline implementation first)
+    n = 1000
+    generate_small_validation_files(dir, n)
+    validate_small_files(dir)

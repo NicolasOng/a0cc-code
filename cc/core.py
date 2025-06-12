@@ -550,7 +550,7 @@ class Game:
         # if true, players can't move pieces "backwards" (towards their home area).
         self.no_reverse_moves = False or no_reverse_moves
         # if true, players can't make moves that lead to an illegal state.
-        self.no_illegal_moves = False
+        self.no_illegal_moves = True
         # if true, players can't make moves that lead to a draw.
         self.no_draw_moves = False
         # if true, a pass move is allowed when a player has no moves.
@@ -758,23 +758,25 @@ class Game:
         
         return ended
     
-    def terminal_state(self, board: Board) -> bool:
+    def done(self, board: Board) -> bool:
         '''
         Checks if the given board is a terminal state (or an illegal state).
         Assumes no game history is available, so no repeated states can be checked for draws.
         Uses this game's rules to determine if the state is terminal
         (specifically, the initial board is used for goal areas)
         '''
-        illegal = board.is_illegal_state(self.board_history[0])
+        # check for illegal state if illegal moves are allowed
+        if not self.no_illegal_moves and board.is_illegal_state(self.board_history[0]): return True
         player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
-        return illegal or player_x_winner or player_o_winner
+        return (player_x_winner and board.current_player == Player.PLAYER_O) or (player_o_winner and board.current_player == Player.PLAYER_X)
     
-    def get_winner(self, board: Board) -> Player | None:
+    def winner(self, board: Board) -> Player | None:
         '''
         Checks if the given board has a winner.
         Assumes no game history, so no repeated states can be checked for draws.
         '''
-        if board.is_illegal_state(self.board_history[0]): return None
+        # only check for an illegal state if illegal moves are allowed
+        if not self.no_illegal_moves and board.is_illegal_state(self.board_history[0]): return None
         player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
         cur_player = board.current_player
         if player_x_winner and cur_player == Player.PLAYER_O:
@@ -783,11 +785,11 @@ class Game:
             return Player.PLAYER_O
         return None
     
-    def is_illegal_state(self, board: Board) -> bool:
+    def legal(self, board: Board) -> bool:
         '''
         Checks if the given board is in an illegal state.
         '''
-        return board.is_illegal_state(self.board_history[0])
+        return not board.is_illegal_state(self.board_history[0])
 
     def simple_hash(self):
         board_hash = self.board.simple_hash()

@@ -23,7 +23,7 @@ class SearchMoves:
         '''
         Checks if the given state is a terminal state.
         '''
-        return self.player.game.terminal_state(state)
+        return self.player.game.done(state)
 
     def get_successors(self, state: Board) -> tuple[list[Board], list[float]]:
         '''

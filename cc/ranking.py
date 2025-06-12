@@ -162,6 +162,25 @@ class CCState:
         for x in range(len(self.board)):
             print(f"{self.board[x]}", end='')
 
+    def get_ascii(self) -> str:
+        '''
+        Returns the CCState in ASCII format as a string.
+        Equivalent to print_ascii, but returns the string instead of printing.
+        '''
+        s = f"[{self.to_move + 1}] "
+        s += ' '.join(str(self.board[x]) for x in range(len(self.board)))
+        s += '\n'
+        return s
+
+    def get_ascii_compact(self) -> str:
+        '''
+        Returns the CCState in a compact ASCII format as a string.
+        Equivalent to print_ascii_compact, but returns the string instead of printing.
+        '''
+        s = f"{self.to_move + 1}"
+        s += ''.join(str(self.board[x]) for x in range(len(self.board)))
+        return s
+
 class RankingBase:
     '''
     RankingBase is a class that provides methods for ranking and unranking.
