@@ -1,0 +1,33 @@
+{
+    "self_play" : {
+        "iterations": 1000,
+        "num_parallel_play_worker": 6,
+        "replay_buffer_size": 10000,
+        "train_percentage": 0.5,
+        "keep_old_data_probability": 0.05,
+        "sample_size": 5000
+    },
+    "mcts": {
+        "samples": 2
+    },
+    "training" : {
+        "batch_size": 5000,
+        "epochs": 1,
+        "learning_rate": 0.00001,
+        "momentum": 0.9,
+        "weight_decay": 0.0001,
+        "seed": 42
+    },
+    "file": {
+        "logs_path": "logs/",
+        "training_data_path": "training_data",
+        "training_plots_path": "plots/",  
+        "trained_model_params_path": "trained_models/"
+    },
+    "linux_file": {
+        "logs_path": "logs/",
+        "training_data_path": "training_data",
+        "training_plots_path": "plots/",
+        "trained_model_params_path": "trained_models/"
+    }
+}
