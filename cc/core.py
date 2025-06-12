@@ -121,8 +121,9 @@ class Board:
         '''
         player_tile = player_to_tile[self.current_player]
         logging.debug(f"Applying move: {move} for player {self.current_player}")
-        assert self.position_on_main_board(move.start.x, move.start.y) and self.board[move.start.x][move.start.y] == player_tile, f"Invalid move: {move.start} is not occupied by the current player."
-        assert self.position_on_main_board(move.end.x, move.end.y) and self.board[move.end.x][move.end.y] == Tile.EMPTY, f"Invalid move: {move.end} is occupied."
+        assert self.position_on_main_board(move.start.x, move.start.y) and self.board[move.start.x][move.start.y] == player_tile, f"Invalid move {move}: {move.start} is not occupied by the current player. {self.board_view()} {self.current_player}"
+        if move.start.x != move.end.x or move.start.y != move.end.y:
+            assert self.position_on_main_board(move.end.x, move.end.y) and self.board[move.end.x][move.end.y] == Tile.EMPTY, f"Invalid move {move}: {move.end} is occupied. {self.board_view()} {self.current_player}"
         # move the piece
         self.board[move.start.x][move.start.y] = Tile.EMPTY
         self.board[move.end.x][move.end.y] = player_tile
@@ -137,7 +138,8 @@ class Board:
         player_tile = player_to_tile[Player.PLAYER_O if self.current_player == Player.PLAYER_X else Player.PLAYER_X]
         logging.debug(f"Undoing move: {move} for player {self.current_player}")
         assert self.position_on_main_board(move.end.x, move.end.y) and self.board[move.end.x][move.end.y] == player_tile, f"Invalid undo: {move.end} is not occupied by the current player."
-        assert self.position_on_main_board(move.start.x, move.start.y) and self.board[move.start.x][move.start.y] == Tile.EMPTY, f"Invalid undo: {move.start} is occupied."
+        if move.start.x != move.end.x or move.start.y != move.end.y:
+            assert self.position_on_main_board(move.start.x, move.start.y) and self.board[move.start.x][move.start.y] == Tile.EMPTY, f"Invalid undo: {move.start} is occupied."
         # undo the piece move
         self.board[move.end.x][move.end.y] = Tile.EMPTY
         self.board[move.start.x][move.start.y] = player_tile
@@ -343,10 +345,10 @@ class Board:
                 if can_jump_over:
                     jump_to_pos_on_main_board = self.position_on_main_board(jump_x, jump_y)
                     can_jump_to = jump_to_pos_on_main_board and not self.position_is_blocked(jump_x, jump_y)
-                    can_side_jump_on = self.position_in_four_non_main_triangles(jump_x, jump_y)
+                    can_side_jump_on = use_four_corners_to_jump and self.position_in_four_non_main_triangles(jump_x, jump_y)
                     if can_jump_to:
                         jumps.add(Move(sx, sy, jump_x, jump_y))
-                    if can_jump_to or (use_four_corners_to_jump and can_side_jump_on) or (can_jump_out_of_home and not jump_to_pos_on_main_board):
+                    if can_jump_to or can_side_jump_on or (can_jump_out_of_home and not jump_to_pos_on_main_board):
                         deeper_jumps = self.get_jumps(sx, sy, jump_x, jump_y, movement_rules, visited) # NOT visited.copy()
                         jumps.update(deeper_jumps)                    
         return jumps
@@ -536,7 +538,7 @@ class Board:
         return (hashable_board, self.current_player.value, self.home_size)
 
 class Game:
-    def __init__(self, board_size: int = 7, num_pieces: int = 6, save_board_history: bool=False, no_reverse_moves: bool=False) -> None:
+    def __init__(self, board_size: int = 7, num_pieces: int = 6, draw_on_repeat: bool=False, no_reverse_moves: bool=False) -> None:
         self.board = Board(board_size=board_size, home_size=board_to_home_size[board_size])
         self.board_history: list[Board] = []
         self.end = False
@@ -544,13 +546,13 @@ class Game:
 
         # game rules
         # if true, player can "jump" off the board during chained jumps
-        self.can_jump_out_of_home = False
+        self.can_jump_out_of_home = True
         # if true, player can use the four non-main corners during chained jumps
-        self.use_four_corners_to_jump = True
+        self.use_four_corners_to_jump = False
         # if true, players can't move pieces "backwards" (towards their home area).
         self.no_reverse_moves = False or no_reverse_moves
         # if true, players can't make moves that lead to an illegal state.
-        self.no_illegal_moves = True
+        self.no_illegal_moves = False
         # if true, players can't make moves that lead to a draw.
         self.no_draw_moves = False
         # if true, a pass move is allowed when a player has no moves.
@@ -559,7 +561,7 @@ class Game:
         self.draw_on_no_moves = False
         # set to True in normal play, False in eg tree search
         # as DFS saves the board history
-        self.draw_on_repeated_state = False or save_board_history
+        self.draw_on_repeated_state = False or draw_on_repeat
 
         # we need the board history to check for repeated states for draws
         self.save_board_history = self.draw_on_repeated_state or self.no_draw_moves
@@ -758,7 +760,7 @@ class Game:
         
         return ended
     
-    def done(self, board: Board) -> bool:
+    def get_done(self, board: Board) -> bool:
         '''
         Checks if the given board is a terminal state (or an illegal state).
         Assumes no game history is available, so no repeated states can be checked for draws.
@@ -770,7 +772,7 @@ class Game:
         player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
         return (player_x_winner and board.current_player == Player.PLAYER_O) or (player_o_winner and board.current_player == Player.PLAYER_X)
     
-    def winner(self, board: Board) -> Player | None:
+    def get_winner(self, board: Board) -> Player | None:
         '''
         Checks if the given board has a winner.
         Assumes no game history, so no repeated states can be checked for draws.

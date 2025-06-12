@@ -20,3 +20,5 @@ sampled_neighboring_states.p
 test_label2.png
 testing.p
 training_data/
+action_accuracy.png
+policy_results.p
