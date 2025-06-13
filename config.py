@@ -13,4 +13,9 @@ class Config:
 
         self.data_folder = cf.get("data_folder", "data/")
 
+        self.training_iterations = cf.get("training_iterations", 50)
+        self.training_samples = cf.get("training_samples", 320)
+        self.training_dir = cf.get("training_dir", "data/training/")
+        self.turn_limit: int | None = cf.get("turn_limit", 80)
+
 config = Config("config/config.json")

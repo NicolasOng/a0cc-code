@@ -3,5 +3,9 @@
     "num_players": 2,
     "num_pieces": 3,
     "solve_data": "solve-data/CC-SOLVE-BASELINE-16-3.dat",
-    "data_folder": "data/"
+    "data_folder": "data/",
+    "training_iterations": 50,
+    "training_samples": 320,
+    "training_dir": "data/training/",
+    "turn_limit": 80
 }

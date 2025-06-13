@@ -3,7 +3,7 @@ import time
 
 from cc.core import Game, Board, Move, Player
 
-from typing import Protocol, TypedDict, Optional, Any
+from typing import Protocol, Optional, Any
 
 import logging
 logger = logging.getLogger(__name__)
@@ -12,19 +12,21 @@ class PlayerClass(Protocol):
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         ...
 
-class TurnData(TypedDict):
-    board: Board
-    move: Move
-    player_data: Any
+class TurnData:
+    def __init__(self, board: Board, move: Move, player_data: Any):
+        self.board: Board = board
+        self.move: Move = move
+        self.player_data: Any = player_data
 
-class GameData(TypedDict):
-    game: Game
-    #players: list[PlayerClass]
-    turn_limit: Optional[int]
-    turn_data: list[TurnData]
-    ended: bool
-    winner: Optional[Player]
-    time: float
+class GameData:
+    def __init__(self, game: Game, turn_limit: Optional[int] = None):
+        self.game: Game = game
+        #self.players = players
+        self.turn_limit: Optional[int] = turn_limit
+        self.turn_data: list[TurnData] = []
+        self.ended: bool = False
+        self.winner: Optional[Player] = None
+        self.time: float = 0.0
 
 def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = None) -> GameData:
     '''
@@ -35,15 +37,7 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
     '''
     start = time.perf_counter()
 
-    data: GameData = {
-        'game': game,
-        #'players': players,
-        'turn_limit': turn_limit,
-        'turn_data': [],
-        'ended': False,
-        'winner': None,
-        'time': 0.0
-    }
+    data = GameData(game, turn_limit)
 
     turn = 0
     while not game.end and (turn_limit is None or turn < turn_limit):
@@ -53,21 +47,14 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
         
         move, player_data = player.select_move(game.board, moves)
 
-        turn_data: TurnData = {
-            'board': copy.deepcopy(game.board),
-            'move': move,
-            'player_data': player_data
-        }
-        data['turn_data'].append(turn_data)
+        turn_data = TurnData(
+            board=copy.deepcopy(game.board),
+            move=move,
+            player_data=player_data
+        )
+        data.turn_data.append(turn_data)
 
-        try:
-            game.end_turn(move)
-        except Exception as e:
-            print(game.board.board_view())
-            print(move)
-            print("moves:")
-            for move in moves:
-                print(move)
+        game.end_turn(move)
 
         turn += 1
     
@@ -76,10 +63,10 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
     else:
         logger.info(f"Player {game.winner} wins!")
     
-    data['ended'] = game.end
-    data['winner'] = game.winner
+    data.ended = game.end
+    data.winner = game.winner
 
     end = time.perf_counter()
-    data['time'] = end - start
+    data.time = end - start
 
     return data

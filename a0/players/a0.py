@@ -23,7 +23,7 @@ class SearchMoves:
         '''
         Checks if the given state is a terminal state.
         '''
-        return self.player.game.done(state)
+        return self.player.game.get_done(state)
 
     def get_successors(self, state: Board) -> tuple[list[Board], list[float]]:
         '''
@@ -213,7 +213,7 @@ class Policy:
 class A0Player:
     def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel):
         self.model = model
-        self.game = Game(board_size=board_size, num_pieces=num_pieces)
+        self.game = Game(board_size, num_pieces, False, False)
         self.temperature = 1.0  # Temperature for exploration in MCTS
         self.mcts_iterations = 100
     
@@ -240,8 +240,8 @@ class A0Player:
         p.apply_power_normalize(self.temperature)
 
         # select a move based on the policy distribution
-        # (select the move with the highest probability)
-        selected_move = p.get_best_move()
+        # sampling instead of argmax to allow exploration
+        selected_move = p.sample_move(42)
 
         if selected_move.start.x == 0 and selected_move.start.y == 0 and selected_move.end.x == 0 and selected_move.end.y == 0:
             print(mcts_root_children_visit_counts)
