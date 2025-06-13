@@ -35,6 +35,7 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
     The game will continue until it ends or the turn limit is reached.
     This function returns data about the game and each turn.
     '''
+    logger.info("Game started.")
     start = time.perf_counter()
 
     data = GameData(game, turn_limit)

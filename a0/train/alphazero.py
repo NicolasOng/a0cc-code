@@ -1,4 +1,5 @@
 from typing import Optional, Any
+import multiprocessing
 import concurrent.futures
 from concurrent.futures import Future, wait, FIRST_COMPLETED
 import os
@@ -89,7 +90,6 @@ def self_play(player: A0Player) -> tuple[list[TrainingData], list[GameData]]:
         The game data for each game played, which can be used for analysis or debugging.
     '''
     logger.info("Starting self-play to generate training data...")
-    print("Starting self-play to generate training data...")
     # serialize the player model (JAX models cannot be pickled directly + serialization is needed for multiprocessing)
     player_serialized: bytes = dill.dumps(player)
     # use self-play with the model and mcts to generate training data
@@ -112,6 +112,7 @@ def self_play(player: A0Player) -> tuple[list[TrainingData], list[GameData]]:
             start_game()
         
         while True:
+            logger.info(f"Current training set size: {len(training_set)}/{config.training_samples}")
             # when a game (or games) finish(es),
             done, _ = wait(futures, return_when=FIRST_COMPLETED)
 
@@ -126,17 +127,17 @@ def self_play(player: A0Player) -> tuple[list[TrainingData], list[GameData]]:
                 # and the game data to the list of game data
                 game_data_list.append(game_data)
                 # if the training set is not full yet, start a new game
-                if len(training_set) >= config.training_samples:
+                if len(training_set) < config.training_samples:
                     start_game()
             
             # stop when the training set is full
             if len(training_set) >= config.training_samples:
-                print("Training set is full, cancelling all games")
+                logger.info("Training set is full, cancelling all games")
                 for future in futures:
                     future.cancel()
                 break
     
-    print(f"Generated training set of size: {len(training_set)}/{config.training_samples}")
+    logger.info(f"Generated training set of size: {len(training_set)}/{config.training_samples}")
     return training_set[:config.training_samples], game_data_list
 
 def train_model(model: AlphaZeroModel, training_set: list[TrainingData], n_batches: int = 10) -> AlphaZeroModel:
@@ -213,12 +214,12 @@ def train_alphazero(model_path: Optional[str]) -> None:
 
         # save the training set to a file
         if config.training_dir:
-            with open(config.training_dir + f"training_set_{i}.pkl", 'wb') as f:
+            with open(config.training_dir + f"training_set_{i + 1}.pkl", 'wb') as f:
                 pickle.dump(training_set, f)
         
         # save the game data to a file
         if config.training_dir:
-            with open(config.training_dir + "gamedata_{i}.pkl", 'wb') as f:
+            with open(config.training_dir + f"gamedata_{i + 1}.pkl", 'wb') as f:
                 pickle.dump(game_data, f)
         
         # train the model on the training set
@@ -230,10 +231,16 @@ def train_alphazero(model_path: Optional[str]) -> None:
 
 if __name__ == "__main__":
     setup_logging(
-        level=5,
+        level=20,
         log_dir="logs/",
         process_name="training_alphazero"
     )
+
+    # Set the multiprocessing start method to 'spawn' for compatibility with JAX
+    try:
+        multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass
 
     # Example usage
     train_alphazero(

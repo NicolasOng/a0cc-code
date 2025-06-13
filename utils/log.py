@@ -7,13 +7,15 @@ from datetime import datetime
 today = datetime.now().strftime("%Y-%m-%d")
 _is_setup = False
 
-def setup_logging(level: int = 5, log_dir: str = "logs/", process_name: str = "log"):
+def setup_logging(level: int = logging.INFO, log_dir: str = "logs/", process_name: str = "log"):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     
     root_logger = logging.getLogger()
     # always capture all logs
     root_logger.setLevel(level)
+
+    logging.getLogger("jax._src.xla_bridge").setLevel(logging.WARNING)
 
     # Clear existing handlers (helps when logging is reset in notebooks or multiple runs)
     if root_logger.hasHandlers():
@@ -30,12 +32,12 @@ def setup_logging(level: int = 5, log_dir: str = "logs/", process_name: str = "l
     root_logger.addHandler(stream_handler)
 
     # Error+Info file handler
-    file_handler = logging.FileHandler(today + "_" + process_name + ".err.log")
+    file_handler = logging.FileHandler(log_dir + today + "_" + process_name + ".err.log")
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
     # Output file handler
-    main_file_handler = logging.FileHandler(today + "_" + process_name + ".out.log")
+    main_file_handler = logging.FileHandler(log_dir + today + "_" + process_name + ".out.log")
     main_file_handler.setFormatter(formatter)
     main_file_handler.addFilter(lambda record: record.levelno == 25)
     root_logger.addHandler(main_file_handler)
