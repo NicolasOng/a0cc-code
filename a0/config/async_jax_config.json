@@ -1,6 +1,6 @@
 {
     "self_play" : {
-        "iterations": 50,
+        "iterations": 51,
         "num_parallel_play_worker": 6,
         "replay_buffer_size": 10000,
         "train_percentage": 0.5,
