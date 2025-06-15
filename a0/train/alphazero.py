@@ -17,15 +17,10 @@ from a0.game import play, GameData
 from a0.players.a0 import A0Player, board_to_input
 from a0.model import AlphaZeroModel, load_model, save_model
 from cc.core import Game
+from a0.dataset import Dataset, TrainingData
 
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
-
-class TrainingData:
-    def __init__(self, board: jnp.ndarray, value: float, policy: jnp.ndarray):
-        self.board: jnp.ndarray = board
-        self.value: float = value
-        self.policy: jnp.ndarray = policy
 
 def game_data_to_training_set(game_data: GameData) -> list[TrainingData]:
     '''
@@ -72,6 +67,13 @@ def _play(player: bytes) -> tuple[list[TrainingData], GameData]:
     then converts the game data into a training set.
     This function returns both the training set and the game data.
     '''
+    # first, set up logging
+    setup_logging(
+        level=20,
+        log_dir="logs/",
+        process_name="training_alphazero"
+    )
+    # then play the game
     game = Game(config.board_size, config.num_pieces, True, False)
     player: A0Player = dill.loads(player)
     game_data = play(game, [player, player], config.turn_limit)
@@ -138,27 +140,14 @@ def self_play(player: A0Player) -> tuple[list[TrainingData], list[GameData]]:
                 break
     
     logger.info(f"Generated training set of size: {len(training_set)}/{config.training_samples}")
-    return training_set[:config.training_samples], game_data_list
+    return training_set, game_data_list
 
-def train_model(model: AlphaZeroModel, training_set: list[TrainingData], n_batches: int = 10) -> AlphaZeroModel:
-    logger.info("Training model on the generated training set...")
-    boards = jnp.stack([jnp.array(ex.board) for ex in training_set])
-    values = jnp.array([ex.value for ex in training_set])[:, None]  # Add [:, None] to make its shape (batch_size, 1)
-    policies = jnp.stack([jnp.array(ex.policy) for ex in training_set])
+def train_model(model: AlphaZeroModel, replay_buffer: Dataset) -> AlphaZeroModel:
+    logger.info(f"Training model on the replay buffer ({len(replay_buffer)})...")
 
-    # Split into n_batches (last batch may be smaller)
-    total = len(training_set)
-    batch_size = total // n_batches
-    batches = []
-    for i in range(n_batches):
-        start = i * batch_size
-        end = (i + 1) * batch_size if i < n_batches - 1 else total
-        batch = {
-            'board': boards[start:end],
-            'value': values[start:end],
-            'policy': policies[start:end]
-        }
-        batches.append(batch)
+    # shuffle the replay buffer and create batches generator
+    replay_buffer.shuffle()
+    batches = replay_buffer.batches()
 
     optimizer = nnx.Optimizer(model, optax.adamw(0.005, 0.9))
 
@@ -189,7 +178,7 @@ def train_model(model: AlphaZeroModel, training_set: list[TrainingData], n_batch
 
     return model
 
-def train_alphazero(model_path: Optional[str]) -> None:
+def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> None:
     iterations = config.training_iterations
     # create/load a model
     model = AlphaZeroModel(
@@ -202,8 +191,14 @@ def train_alphazero(model_path: Optional[str]) -> None:
     
     if config.training_dir:
         save_model(config.training_dir + f'/model_{0}.pkl', model)
+    
+    replay_buffer = Dataset(
+        size=config.replay_buffer_size,
+        batch_size=config.training_batch_size,
+        static=False
+    )
 
-    for i in range(iterations):
+    for i in range(starting_iteration, iterations):
         print(f"Iteration {i + 1}/{iterations}")
         logger.info(f"Iteration {i + 1}/{iterations}")
         # create a player with the current model
@@ -222,8 +217,12 @@ def train_alphazero(model_path: Optional[str]) -> None:
             with open(config.training_dir + f"gamedata_{i + 1}.pkl", 'wb') as f:
                 pickle.dump(game_data, f)
         
-        # train the model on the training set
-        model = train_model(model, training_set)
+        # add the training data to the replay buffer
+        for example in training_set:
+            replay_buffer.add(example)
+        
+        # train the model on the experiences in the replay buffer
+        model = train_model(model, replay_buffer)
         
         # save the model after each iteration
         if config.training_dir:

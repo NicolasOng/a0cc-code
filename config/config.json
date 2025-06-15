@@ -7,5 +7,7 @@
     "training_iterations": 100,
     "training_samples": 320,
     "training_dir": "data/training/",
-    "turn_limit": 80
+    "turn_limit": 80,
+    "replay_buffer_size": 10000,
+    "training_batch_size": 64
 }

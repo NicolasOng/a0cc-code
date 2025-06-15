@@ -17,5 +17,7 @@ class Config:
         self.training_samples = cf.get("training_samples", 320)
         self.training_dir = cf.get("training_dir", "data/training/")
         self.turn_limit: int | None = cf.get("turn_limit", 80)
+        self.replay_buffer_size = cf.get("replay_buffer_size", 10000)
+        self.training_batch_size = cf.get("training_batch_size", 64)
 
 config = Config("config/config.json")
