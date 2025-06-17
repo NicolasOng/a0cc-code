@@ -1,3 +1,4 @@
+from cc.core import Board, Player
 from cc.solvedata import SolveData
 from cc.ranking import CCDefaultRank, CCPSRank12, CCState
 from typing import Any
@@ -54,6 +55,7 @@ class CCBaselineSolver:
     def __init__(self, filename: str, num_spots: int, num_players: int, num_pieces: int):
         self.solve_data = SolveData(filename)
         self.r = CCDefaultRank(num_spots, num_players, num_pieces)
+        self.ccstate = CCState(num_spots, num_pieces, num_players)
     
     def lookup(self, s: CCState) -> int:
         '''
@@ -62,6 +64,41 @@ class CCBaselineSolver:
         rank = self.r.rank(s)
         outcome = self.solve_data.get(rank)
         return outcome
+
+    def board_lookup(self, board: Board) -> int:
+        '''
+        Looks up the outcome of a board state.
+        This is a convenience method that converts a Board to CCState and calls lookup.
+        '''
+        self.ccstate.initialize_from_board(board)
+        return self.lookup(self.ccstate)
+
+    def get_outcome(self, board: Board) -> float:
+        '''
+        Returns the outcome of a board.
+        '''
+        # get the raw result from the solve data
+        solve_data_outcome = self.board_lookup(board)
+
+        # convert the result to an outcome in Player X's perspective
+        if solve_data_outcome == 0 or solve_data_outcome == 3: # Draw or Illegal
+            sd_winner = None
+        elif solve_data_outcome == 1: # Loss
+            sd_winner = Player.PLAYER_O
+        elif solve_data_outcome == 2: # Win
+            sd_winner = Player.PLAYER_X
+        else:
+            sd_winner = None  # Handle unexpected result
+        
+        # convert the outcome to a float from the current player's perspective
+        if sd_winner is None:
+            return 0.0
+        elif sd_winner == board.current_player:
+            return 1.0
+        elif sd_winner != board.current_player:
+            return -1.0
+        else:
+            return 0.0
 
 class FullSymmetry:
     def __init__(self, filename: str, num_spots: int, num_players: int, num_pieces: int):

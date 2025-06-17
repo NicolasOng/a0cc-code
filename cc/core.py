@@ -536,15 +536,34 @@ class Board:
     def simple_hash(self):
         hashable_board = tuple(tuple(tile.value for tile in row) for row in self.board)
         return (hashable_board, self.current_player.value, self.home_size)
+    
+    def __hash__(self) -> int:
+        '''
+        Returns a hash of the board.
+        This is used to check for repeated states in the game.
+        '''
+        return hash(self.simple_hash())
+
+    def __eq__(self, other: object) -> bool:
+        '''
+        Checks if two boards are equal.
+        This is used to check for repeated states in the game.
+        '''
+        if not isinstance(other, Board):
+            return False
+        return self.__hash__() == other.__hash__()
 
 class Game:
-    def __init__(self, board_size: int = 7, num_pieces: int = 6, draw_on_repeat: bool=False, no_reverse_moves: bool=False) -> None:
+    def __init__(self, board_size: int = 7, num_pieces: int = 6, draw_on_repeat: bool=False, no_reverse_moves: bool=False, no_illegal_moves: bool=False) -> None:
         self.board = Board(board_size=board_size, home_size=board_to_home_size[board_size])
         self.board_history: list[Board] = []
         self.end = False
         self.winner = None
 
         # game rules
+        # draw_on_repeat -> only set to true for "real" games, not for tree search or other uses
+        # no_reverse_moves -> only set to true for training a0 (if needed)
+        # no_illegal_moves -> only set to true for validations
         # if true, player can "jump" off the board during chained jumps
         self.can_jump_out_of_home = True
         # if true, player can use the four non-main corners during chained jumps
@@ -552,7 +571,7 @@ class Game:
         # if true, players can't move pieces "backwards" (towards their home area).
         self.no_reverse_moves = False or no_reverse_moves
         # if true, players can't make moves that lead to an illegal state.
-        self.no_illegal_moves = False
+        self.no_illegal_moves = False or no_illegal_moves
         # if true, players can't make moves that lead to a draw.
         self.no_draw_moves = False
         # if true, a pass move is allowed when a player has no moves.

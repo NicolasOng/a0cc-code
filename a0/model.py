@@ -6,6 +6,8 @@ import orbax.checkpoint as ocp
 import numpy as np
 import pickle
 
+from config import config
+
 # class for the Residual Block (ResNet)
 class ResidualBlock(nnx.Module):
     def __init__(self, features: int, training: bool, rngs: nnx.Rngs):
@@ -155,7 +157,15 @@ def save_model(filepath: str, model: AlphaZeroModel) -> None:
     with open(filepath, 'wb') as f:
         pickle.dump(state, f)
 
-def load_model(filepath: str, model: AlphaZeroModel) -> AlphaZeroModel:
+def load_model(filepath: str) -> AlphaZeroModel:
+    # create a new model instance with the same parameters
+    model = AlphaZeroModel(
+        board_size=config.board_size,
+        num_filters=256,
+        training=True,
+        rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})
+    )
+    
     # load the state from the pickle file
     with open(filepath, 'rb') as f:
         state = pickle.load(f)
@@ -184,7 +194,7 @@ def example_usage() -> None:
 
     # Save model
     save_model(filepath, model)
-    loaded_model = load_model(filepath, AlphaZeroModel(board_size=4, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})))
+    loaded_model = load_model(filepath)
 
     new_value, new_policy = loaded_model(x)
 

@@ -172,6 +172,13 @@ def train_model(model: AlphaZeroModel, replay_buffer: Dataset) -> AlphaZeroModel
         return loss, value_loss, policy_loss
     
     for ts, batch in enumerate(batches):
+        # convert the batch to a dictionary
+        board_batch, value_batch, policy_batch = batch
+        batch = {
+            'board': board_batch,  # (N, board_size, board_size)
+            'value': value_batch,  # (N, 1)
+            'policy': policy_batch  # (N, board_size ** 4)
+        }
         loss, value_loss, policy_loss = train_step(model, optimizer, batch)
         logger.info(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
         print(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
