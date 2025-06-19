@@ -8,7 +8,7 @@
         "sample_size": 5000
     },
     "mcts": {
-        "samples": 2
+        "samples": 64
     },
     "training" : {
         "batch_size": 5000,
