@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Any
+import random
 import numpy as np
 import jax.numpy as jnp
 import jax
@@ -45,9 +46,10 @@ class SearchMoves:
         
         # get priors for the successors by using the model
         # useful if MCTS uses PUCT
+        # these are in the perspective of the state's current player
         _, policy = self.player.model(board_to_input(state))
         p = Policy(len(state.board))
-        p.set_logits(policy[0])
+        p.set_logits(policy[0], rotate_180=state.current_player == Player.PLAYER_O)
         p.mask_non_legal_moves(moves)
         p.apply_softmax()
         successor_priors = p.get_move_probabilities(moves)
@@ -57,13 +59,28 @@ class SearchMoves:
     def get_reward(self, state: Board) -> float:
         '''
         Returns the reward for the given state,
-        considering the current player's perspective.
+        considering the root player's perspective.
         Uses the model's evaluation function to determine the reward.
+        If the game is done, it returns the value based on the winner.
         (could implement a rollout in the future)
         '''
+        is_done, winner = self.player.game.get_done_and_winner(state)
+        if is_done:
+            # if the game is done, return the value based on the winner
+            if winner is None:
+                return 0.0
+            return 1.0 if winner == self._initial_state.current_player else -1.0
+
         board_input = board_to_input(state)
         value, _ = self.player.model(board_input)
-        return float(value[0][0])
+        value = float(value[0][0])
+
+        # if the current player is not the initial player,
+        if state.current_player != self._initial_state.current_player:
+            # we need to negate the value
+            value = -value
+        
+        return value
 
 def board_to_input(board: Board) -> jnp.ndarray:
     '''
@@ -72,13 +89,21 @@ def board_to_input(board: Board) -> jnp.ndarray:
     The last dimension represents the two players' pieces.
     The first channel is for the current player, and the second channel is for the opponent.
     The NN is trained to predict the value of the current player.
+    If the current player is Player.PLAYER_O, the board is rotated 180 degrees.
+    This way, the NN also knows the orientation of the board
+    If we don't do this, eg if all the channel 1 pieces are on the top,
+    the NN won't know if they are in its home or goal area.
     '''
     board_size, _ = board.board_sizes()
+
+    # rotate the board if necessary
+    if board.current_player == Player.PLAYER_O:
+        board.rotate_board_180()
     
     # get the tiles for each player
-    other_player = Player.PLAYER_X if board.current_player == Player.PLAYER_O else Player.PLAYER_O
-    other_player_tile = player_to_tile[other_player]
-    current_player_tile = player_to_tile[board.current_player]
+    # "current player" is always Player.PLAYER_X due to the rotation
+    current_player_tile = player_to_tile[Player.PLAYER_X]
+    other_player_tile = player_to_tile[Player.PLAYER_O]
 
     # get 2D arrays of tile positions for each player
     cp_tiles = [[tile == current_player_tile for tile in row] for row in board.board]
@@ -92,12 +117,43 @@ def board_to_input(board: Board) -> jnp.ndarray:
     input_array[0, :, :, 0] = cp_array
     input_array[0, :, :, 1] = op_array
 
+    # un-rotate the board if necessary
+    if board.current_player == Player.PLAYER_O:
+        board.rotate_board_180()
+
     return jnp.array(input_array)
+
+def create_rotated_policy_mapping(board_size: int) -> list[int]:
+    '''
+    Creates a mapping for the policy distribution indices
+    when the board is rotated 180 degrees.
+    This is used to rotate the policy distribution logits.
+    '''
+    rotated_policy_mapping = [0] * board_size ** 4
+    for start_x in range(board_size):
+        for start_y in range(board_size):
+            for end_x in range(board_size):
+                for end_y in range(board_size):
+                    # get the normal move index
+                    start_pos = start_x * board_size + start_y
+                    end_pos = end_x * board_size + end_y
+                    move_index = start_pos * (board_size * board_size) + end_pos
+                    # and the rotated move index
+                    rstart_x, rstart_y = board_size - 1 - start_x, board_size - 1 - start_y
+                    rstart_pos = rstart_x * board_size + rstart_y
+                    rend_x, rend_y = board_size - 1 - end_x, board_size - 1 - end_y
+                    rend_pos = rend_x * board_size + rend_y
+                    rmove_index = rstart_pos * (board_size * board_size) + rend_pos
+                    # add the mapping
+                    rotated_policy_mapping[move_index] = rmove_index
+
+    return rotated_policy_mapping
 
 class Policy:
     def __init__(self, board_size: int):
         self.board_size = board_size
         self.policy = jnp.zeros((board_size ** 4,), dtype=jnp.float32)
+        self.policy_rotation_mapping = create_rotated_policy_mapping(board_size)
     
     def move_to_policy_index(self, move: Move) -> int:
         '''
@@ -120,15 +176,31 @@ class Policy:
         end_x = end_pos // board_size
         end_y = end_pos % board_size
         return Move(start_x, start_y, end_x, end_y)
+
+    def rotate_policy_logits(self, logits: jnp.ndarray) -> jnp.ndarray:
+        '''
+        Rotates the policy logits by 180 degrees using the precomputed mapping.
+        This is used to adjust the policy distribution when the board is rotated.
+        '''
+        rotated_logits = jnp.zeros_like(logits)
+        for index in range(logits.shape[0]):
+            rotated_index = self.policy_rotation_mapping[index]
+            rotated_logits = rotated_logits.at[rotated_index].set(logits[index])
+        return rotated_logits
     
-    def set_logits(self, logits: jnp.ndarray) -> None:
+    def set_logits(self, logits: jnp.ndarray, rotate_180: bool) -> None:
         '''
         Initializes the policy distribution with the given logits
         The logits are expected to be a 1D array of shape (BOARD_SIZE**4,).
+        rotate functionality is used if the board was rotated 180 degrees before being passed into the model.
         '''
         assert logits.shape[0] == self.board_size ** 4, \
             f"Expected logits shape ({self.board_size ** 4},), but got {logits.shape}."
         self.policy = logits
+
+        # rotate if necessary
+        if rotate_180:
+            self.policy = self.rotate_policy_logits(self.policy)
 
     def set_logits_from_moves(self, moves: list[Move], values: list[float]) -> None:
         '''
@@ -213,11 +285,17 @@ class Policy:
 class A0Player:
     def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel):
         self.model = model
-        self.game = Game(board_size, num_pieces, False, False)
+        self.game = Game(board_size, num_pieces, False, True, False)
         self.temperature = 1.0  # Temperature for exploration in MCTS
-        self.mcts_iterations = 100
+        self.random_selection_prob = 0.01  # Probability of selecting a random move
+        self.mcts_iterations = 64
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
+        '''
+        Selects a move using MCTS and returns the selected move along with the policy distribution.
+        For exploration, it also allows for random choices.
+        '''
+
         # perform mcts and get the root's children
         mcts = MCTS(SearchMoves(state, self))
         mcts.run(iterations=self.mcts_iterations)
@@ -227,9 +305,6 @@ class A0Player:
         # with the root's children, create a policy distribution logits
         mcts_root_children_visit_counts = [float(child.visits) for child in children]
         mcts_root_children_moves = [state.child_board_to_move(child.state) for child in children]
-
-        # if sum(mcts_root_children_visit_counts) == 0:
-        #     mcts_root_children_visit_counts = [ 1 for _ in mcts_root_children_visit_counts ] 
 
         # create a well-shaped policy ditribution,
         p = Policy(len(state.board))
@@ -241,13 +316,11 @@ class A0Player:
 
         # select a move based on the policy distribution
         # sampling instead of argmax to allow exploration
-        selected_move = p.sample_move(42)
-
-        if selected_move.start.x == 0 and selected_move.start.y == 0 and selected_move.end.x == 0 and selected_move.end.y == 0:
-            print(mcts_root_children_visit_counts)
-            print(p.policy)
-            for move in mcts_root_children_moves:
-                print(move)
+        # or randomly select a move with a small probability
+        if random.random() < self.random_selection_prob:
+            selected_move = random.choice(moves)
+        else:
+            selected_move = p.sample_move(42)
 
         # return the selected move and the mcts policy distribution
         return selected_move, p.policy

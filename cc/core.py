@@ -532,6 +532,15 @@ class Board:
         else:
             start, end = (x2, y2), (x1, y1)
         return Move(start[0], start[1], end[0], end[1])
+    
+    def rotate_board_180(self) -> None:
+        '''
+        Rotates the board 180 degrees.
+        This is used to switch the perspective of the board.
+        '''
+        self.board = [row[::-1] for row in self.board[::-1]]
+        # switch the current player
+        self.current_player = Player.PLAYER_O if self.current_player == Player.PLAYER_X else Player.PLAYER_X
 
     def simple_hash(self):
         hashable_board = tuple(tuple(tile.value for tile in row) for row in self.board)
@@ -805,7 +814,24 @@ class Game:
         if player_o_winner and cur_player == Player.PLAYER_X:
             return Player.PLAYER_O
         return None
-    
+
+    def get_done_and_winner(self, board: Board) -> tuple[bool, Player | None]:
+        '''
+        Checks if the given board is a terminal state (or an illegal state).
+        If so, checks the winner.
+        Use this method to not re-calculate the winners.
+        '''
+        # first check for an illegal state
+        if not self.no_illegal_moves and board.is_illegal_state(self.board_history[0]): return True, None
+
+        player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
+        cur_player = board.current_player
+        if player_x_winner and cur_player == Player.PLAYER_O:
+            return True, Player.PLAYER_X
+        if player_o_winner and cur_player == Player.PLAYER_X:
+            return True, Player.PLAYER_O
+        return False, None
+
     def legal(self, board: Board) -> bool:
         '''
         Checks if the given board is in an illegal state.

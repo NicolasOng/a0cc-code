@@ -56,7 +56,7 @@ class MCTS:
         self.problem = problem
         self.root = MCTSNode(problem.initial_state(), 1.0)
 
-    def run(self, iterations: int=100) -> None:
+    def run(self, iterations: int=64) -> None:
         for _ in range(iterations):
             # 1. Traversal/Expansion/Selection
             # starting at the root, traverse the tree using a selection policy (UCT, PUCT, etc.),
