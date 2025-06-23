@@ -97,7 +97,8 @@ def board_to_input(board: Board) -> jnp.ndarray:
     board_size, _ = board.board_sizes()
 
     # rotate the board if necessary
-    if board.current_player == Player.PLAYER_O:
+    rotate_board = board.current_player == Player.PLAYER_O
+    if rotate_board:
         board.rotate_board_180()
     
     # get the tiles for each player
@@ -118,7 +119,7 @@ def board_to_input(board: Board) -> jnp.ndarray:
     input_array[0, :, :, 1] = op_array
 
     # un-rotate the board if necessary
-    if board.current_player == Player.PLAYER_O:
+    if rotate_board:
         board.rotate_board_180()
 
     return jnp.array(input_array)
