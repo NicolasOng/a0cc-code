@@ -107,7 +107,7 @@ def main():
         return
     
     # Evaluate all models
-    #evaluate_all_models(evaluation_dataset)
+    evaluate_all_models(evaluation_dataset)
 
     # load the losses
     losses_path = f"{config.data_folder}/evaluation_losses_accuracy.pkl"
