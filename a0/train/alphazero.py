@@ -99,6 +99,7 @@ def self_play(player: A0Player) -> tuple[list[TrainingData], list[GameData]]:
     game_data_list: list[GameData] = []
     training_set: list[TrainingData] = []
     num_cores = os.cpu_count() or 4
+    logger.info(f"Using {num_cores} cores for self-play.")
     with concurrent.futures.ProcessPoolExecutor() as executor:
         futures: list[Future[tuple[list[TrainingData], GameData]]] = []
 

@@ -2,8 +2,6 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 
-import orbax.checkpoint as ocp
-import numpy as np
 import pickle
 
 from config import config
