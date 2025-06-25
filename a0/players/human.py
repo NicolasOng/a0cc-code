@@ -1,7 +1,7 @@
 from cc.core import Board, Move
 
 class HumanPlayer:
-    def select_move(self, state: Board, moves: list[Move]) -> Move:
+    def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, None]:
         '''
         allows a human player to select a move from the available moves.
         '''
@@ -27,4 +27,4 @@ class HumanPlayer:
         print(f"Player chooses move: {move_idx}")
 
         # return the selected move
-        return moves[move_idx]
+        return moves[move_idx], None
