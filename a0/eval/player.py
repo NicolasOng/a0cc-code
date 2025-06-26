@@ -48,7 +48,7 @@ def get_trained_players_list() -> list[A0Player]:
         model_path = f"{config.training_dir}/model_{i}.pkl"
         try:
             model = load_model(model_path)
-            player = A0Player(config.board_size, config.num_pieces, model)
+            player = A0Player(config.board_size, config.num_pieces, model, False)
             players.append(player)
         except Exception as e:
             logger.error(f"Failed to load model or create player {i + 1} at {model_path}: {e}")

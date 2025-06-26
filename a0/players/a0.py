@@ -284,36 +284,46 @@ class Policy:
         return self.policy_index_to_move(index)
 
 class A0Player:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel):
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, use_mcts: bool = True):
         self.model = model
         self.game = Game(board_size, num_pieces, False, True, False)
         self.temperature = 1.0  # Temperature for exploration in MCTS
         self.random_selection_prob = 0.01  # Probability of selecting a random move
         self.mcts_iterations = 64
+        self.use_mcts = use_mcts
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         '''
         Selects a move using MCTS and returns the selected move along with the policy distribution.
         For exploration, it also allows for random choices.
         '''
-
-        # perform mcts and get the root's children
-        mcts = MCTS(SearchMoves(state, self))
-        mcts.run(iterations=self.mcts_iterations)
-        children = mcts.get_root_children()
-        assert len(children) > 0, "No children found in MCTS root node."
-
-        # with the root's children, create a policy distribution logits
-        mcts_root_children_visit_counts = [float(child.visits) for child in children]
-        mcts_root_children_moves = [state.child_board_to_move(child.state) for child in children]
-
-        # create a well-shaped policy ditribution,
         p = Policy(len(state.board))
-        p.set_logits_from_moves(mcts_root_children_moves, mcts_root_children_visit_counts)
-        # mask non-legal moves,
-        p.mask_non_legal_moves(moves)
-        # softmax it to get the policy distribution
-        p.apply_power_normalize(self.temperature)
+
+        if self.use_mcts:
+            # perform mcts and get the root's children
+            mcts = MCTS(SearchMoves(state, self))
+            mcts.run(iterations=self.mcts_iterations)
+            children = mcts.get_root_children()
+            assert len(children) > 0, "No children found in MCTS root node."
+
+            # with the root's children, create a policy distribution logits
+            mcts_root_children_visit_counts = [float(child.visits) for child in children]
+            mcts_root_children_moves = [state.child_board_to_move(child.state) for child in children]
+
+            # create a well-shaped policy ditribution,
+            p.set_logits_from_moves(mcts_root_children_moves, mcts_root_children_visit_counts)
+            # mask non-legal moves,
+            p.mask_non_legal_moves(moves)
+            # softmax it to get the policy distribution
+            p.apply_power_normalize(self.temperature)
+        else:
+            # if not using MCTS, just get the policy distribution from the model
+            _, logits = self.model(board_to_input(state))
+            p.set_logits(logits[0], rotate_180=state.current_player == Player.PLAYER_O)
+            # mask non-legal moves
+            p.mask_non_legal_moves(moves)
+            # apply softmax to the policy distribution
+            p.apply_softmax()
 
         # select a move based on the policy distribution
         # sampling instead of argmax to allow exploration
