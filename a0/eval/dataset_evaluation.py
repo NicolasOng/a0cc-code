@@ -98,6 +98,15 @@ def evaluate_all_models(evaluation_dataset: Dataset) -> None:
             'value_accuracies': value_accuracies
         }, f)
 
+def evaluate_all_models_progressive() -> None:
+    pass
+
+def load_dataset(path: str) -> Dataset:
+    pass
+
+def load_datasets() -> list[Dataset]:
+    pass
+
 def plot_losses(losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float]) -> None:
     plt.plot(losses, label='Loss')
     plt.plot(value_losses, label='Value Loss')
