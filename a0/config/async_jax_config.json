@@ -22,7 +22,8 @@
         "logs_path": "logs/",
         "training_data_path": "training_data",
         "training_plots_path": "plots/",  
-        "trained_model_params_path": "trained_models/"
+        "trained_model_params_path": "trained_models/",
+        "evaluation_data_path": "evaluation_data/"
     },
     "linux_file": {
         "logs_path": "logs/",
