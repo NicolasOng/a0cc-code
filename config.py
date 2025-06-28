@@ -4,6 +4,7 @@ class Config:
     def __init__(self, fn: str):
         with open(fn) as f:
             cf = json.load(f)
+        #TODO: self.__dict__.update(dictionary)?
         self.board_size = cf.get("board_size", 4)
         self.num_players = cf.get("num_players", 2)
         self.num_pieces = cf.get("num_pieces", 3)

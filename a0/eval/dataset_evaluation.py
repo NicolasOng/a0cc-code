@@ -1,3 +1,5 @@
+import sys
+
 from jax import numpy as jnp
 import optax
 import pickle
@@ -13,6 +15,16 @@ from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no: int) -> tuple[float, float, float, float]:
+    '''
+    Evaluates the model on the given evaluation dataset.
+    The evaluation dataset is a Dataset object containing
+    - game states
+    - target values
+    - target policies
+    Returns the average loss, value loss, policy loss, and accuracy.
+    And any other metrics I might want to add later.
+    TODO: I could make this generic for any model that can predict values and policies.
+    '''
     logger.info(f"Evaluating model on a dataset ({len(evaluation_dataset)})...")
 
     # shuffle the dataset and create batches generator
@@ -66,23 +78,22 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
     logger.info(f"Validation Loss: {avg_loss}, Value Loss: {avg_value_loss}, Policy Loss: {avg_policy_loss}, Accuracy: {avg_accuracy}")
     return avg_loss, avg_value_loss, avg_policy_loss, avg_accuracy
 
-def evaluate_all_models(evaluation_dataset: Dataset) -> None:
+def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Dataset) -> None:
+    '''
+    Evaluates all models in the training directory.
+    The training directory is defined in the config.
+    They are all evaluated on the same evaluation dataset.
+    '''
     logger.info("Evaluating all models in the training directory...")
 
     # Iterate through all model files in the training directory
-    losses = []
-    value_losses = []
-    policy_losses = []
-    value_accuracies = []
-    for i in tqdm(range(config.training_iterations + 1)):
-        model_path = f"{config.training_dir}/model_{i}.pkl"
-        try:
-            model = load_model(model_path)
-            logger.info(f"Evaluating model {i + 1} at {model_path}")
-            loss, value_loss, policy_loss, value_accuracy = evaluate_model(model, evaluation_dataset, i + 1)
-        except Exception as e:
-            logger.error(f"Failed to load or evaluate model {i + 1} at {model_path}: {e}")
-        
+    losses: list[float] = []
+    value_losses: list[float] = []
+    policy_losses: list[float] = []
+    value_accuracies: list[float] = []
+    for i, model in tqdm(enumerate(models)):
+        logger.info(f"Evaluating model {i + 1}")
+        loss, value_loss, policy_loss, value_accuracy = evaluate_model(model, evaluation_dataset, i + 1)
         losses.append(loss)
         value_losses.append(value_loss)
         policy_losses.append(policy_loss)
@@ -98,14 +109,51 @@ def evaluate_all_models(evaluation_dataset: Dataset) -> None:
             'value_accuracies': value_accuracies
         }, f)
 
-def evaluate_all_models_progressive() -> None:
+def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list[Dataset]) -> None:
+    '''
+    Evaluates all models on a dataset,
+    except each model has its own dataset.
+    So model 1 is evaluated on dataset 1, model 2 on dataset 2, etc.
+    '''
     pass
 
-def load_dataset(path: str) -> Dataset:
-    pass
+def load_dataset(dataset_path: str) -> Dataset:
+    '''
+    Loads a dataset from the given path.
+    Returns a Dataset object.
+    If the file does not exist, it will log an error and exit.
+    '''
+    try:
+        with open(dataset_path, 'rb') as file:
+            dataset: Dataset = pickle.load(file)
+        logger.info(f"Loaded dataset from {dataset_path}.")
+    except FileNotFoundError:
+        logger.error(f"Dataset file not found at {dataset_path}. Please generate the dataset first.")
+        sys.exit()
+    except Exception as e:
+        logger.error(f"Error loading dataset: {e}")
+        sys.exit()
+    return dataset
 
 def load_datasets() -> list[Dataset]:
     pass
+
+def load_models(dir: str, n: int) -> list[AlphaZeroModel]:
+    '''
+    Loads n models from the given directory.
+    Returns a list of AlphaZeroModel instances.
+    File names are expected to be in the format "model_{i}.pkl" where i is the model number.
+    Loads models from 0 to n (inclusive).
+    '''
+    models: list[AlphaZeroModel] = []
+    for i in range(n + 1):
+        model_path = f"{dir}/model_{i}.pkl"
+        try:
+            model = load_model(model_path)
+            models.append(model)
+        except Exception as e:
+            logger.error(f"Failed to load model {i + 1} at {model_path}: {e}")
+    return models
 
 def plot_losses(losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float]) -> None:
     plt.plot(losses, label='Loss')
@@ -119,17 +167,7 @@ def main():
     setup_logging(level=20, log_dir='logs/', process_name='dataset_evaluation')
 
     # Load the dataset
-    dataset_path = f"{config.data_folder}/training_gtv.pkl"
-    try:
-        with open(dataset_path, 'rb') as file:
-            evaluation_dataset: Dataset = pickle.load(file)
-        logger.info(f"Loaded evaluation dataset from {dataset_path}.")
-    except FileNotFoundError:
-        logger.error(f"Dataset file not found at {dataset_path}. Please generate the dataset first.")
-        return
-    except Exception as e:
-        logger.error(f"Error loading dataset: {e}")
-        return
+    evaluation_dataset = load_dataset(f"{config.data_folder}/training_gtv.pkl")
     
     n = 1000
     evaluation_dataset.values = evaluation_dataset.values[:n]
@@ -137,7 +175,7 @@ def main():
     evaluation_dataset.states = evaluation_dataset.states[:n]
     
     # Evaluate all models
-    evaluate_all_models(evaluation_dataset)
+    evaluate_all_models(load_models(config.training_dir, config.training_iterations + 1), evaluation_dataset)
 
     # load the losses
     losses_path = f"{config.data_folder}/evaluation_losses_accuracy.pkl"

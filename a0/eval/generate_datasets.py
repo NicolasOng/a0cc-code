@@ -1,5 +1,6 @@
 import pickle
 import random
+import copy
 
 import jax.numpy as jnp
 from tqdm import tqdm
@@ -16,6 +17,11 @@ from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 def training_ground_truth_values(n: int | None = None) -> None:
+    '''
+    Generates and saves a dataset of ground truth values for all unique boards
+    from the training data generated during training/self-play.
+    The dataset contains the board and the target value, not the policy.
+    '''
     # 1. read all of config.training_dir + f"gamedata_{i + 1}.pkl", where i is from 0 to config.training_iterations
     # these are all list[GameData] objects
     game_data_list: list[GameData] = []
@@ -63,6 +69,41 @@ def training_ground_truth_values(n: int | None = None) -> None:
         pickle.dump(gtv_dataset, file)
     logger.info(f"Ground truth values saved to {output_path}.")
 
+def training_datasets() -> None:
+    '''
+    Generates a list of datasets based on the
+    training data generated during training/self-play.
+    '''
+    # load all the training data objects from config.training_dir
+    training_data_lists: list[list[TrainingData]] = []
+    for i in tqdm(range(config.training_iterations)):
+        file_path = f"{config.training_dir}/training_set_{i + 1}.pkl"
+        with open(file_path, 'rb') as file:
+            data: list[TrainingData] = pickle.load(file)
+            training_data_lists.append(data)
+    logger.info(f"Loaded {len(training_data_lists)} training data lists from {config.training_dir}.")
+
+    # create a Dataset object for each training data list
+    replay_buffer = Dataset(
+        size=config.replay_buffer_size,
+        batch_size=config.training_batch_size,
+        static=False
+    )
+    datasets: list[Dataset] = []
+    # this simulates the replay buffer during training
+    # assuming the config is all identical
+    for i, training_data_list in tqdm(enumerate(training_data_lists)):
+        for training_data in training_data_list:
+            replay_buffer.add(training_data)
+        datasets.append(copy.deepcopy(replay_buffer))
+    
+    # save the datasets
+    output_path = f"{config.data_folder}/training_datasets.pkl"
+    with open(output_path, 'wb') as file:
+        pickle.dump(datasets, file)
+    logger.info(f"List of training datasets saved to {output_path}.")
+
+
 def main():
     setup_logging(
         level=20,
@@ -73,6 +114,8 @@ def main():
 
     # Generate ground truth values for all boards
     training_ground_truth_values()
+
+    training_datasets()
 
     logger.info("Ground truth values generation completed.")
 

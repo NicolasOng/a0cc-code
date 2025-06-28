@@ -195,7 +195,7 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
         rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
     )
     if model_path:
-        model = load_model(model_path, model)
+        model = load_model(model_path)
     
     if config.training_dir:
         save_model(config.training_dir + f'/model_{0}.pkl', model)
