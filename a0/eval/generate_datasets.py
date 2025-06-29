@@ -128,19 +128,18 @@ def training_datasets() -> None:
             training_data_lists.append(data)
     logger.info(f"Loaded {len(training_data_lists)} training data lists from {config.training_dir}.")
 
-    # create a Dataset object for each training data list
-    replay_buffer = Dataset(
-        size=config.replay_buffer_size,
-        batch_size=config.training_batch_size,
-        static=False
-    )
     datasets: list[Dataset] = []
-    # this simulates the replay buffer during training
-    # assuming the config is all identical
+    # create a Dataset object for each training data list
+    # and add the training data to it
     for i, training_data_list in tqdm(enumerate(training_data_lists)):
+        replay_buffer = Dataset(
+            size=config.replay_buffer_size,
+            batch_size=config.training_batch_size,
+            static=False
+        )
         for training_data in training_data_list:
             replay_buffer.add(training_data)
-        datasets.append(copy.deepcopy(replay_buffer))
+        datasets.append(replay_buffer)
     
     # save the datasets
     output_path = f"{config.data_folder}/training_datasets.pkl"

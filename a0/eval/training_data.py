@@ -61,11 +61,6 @@ def check_gd_and_td_equivalence(game_data_lists: list[list[GameData]] | Generato
     Training data lists is a list of lists of TrainingData objects,
     where each inner list holds all the training data objects from a single training iteration.
     '''
-    # first check if the number of iterations match
-    if len(game_data_lists) != len(training_data_lists):
-        logger.error(f"Number of iterations in game data and training data do not match: {len(game_data_lists)} != {len(training_data_lists)}")
-        return False
-    
     # in each iteration,
     for i, (game_data_list, training_data_list) in enumerate(zip_longest(game_data_lists, training_data_lists)):
         if game_data_list is None:
@@ -118,9 +113,14 @@ def check_winners_match(game_data_lists: list[list[GameData]] | Generator[list[G
             if winner != game_winner:
                 logger.error(f"Game winner mismatch at iteration {i}, game {j}: {winner} != {game_winner}")
                 return False
-            if winner != board_winner:
-                logger.error(f"Board winner mismatch at iteration {i}, game {j}: {winner} != {board_winner}")
-                return False
+            # the final board state is not recorded yet, so this check doesn't work.
+            # if winner != board_winner:
+            #     logger.error(f"Board winner mismatch at iteration {i}, game {j}: {winner} != {board_winner}")
+            #     logger.error(f"\n{game_data.turn_data[-1].board.board_view()}")
+            #     logger.error("BOARD HISTORY:")
+            #     for board in game.board_history:
+            #         logger.error(f"\n{board.board_view()}")
+            #     return False
     return True
 
 def check_game_data_accuracy(game_data_lists: list[list[GameData]] | Generator[list[GameData], None, None]) -> None:

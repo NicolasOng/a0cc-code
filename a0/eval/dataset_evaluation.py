@@ -213,6 +213,7 @@ def plot_losses(losses: list[float], value_losses: list[float], policy_losses: l
     plt.plot(value_accuracies, label='Value Accuracy')
     plt.legend()
     plt.savefig(f"{fn}.png")
+    plt.clf()
 
 def main():
     setup_logging(level=20, log_dir='logs/', process_name='dataset_evaluation')

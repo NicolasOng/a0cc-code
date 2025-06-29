@@ -64,6 +64,8 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
     else:
         logger.info(f"Player {game.winner} wins!")
     
+    # TODO: Should I add the final board state to the turn data?
+    
     data.ended = game.end
     data.winner = game.winner
 
