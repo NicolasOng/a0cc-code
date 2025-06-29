@@ -7,9 +7,11 @@ from tqdm import tqdm
 
 from cc.core import Board
 from cc.lookups import CCBaselineSolver
+from cc.ranking import CCDefaultRank, CCState
 from a0.dataset import Dataset, TrainingData
 from a0.game import GameData
 from a0.train.alphazero import board_to_input
+from a0.eval.training_data import game_data_generator, training_data_generator
 
 from config import config
 
@@ -20,7 +22,7 @@ def training_ground_truth_values(n: int | None = None) -> None:
     '''
     Generates and saves a dataset of ground truth values for all unique boards
     from the training data generated during training/self-play.
-    The dataset contains the board and the target value, not the policy.
+    The dataset contains the board and the target value, not the policy. (TODO)
     '''
     # 1. read all of config.training_dir + f"gamedata_{i + 1}.pkl", where i is from 0 to config.training_iterations
     # these are all list[GameData] objects
@@ -69,6 +71,49 @@ def training_ground_truth_values(n: int | None = None) -> None:
         pickle.dump(gtv_dataset, file)
     logger.info(f"Ground truth values saved to {output_path}.")
 
+def random_ground_truth_values(n: int = 1000) -> None:
+    '''
+    Generates and saves a dataset of ground truth values for all unique boards
+    from a list of randomly generated boards.
+    The dataset contains the board and the target value, not the policy. (TODO)
+    '''
+    # 1. generate a list of random boards
+    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
+    s = CCState(config.num_spots, config.num_pieces, config.num_players)
+    max_rank = r.get_max_rank()
+    board_set: set[Board] = set()
+    while len(board_set) < n:
+        r.unrank(random.randint(0, max_rank), s)
+        b = s.get_board()
+        board_set.add(b)
+    boards: list[Board] = list(board_set)
+        
+    logger.info(f"Generated {len(boards)} boards.")
+
+    # 3. for each board, get the value from the solve data file, and convert it to a model input
+    # then add these to a jnp array
+    # values = jnp.zeros((len(boards), 1))
+    # policies = jnp.zeros((len(boards), config.board_size ** 4))
+    states: list[jnp.ndarray] = []
+    values: list[float] = []
+    solver = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
+    for board in tqdm(boards):
+        values.append(solver.get_outcome(board))
+        states.append(board_to_input(board))
+    
+    # 4. load all this into a static Dataset object
+    jnp_states = jnp.stack(states) # (N, board_size, board_size)
+    jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
+    jnp_policies = jnp.zeros((len(boards), config.board_size ** 4)) # (N, board_size ** 4)
+    gtv_dataset = Dataset(size=len(boards), batch_size=256, static=True)
+    gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
+
+    # 5. save the Dataset object to config.data_folder + "random_gtv.pkl"
+    output_path = f"{config.data_folder}/random_gtv.pkl"
+    with open(output_path, 'wb') as file:
+        pickle.dump(gtv_dataset, file)
+    logger.info(f"Ground truth values saved to {output_path}.")
+
 def training_datasets() -> None:
     '''
     Generates a list of datasets based on the
@@ -113,6 +158,8 @@ def main():
 
     # Generate ground truth values for all boards
     training_ground_truth_values()
+
+    random_ground_truth_values()
 
     training_datasets()
 

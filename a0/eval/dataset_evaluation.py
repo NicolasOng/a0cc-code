@@ -77,13 +77,13 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
     logger.info(f"Validation Loss: {avg_loss}, Value Loss: {avg_value_loss}, Policy Loss: {avg_policy_loss}, Accuracy: {avg_accuracy}")
     return avg_loss, avg_value_loss, avg_policy_loss, avg_accuracy
 
-def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Dataset) -> None:
+def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Dataset, fn: str) -> None:
     '''
     Evaluates all models in the training directory.
     The training directory is defined in the config.
     They are all evaluated on the same evaluation dataset.
     '''
-    logger.info("Evaluating all models in the training directory...")
+    logger.info(f"Evaluating all models in the training directory ({fn})...")
 
     # Iterate through all model files in the training directory
     losses: list[float] = []
@@ -99,7 +99,7 @@ def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Datase
         value_accuracies.append(value_accuracy)
     
     # save the losses to a file
-    losses_path = f"{config.data_folder}/evaluation_losses_accuracy.pkl"
+    losses_path = f"{config.data_folder}/{fn}.pkl"
     with open(losses_path, 'wb') as f:
         pickle.dump({
             'losses': losses,
@@ -206,13 +206,13 @@ def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float]
         logger.error(f"Error loading losses: {e}")
         sys.exit()
 
-def plot_losses(losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float]) -> None:
+def plot_losses(losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float], fn: str) -> None:
     plt.plot(losses, label='Loss')
     plt.plot(value_losses, label='Value Loss')
     plt.plot(policy_losses, label='Policy Loss')
     plt.plot(value_accuracies, label='Value Accuracy')
     plt.legend()
-    plt.savefig("model_eval.png")
+    plt.savefig(f"{fn}.png")
 
 def main():
     setup_logging(level=20, log_dir='logs/', process_name='dataset_evaluation')
@@ -221,26 +221,32 @@ def main():
     models = load_models(config.training_dir, config.training_iterations + 1)
 
     # Load the dataset
-    evaluation_dataset = load_dataset(f"{config.data_folder}/training_gtv.pkl")
+    training_dataset = load_dataset(f"{config.data_folder}/training_gtv.pkl")
+    random_dataset = load_dataset(f"{config.data_folder}/random_gtv.pkl")
     
     n = 1000
-    evaluation_dataset.values = evaluation_dataset.values[:n]
-    evaluation_dataset.policies = evaluation_dataset.policies[:n]
-    evaluation_dataset.states = evaluation_dataset.states[:n]
+    training_dataset.values = training_dataset.values[:n]
+    training_dataset.policies = training_dataset.policies[:n]
+    training_dataset.states = training_dataset.states[:n]
     
     # Evaluate all models
-    evaluate_all_models(models, evaluation_dataset)
+    evaluate_all_models(models, training_dataset, "training_eval")
+    evaluate_all_models(models, random_dataset, "random_eval")
 
     # load the losses
-    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.data_folder}/evaluation_losses_accuracy.pkl")
+    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.data_folder}/training_eval.pkl")
     # Plot the losses
-    plot_losses(losses, value_losses, policy_losses, value_accuracies)
+    plot_losses(losses, value_losses, policy_losses, value_accuracies, "training_eval")
+    # load the losses
+    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.data_folder}/random_eval.pkl")
+    # Plot the losses
+    plot_losses(losses, value_losses, policy_losses, value_accuracies, "random_eval")
 
     # load the training data dataset
     training_datasets = load_dataset_list(f"{config.data_folder}/training_datasets.pkl")
     evaluate_all_models_progressive(models, training_datasets, "training_perf")
     losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.data_folder}/training_perf.pkl")
-    plot_losses(losses, value_losses, policy_losses, value_accuracies)
+    plot_losses(losses, value_losses, policy_losses, value_accuracies, "training_perf")
 
 
 if __name__ == "__main__":
