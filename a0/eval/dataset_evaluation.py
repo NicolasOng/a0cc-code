@@ -11,7 +11,6 @@ from a0.dataset import Dataset
 
 from config import config
 from utils.log import get_logger, setup_logging
-#     Plays a game with the given player and returns the training set and game data.
 logger = get_logger(__name__)
 
 def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no: int) -> tuple[float, float, float, float]:
@@ -109,13 +108,36 @@ def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Datase
             'value_accuracies': value_accuracies
         }, f)
 
-def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list[Dataset]) -> None:
+def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list[Dataset], fn: str) -> None:
     '''
     Evaluates all models on a dataset,
     except each model has its own dataset.
     So model 1 is evaluated on dataset 1, model 2 on dataset 2, etc.
     '''
-    pass
+    logger.info(f"Evaluating all models ({fn})...")
+
+    # Iterate through all model files in the training directory
+    losses: list[float] = []
+    value_losses: list[float] = []
+    policy_losses: list[float] = []
+    value_accuracies: list[float] = []
+    for i, (model, dataset) in tqdm(enumerate(zip(models, datasets))):
+        logger.info(f"Evaluating model {i + 1}")
+        loss, value_loss, policy_loss, value_accuracy = evaluate_model(model, dataset, i + 1)
+        losses.append(loss)
+        value_losses.append(value_loss)
+        policy_losses.append(policy_loss)
+        value_accuracies.append(value_accuracy)
+    
+    # save the losses to a file
+    losses_path = f"{config.data_folder}/{fn}.pkl"
+    with open(losses_path, 'wb') as f:
+        pickle.dump({
+            'losses': losses,
+            'value_losses': value_losses,
+            'policy_losses': policy_losses,
+            'value_accuracies': value_accuracies
+        }, f)
 
 def load_dataset(dataset_path: str) -> Dataset:
     '''
@@ -135,8 +157,18 @@ def load_dataset(dataset_path: str) -> Dataset:
         sys.exit()
     return dataset
 
-def load_datasets() -> list[Dataset]:
-    pass
+def load_dataset_list(datasets_path: str) -> list[Dataset]:
+    try:
+        with open(datasets_path, 'rb') as file:
+            datasets: list[Dataset] = pickle.load(file)
+        logger.info(f"Loaded datasets from {datasets_path}.")
+    except FileNotFoundError:
+        logger.error(f"Dataset file not found at {datasets_path}. Please generate the dataset first.")
+        sys.exit()
+    except Exception as e:
+        logger.error(f"Error loading dataset: {e}")
+        sys.exit()
+    return datasets
 
 def load_models(dir: str, n: int) -> list[AlphaZeroModel]:
     '''
@@ -155,6 +187,25 @@ def load_models(dir: str, n: int) -> list[AlphaZeroModel]:
             logger.error(f"Failed to load model {i + 1} at {model_path}: {e}")
     return models
 
+def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float], list[float]]:
+    '''
+    Loads losses from the given path.
+    Returns a tuple of lists: (losses, value_losses, policy_losses, value_accuracies).
+    If the file does not exist, it will log an error and exit.
+    '''
+    try:
+        with open(losses_path, 'rb') as f:
+            losses_data = pickle.load(f)
+        logger.info(f"Loaded evaluation losses from {losses_path}.")
+        return (losses_data['losses'], losses_data['value_losses'], 
+                losses_data['policy_losses'], losses_data['value_accuracies'])
+    except FileNotFoundError:
+        logger.error(f"Losses file not found at {losses_path}. Please generate the losses first.")
+        sys.exit()
+    except Exception as e:
+        logger.error(f"Error loading losses: {e}")
+        sys.exit()
+
 def plot_losses(losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float]) -> None:
     plt.plot(losses, label='Loss')
     plt.plot(value_losses, label='Value Loss')
@@ -166,6 +217,9 @@ def plot_losses(losses: list[float], value_losses: list[float], policy_losses: l
 def main():
     setup_logging(level=20, log_dir='logs/', process_name='dataset_evaluation')
 
+    # load the models
+    models = load_models(config.training_dir, config.training_iterations + 1)
+
     # Load the dataset
     evaluation_dataset = load_dataset(f"{config.data_folder}/training_gtv.pkl")
     
@@ -175,24 +229,19 @@ def main():
     evaluation_dataset.states = evaluation_dataset.states[:n]
     
     # Evaluate all models
-    evaluate_all_models(load_models(config.training_dir, config.training_iterations + 1), evaluation_dataset)
+    evaluate_all_models(models, evaluation_dataset)
 
     # load the losses
-    losses_path = f"{config.data_folder}/evaluation_losses_accuracy.pkl"
-    try:
-        with open(losses_path, 'rb') as f:
-            losses_data = pickle.load(f)
-        losses = losses_data['losses']
-        value_losses = losses_data['value_losses']
-        policy_losses = losses_data['policy_losses']
-        value_accuracies = losses_data['value_accuracies']
-        logger.info(f"Loaded evaluation losses from {losses_path}.")
-    except Exception as e:
-        logger.error(f"Error loading losses: {e}")
-        return
-
+    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.data_folder}/evaluation_losses_accuracy.pkl")
     # Plot the losses
     plot_losses(losses, value_losses, policy_losses, value_accuracies)
+
+    # load the training data dataset
+    training_datasets = load_dataset_list(f"{config.data_folder}/training_datasets.pkl")
+    evaluate_all_models_progressive(models, training_datasets, "training_perf")
+    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.data_folder}/training_perf.pkl")
+    plot_losses(losses, value_losses, policy_losses, value_accuracies)
+
 
 if __name__ == "__main__":
     main()

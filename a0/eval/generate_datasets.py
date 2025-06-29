@@ -103,7 +103,6 @@ def training_datasets() -> None:
         pickle.dump(datasets, file)
     logger.info(f"List of training datasets saved to {output_path}.")
 
-
 def main():
     setup_logging(
         level=20,
