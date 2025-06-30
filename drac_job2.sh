@@ -13,3 +13,5 @@ pip install --no-index -r requirements_drac.txt
 time python -m a0.train.alphazero
 time python -m a0.eval.generate_datasets
 time python -m a0.eval.dataset_evaluation
+time python -m a0.eval.training_data
+time python -m a0.eval.player
