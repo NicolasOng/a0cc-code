@@ -26,6 +26,15 @@ class Dataset:
     def add(self, new_data: TrainingData) -> None:
         assert not self.static, "Dataset is static; cannot add new data."
         self.data.append(new_data)
+    
+    def convert_to_static(self) -> None:
+        assert not self.static, "Dataset is already static."
+        # Convert the deque of training_data to 3 separate jnp.ndarrays
+        self.states = jnp.stack([d.board for d in self.data]) # (board_size, board_size) -> (N, board_size, board_size)
+        self.values = jnp.array([d.value for d in self.data]) [:, None]  # Add [:, None] to make its shape (N, 1)
+        self.policies = jnp.stack([d.policy for d in self.data]) # (board_size ** 4) -> (N, board_size ** 4)
+        self.data.clear()  # Clear the deque as we no longer need it
+        self.static = True  # Mark the dataset as static
 
     def shuffle(self) -> None:
         if not self.static:

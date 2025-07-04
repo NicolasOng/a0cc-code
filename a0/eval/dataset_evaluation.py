@@ -145,6 +145,7 @@ def load_dataset(dataset_path: str) -> Dataset:
     Returns a Dataset object.
     If the file does not exist, it will log an error and exit.
     '''
+    logger.info(f"Loading dataset from {dataset_path}...")
     try:
         with open(dataset_path, 'rb') as file:
             dataset: Dataset = pickle.load(file)
@@ -177,6 +178,7 @@ def load_models(dir: str, n: int) -> list[AlphaZeroModel]:
     File names are expected to be in the format "model_{i}.pkl" where i is the model number.
     Loads models from 0 to n (inclusive).
     '''
+    logger.info(f"Loading {n} models from {dir}...")
     models: list[AlphaZeroModel] = []
     for i in range(n + 1):
         model_path = f"{dir}/model_{i}.pkl"
@@ -215,39 +217,63 @@ def plot_losses(losses: list[float], value_losses: list[float], policy_losses: l
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.clf()
 
+def plot_two_accuracies(accuracies1: list[float], accuracies2: list[float], a1n: str, a2n: str, fn: str) -> None:
+    plt.plot(accuracies1, label=a1n)
+    plt.plot(accuracies2, label=a2n)
+    plt.legend()
+    plt.savefig(f"{config.plot_dir}{fn}.png")
+    plt.clf()
+
+def trim_dataset(dataset: Dataset, n: int) -> Dataset:
+    '''
+    Trims the dataset to the first n elements.
+    Returns a new Dataset object with the trimmed data.
+    '''
+    logger.info(f"Trimming dataset to {n} elements...")
+    dataset.states = dataset.states[:n]
+    dataset.values = dataset.values[:n]
+    dataset.policies = dataset.policies[:n]
+    return dataset
+
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='dataset_evaluation')
+
+    logger.info("Starting dataset evaluation...")
 
     # load the models
     models = load_models(config.training_dir, config.training_iterations + 1)
 
-    # Load the dataset
+    # Load the datasets
     training_dataset = load_dataset(f"{config.eval_dir}/training_gtv.pkl")
     random_dataset = load_dataset(f"{config.eval_dir}/random_gtv.pkl")
+    training_e_dataset = load_dataset(f"{config.eval_dir}/training_ev.pkl")
     
+    # trim down the training dataset to a smaller size for faster evaluation
     n = 1000
-    training_dataset.values = training_dataset.values[:n]
-    training_dataset.policies = training_dataset.policies[:n]
-    training_dataset.states = training_dataset.states[:n]
+    training_dataset = trim_dataset(training_dataset, n)
+    training_e_dataset = trim_dataset(training_e_dataset, n)
     
     # Evaluate all models
     evaluate_all_models(models, training_dataset, "training_eval")
     evaluate_all_models(models, random_dataset, "random_eval")
+    evaluate_all_models(models, training_e_dataset, "training_e_eval")
 
-    # load the losses
-    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.eval_dir}/training_eval.pkl")
-    # Plot the losses
-    plot_losses(losses, value_losses, policy_losses, value_accuracies, "training_eval")
-    # load the losses
-    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.eval_dir}/random_eval.pkl")
-    # Plot the losses
-    plot_losses(losses, value_losses, policy_losses, value_accuracies, "random_eval")
+    # load and plot the losses
+    tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies = load_losses(f"{config.eval_dir}/training_eval.pkl")
+    plot_losses(tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, "training_eval")
+    rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies = load_losses(f"{config.eval_dir}/random_eval.pkl")
+    plot_losses(rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, "random_eval")
+    telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies = load_losses(f"{config.eval_dir}/training_e_eval.pkl")
+    plot_losses(telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, "training_e_eval")
+    plot_two_accuracies(tvalue_accuracies, rvalue_accuracies, "Training Accuracy", "Random Accuracy", "training_vs_random_accuracy")
 
     # load the training data dataset
     training_datasets = load_dataset_list(f"{config.eval_dir}/training_datasets.pkl")
     evaluate_all_models_progressive(models, training_datasets, "training_perf")
     losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.eval_dir}/training_perf.pkl")
     plot_losses(losses, value_losses, policy_losses, value_accuracies, "training_perf")
+
+    logger.info("Dataset evaluation completed.")
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ from typing import Generator
 import numpy as np
 import matplotlib.pyplot as plt
 
+from cc.core import Player
 from cc.lookups import CCBaselineSolver
 from a0.dataset import Dataset, TrainingData
 from a0.game import GameData
@@ -143,6 +144,11 @@ def check_game_data_accuracy(game_data_lists: list[list[GameData]] | Generator[l
         iteration_accuracies.append(iteration_accuracy)
         logger.info(f"Iteration {i} accuracy: {iteration_accuracy:.2%} ({iteration_num_correct}/{iteration_total})")
     
+    output_path = f"{config.eval_dir}/gamedata_acc.pkl"
+    with open(output_path, 'wb') as file:
+        pickle.dump(iteration_accuracies, file)
+    logger.info(f"Game data accuracies saved to {output_path}.")
+
     plt.plot(iteration_accuracies)
     plt.title("Training Data Accuracy by Iteration")
     plt.xlabel("Iteration")
@@ -150,12 +156,148 @@ def check_game_data_accuracy(game_data_lists: list[list[GameData]] | Generator[l
     plt.savefig(f"{config.plot_dir}training_data_accuracy.png")
     plt.clf()
 
+class GameDataStats:
+    '''
+    Class to hold statistics about game data for a single self-play iteration.
+    '''
+    def __init__(self):
+        self.total_games = 0
+        self.player_x_wins: list[int] = []
+        self.player_o_wins: list[int] = []
+        self.draws_repeat: list[int] = []
+        self.draws_timeout: list[int] = []
+        self.game_lengths: list[int] = []
+        self.game_times: list[float] = []
+    
+    def get_line(self) -> str:
+        '''
+        Get a string representation of the statistics for this iteration.
+        '''
+        return (f"{self.total_games}, "
+                f"{sum(self.player_x_wins)}, "
+                f"{sum(self.player_o_wins)}, "
+                f"{sum(self.draws_repeat)}, "
+                f"{sum(self.draws_timeout)}, "
+                f"{np.mean(self.game_lengths) if self.game_lengths else 0:.2f}, "
+                f"{np.std(self.game_lengths) if self.game_lengths else 0:.2f}, "
+                f"{np.mean(self.game_times) if self.game_times else 0:.2f} seconds, "
+                f"{np.std(self.game_times) if self.game_times else 0:.2f} seconds")
+    
+    def get_header(self) -> str:
+        '''
+        Get a header string for the statistics.
+        '''
+        return ("Total Games, Player X Wins, Player O Wins, "
+                "Draws (Repeat), Draws (Timeout), "
+                "Avg Game Length, Std Game Length, "
+                "Avg Game Time, Std Game Time")
+
+def game_data_stats() -> None:
+    '''
+    Print statistics about the game data.
+    This includes the number of games, turns, and players.
+    '''
+    logger.info("Calculating game data statistics...")
+    iteration_stats: list[GameDataStats] = []
+    # for each iteration,
+    gd_gen = game_data_generator()
+    for game_data_list in gd_gen:
+        # get the stats for the game data generated in that iteration
+        # wins/losses/draws, types of draws, num turns (mean, etc), avg length in time, who won
+        logger.info(f"Processing {len(game_data_list)} games in this iteration.")
+        stats = GameDataStats()
+        for game_data in game_data_list:
+            stats.total_games += 1
+            # get the game length and time,
+            stats.game_lengths.append(len(game_data.turn_data))
+            stats.game_times.append(game_data.time)
+            # check for a winner
+            px_won = 1 if game_data.winner == Player.PLAYER_X else 0
+            po_won = 1 if game_data.winner == Player.PLAYER_O else 0
+            stats.player_x_wins.append(px_won)
+            stats.player_o_wins.append(po_won)
+            # check for draws
+            draw_repeat = 1 if game_data.ended and game_data.winner is not None else 0
+            draw_timeout = 1 if not game_data.ended else 0
+            stats.draws_repeat.append(draw_repeat)
+            stats.draws_timeout.append(draw_timeout)
+        # add the stats for this iteration to the list
+        iteration_stats.append(stats)
+    
+    # save the statistics to a file
+    logger.info("Saving game data statistics...")
+    output_path = f"{config.eval_dir}/gamedata_stats.pkl"
+    with open(output_path, 'wb') as file:
+        pickle.dump(iteration_stats, file)
+    logger.info(f"Game data accuracies saved to {output_path}.")
+
+    # log the statistics
+    logger.info("Game Data Statistics:")
+    logger.info(iteration_stats[0].get_header())
+    for i, stats in enumerate(iteration_stats):
+        logger.info(f"Iteration {i}: {stats.get_line()}")
+    
+    # make plots for the statistics
+    logger.info("Plotting game data statistics...")
+
+    # first, plot outcomes
+    logger.info("Plotting game outcomes (stacked)...")
+    iterations = list(range(len(iteration_stats)))
+    player_x_wins = [sum(stats.player_x_wins) for stats in iteration_stats]
+    player_o_wins = [sum(stats.player_o_wins) for stats in iteration_stats]
+    draws_repeat = [sum(stats.draws_repeat) for stats in iteration_stats]
+    draws_timeout = [sum(stats.draws_timeout) for stats in iteration_stats]
+
+    plt.clf()
+    plt.stackplot(iterations, player_x_wins, player_o_wins, draws_repeat, draws_timeout,
+        labels=['Player X Wins', 'Player O Wins', 'Draws (Repeat)', 'Draws (Timeout)'],
+    )
+    plt.title('Game Outcomes by Training Iteration')
+    plt.xlabel('Training Iteration')
+    plt.ylabel('Number of Games')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(f"{config.plot_dir}/gamedata_outcomes_stacked.png")
+    plt.clf()
+
+    logger.info("Plotting game outcomes (line)...")
+    plt.plot(iterations, player_x_wins, label='Player X Wins')
+    plt.plot(iterations, player_o_wins, label='Player O Wins')
+    plt.plot(iterations, draws_repeat, label='Draws (Repeat)')
+    plt.plot(iterations, draws_timeout, label='Draws (Timeout)')
+    
+    plt.title('Game Outcomes by Training Iteration')
+    plt.xlabel('Training Iteration')
+    plt.ylabel('Number of Games')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.savefig(f"{config.plot_dir}/gamedata_outcomes_lines.png")
+    plt.clf()
+
+    # then, plot game lengths
+    logger.info("Plotting game lengths...")
+    avg_game_lengths = [np.mean(stats.game_lengths) for stats in iteration_stats]
+    std_game_lengths = [np.std(stats.game_lengths) for stats in iteration_stats]
+    plt.errorbar(iterations, avg_game_lengths, yerr=std_game_lengths, 
+                 marker='o', capsize=5, capthick=2, linewidth=2)
+    plt.title('Average Game Length by Training Iteration')
+    plt.xlabel('Training Iteration')
+    plt.ylabel('Average Number of Turns')
+    plt.grid(True, alpha=0.3)
+    plt.savefig(f"{config.plot_dir}/game_lengths.png")
+    plt.clf()
+
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='training_data_evals')
     
+    logger.info("Starting training data evaluations...")
+
     check_winners_match(game_data_generator())
     check_gd_and_td_equivalence(game_data_generator(), training_data_generator())
     check_game_data_accuracy(game_data_generator())
+    game_data_stats()
+
+    logger.info("Training data evaluations completed.")
 
 if __name__ == "__main__":
     main()
