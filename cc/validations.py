@@ -488,7 +488,7 @@ if __name__ == "__main__":
 
     logger.info("Starting validations...")
 
-    dir = config.data_folder + "validations/"
+    dir = config.validation_dir
     if not os.path.exists(dir):
         os.makedirs(dir)
     

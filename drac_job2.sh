@@ -10,8 +10,11 @@ source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
 pip install --no-index -r requirements_drac.txt
 
-time python -m a0.train.alphazero
-time python -m a0.eval.generate_datasets
-time python -m a0.eval.dataset_evaluation
-time python -m a0.eval.training_data
-time python -m a0.eval.player
+# Set the configuration file path, defaulting to config/config.json if not provided
+CONFIG_FILE="${1:-config/config.json}" 
+
+time python -m a0.train.alphazero "$CONFIG_FILE"
+time python -m a0.eval.generate_datasets "$CONFIG_FILE"
+time python -m a0.eval.dataset_evaluation "$CONFIG_FILE"
+time python -m a0.eval.training_data "$CONFIG_FILE"
+time python -m a0.eval.player "$CONFIG_FILE"

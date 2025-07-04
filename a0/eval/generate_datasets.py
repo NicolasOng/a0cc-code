@@ -66,7 +66,7 @@ def training_ground_truth_values(n: int | None = None) -> None:
     gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
 
     # 5. save the Dataset object to config.data_folder + "training_gtv.pkl"
-    output_path = f"{config.data_folder}/training_gtv.pkl"
+    output_path = f"{config.eval_dir}/training_gtv.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(gtv_dataset, file)
     logger.info(f"Ground truth values saved to {output_path}.")
@@ -109,7 +109,7 @@ def random_ground_truth_values(n: int = 1000) -> None:
     gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
 
     # 5. save the Dataset object to config.data_folder + "random_gtv.pkl"
-    output_path = f"{config.data_folder}/random_gtv.pkl"
+    output_path = f"{config.eval_dir}/random_gtv.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(gtv_dataset, file)
     logger.info(f"Ground truth values saved to {output_path}.")
@@ -142,7 +142,7 @@ def training_datasets() -> None:
         datasets.append(replay_buffer)
     
     # save the datasets
-    output_path = f"{config.data_folder}/training_datasets.pkl"
+    output_path = f"{config.eval_dir}/training_datasets.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(datasets, file)
     logger.info(f"List of training datasets saved to {output_path}.")
@@ -150,7 +150,7 @@ def training_datasets() -> None:
 def main():
     setup_logging(
         level=20,
-        log_dir="logs/",
+        log_dir=config.log_dir,
         process_name="generate_datasets"
     )
     logger.info("Starting ground truth values generation...")

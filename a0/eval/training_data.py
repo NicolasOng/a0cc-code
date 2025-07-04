@@ -147,11 +147,11 @@ def check_game_data_accuracy(game_data_lists: list[list[GameData]] | Generator[l
     plt.title("Training Data Accuracy by Iteration")
     plt.xlabel("Iteration")
     plt.ylabel("Accuracy")
-    plt.savefig(f"{config.data_folder}training_data_accuracy.png")
+    plt.savefig(f"{config.plot_dir}training_data_accuracy.png")
     plt.clf()
 
 def main():
-    setup_logging(level=20, log_dir='logs/', process_name='training_data_evals')
+    setup_logging(level=20, log_dir=config.log_dir, process_name='training_data_evals')
     
     check_winners_match(game_data_generator())
     check_gd_and_td_equivalence(game_data_generator(), training_data_generator())

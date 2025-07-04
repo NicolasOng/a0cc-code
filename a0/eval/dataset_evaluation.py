@@ -99,7 +99,7 @@ def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Datase
         value_accuracies.append(value_accuracy)
     
     # save the losses to a file
-    losses_path = f"{config.data_folder}/{fn}.pkl"
+    losses_path = f"{config.eval_dir}/{fn}.pkl"
     with open(losses_path, 'wb') as f:
         pickle.dump({
             'losses': losses,
@@ -130,7 +130,7 @@ def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list
         value_accuracies.append(value_accuracy)
     
     # save the losses to a file
-    losses_path = f"{config.data_folder}/{fn}.pkl"
+    losses_path = f"{config.eval_dir}/{fn}.pkl"
     with open(losses_path, 'wb') as f:
         pickle.dump({
             'losses': losses,
@@ -212,18 +212,18 @@ def plot_losses(losses: list[float], value_losses: list[float], policy_losses: l
     plt.plot(policy_losses, label='Policy Loss')
     plt.plot(value_accuracies, label='Value Accuracy')
     plt.legend()
-    plt.savefig(f"{fn}.png")
+    plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.clf()
 
 def main():
-    setup_logging(level=20, log_dir='logs/', process_name='dataset_evaluation')
+    setup_logging(level=20, log_dir=config.log_dir, process_name='dataset_evaluation')
 
     # load the models
     models = load_models(config.training_dir, config.training_iterations + 1)
 
     # Load the dataset
-    training_dataset = load_dataset(f"{config.data_folder}/training_gtv.pkl")
-    random_dataset = load_dataset(f"{config.data_folder}/random_gtv.pkl")
+    training_dataset = load_dataset(f"{config.eval_dir}/training_gtv.pkl")
+    random_dataset = load_dataset(f"{config.eval_dir}/random_gtv.pkl")
     
     n = 1000
     training_dataset.values = training_dataset.values[:n]
@@ -235,18 +235,18 @@ def main():
     evaluate_all_models(models, random_dataset, "random_eval")
 
     # load the losses
-    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.data_folder}/training_eval.pkl")
+    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.eval_dir}/training_eval.pkl")
     # Plot the losses
     plot_losses(losses, value_losses, policy_losses, value_accuracies, "training_eval")
     # load the losses
-    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.data_folder}/random_eval.pkl")
+    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.eval_dir}/random_eval.pkl")
     # Plot the losses
     plot_losses(losses, value_losses, policy_losses, value_accuracies, "random_eval")
 
     # load the training data dataset
-    training_datasets = load_dataset_list(f"{config.data_folder}/training_datasets.pkl")
+    training_datasets = load_dataset_list(f"{config.eval_dir}/training_datasets.pkl")
     evaluate_all_models_progressive(models, training_datasets, "training_perf")
-    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.data_folder}/training_perf.pkl")
+    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.eval_dir}/training_perf.pkl")
     plot_losses(losses, value_losses, policy_losses, value_accuracies, "training_perf")
 
 

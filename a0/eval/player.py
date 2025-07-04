@@ -109,13 +109,13 @@ def graph_player_evaluation_results(fn: str) -> None:
     plt.ylabel('Count')
     plt.title('Player Evaluation Results')
     plt.legend()
-    plt.savefig(config.data_folder + '/player_evaluation_results.png')
+    plt.savefig(config.plot_dir + '/player_evaluation_results.png')
 
 def main():
-    setup_logging(level=20, log_dir='logs/', process_name='player_evaluation')
+    setup_logging(level=20, log_dir=config.log_dir, process_name='player_evaluation')
     random_player = RandomPlayer()
-    evaluate_trained_players(100, random_player, f"{config.data_folder}/player_evaluation_results.pkl")
-    graph_player_evaluation_results(f"{config.data_folder}/player_evaluation_results.pkl")
+    evaluate_trained_players(100, random_player, f"{config.eval_dir}/player_evaluation_results.pkl")
+    graph_player_evaluation_results(f"{config.eval_dir}/player_evaluation_results.pkl")
 
 if __name__ == "__main__":
     main()

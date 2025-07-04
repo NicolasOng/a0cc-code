@@ -239,7 +239,7 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
 if __name__ == "__main__":
     setup_logging(
         level=20,
-        log_dir="logs/",
+        log_dir=config.log_dir,
         process_name="training_alphazero"
     )
 
