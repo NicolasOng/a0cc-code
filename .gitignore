@@ -22,3 +22,5 @@ testing.p
 training_data/
 action_accuracy.png
 policy_results.p
+
+default/
