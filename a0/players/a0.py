@@ -100,6 +100,8 @@ def board_to_input(board: Board) -> jnp.ndarray:
     rotate_board = board.current_player == Player.PLAYER_O
     if rotate_board:
         board.rotate_board_180()
+        board.flip_pieces()
+        board.switch_player()
     
     # get the tiles for each player
     # "current player" is always Player.PLAYER_X due to the rotation
@@ -120,6 +122,8 @@ def board_to_input(board: Board) -> jnp.ndarray:
 
     # un-rotate the board if necessary
     if rotate_board:
+        board.switch_player()
+        board.flip_pieces()
         board.rotate_board_180()
 
     return jnp.array(input_array)

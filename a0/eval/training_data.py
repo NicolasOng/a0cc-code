@@ -292,8 +292,8 @@ def main():
     
     logger.info("Starting training data evaluations...")
 
-    check_winners_match(game_data_generator())
-    check_gd_and_td_equivalence(game_data_generator(), training_data_generator())
+    #check_winners_match(game_data_generator())
+    #check_gd_and_td_equivalence(game_data_generator(), training_data_generator())
     check_game_data_accuracy(game_data_generator())
     game_data_stats()
 

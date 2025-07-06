@@ -536,12 +536,25 @@ class Board:
     def rotate_board_180(self) -> None:
         '''
         Rotates the board 180 degrees.
-        This is used to switch the perspective of the board.
         '''
         self.board = [row[::-1] for row in self.board[::-1]]
+    
+    def switch_player(self) -> None:
         # switch the current player
         self.current_player = Player.PLAYER_O if self.current_player == Player.PLAYER_X else Player.PLAYER_X
 
+    def flip_pieces(self) -> None:
+        '''
+        Flips all pieces on the board.
+        Player X pieces become Player O pieces and vice versa.
+        '''
+        for i in range(len(self.board)):
+            for j in range(len(self.board[i])):
+                if self.board[i][j] == Tile.PLAYER_X:
+                    self.board[i][j] = Tile.PLAYER_O
+                elif self.board[i][j] == Tile.PLAYER_O:
+                    self.board[i][j] = Tile.PLAYER_X
+    
     def simple_hash(self):
         hashable_board = tuple(tuple(tile.value for tile in row) for row in self.board)
         return (hashable_board, self.current_player.value, self.home_size)

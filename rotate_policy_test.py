@@ -3,6 +3,8 @@ from cc.core import Move, Board, player_to_tile, Player
 
 import jax.numpy as jnp
 
+import copy
+
 moves_list = [
     Move(0, 0, 0, 1),
     Move(1, 1, 2, 0),
@@ -14,10 +16,12 @@ moves_list_rotated = [Move(3 - move.start.x, 3 - move.start.y, 3 - move.end.x, 3
 p = Policy(4)
 p.set_logits_from_moves(moves_list, [0.1, 0.2, 0.3])
 
+print("Original moves:")
 board = Board(4)
 board.apply_points([move.start for move in moves_list], player_to_tile[Player.PLAYER_X])
 print(board.visualize_move_ends(moves_list))
 
+print("Rotated moves:")
 board.rotate_board_180()
 print(board.visualize_move_ends(moves_list_rotated))
 
@@ -40,10 +44,12 @@ for start_x in range(board_size):
                 # add the mapping
                 rotated_policy_mapping[move_index] = rmove_index
 
+print("setting moves in policy to be some arbitrary value, and getting them based on moves:")
 probs = p.get_move_probabilities(moves_list)
+#print(p.policy)
 print(probs)
 
-logits = p.policy
+logits = copy.deepcopy(p.policy)
 # create a new logits with the same shape as the original logits
 rotated_logits = jnp.zeros_like(logits)
 # fill the new logits with the rotated probabilities
@@ -53,9 +59,11 @@ for index in range(logits.shape[0]):
 p.set_logits(rotated_logits, rotate_180=False)
 
 rprobs = p.get_move_probabilities(moves_list_rotated)
+print("rotated logits, and getting the values based on rotated moves (should be same as above):")
+#print(p.policy)
 print(rprobs)
 
-logits = p.policy
+logits = copy.deepcopy(p.policy)
 # create a new logits with the same shape as the original logits
 rotated_logits = jnp.zeros_like(logits)
 # fill the new logits with the rotated probabilities
@@ -65,4 +73,6 @@ for index in range(logits.shape[0]):
 p.set_logits(rotated_logits, rotate_180=False)
 
 probs = p.get_move_probabilities(moves_list)
+
+print("rotating again, and getting the values based on original moves (should be same as above):")
 print(probs)
