@@ -70,7 +70,7 @@ def _play(player: bytes) -> tuple[list[TrainingData], GameData]:
     # first, set up logging
     setup_logging(
         level=20,
-        log_dir="logs/",
+        log_dir=config.log_dir,
         process_name="training_alphazero"
     )
     # then play the game
