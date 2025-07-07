@@ -43,7 +43,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
             'policy': policy_batch  # (N, board_size ** 4)
         }
         value, policy = model(batch['board'])
-        #masked_policy = jnp.where(batch['policy'], policy, 0)
+        masked_policy = jnp.where(batch['policy'], policy, 0)
         # TODO: what about boards what value=0? how to handle those? and how many are there?
         value_classification = jnp.where(value <= 0, -1, 1)
 
@@ -52,7 +52,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
         
         # Calculate accuracy (fraction of correct classifications)
         accuracy = float(jnp.mean(value_classification == batch['value']))
-        #policy_loss = jnp.mean(optax.softmax_cross_entropy(labels=batch['policy'], logits=masked_policy))
+        policy_loss = float(jnp.mean(optax.softmax_cross_entropy(labels=batch['policy'], logits=masked_policy)))
 
         # if model_no > 15 and (ts - 1) % 10 == 0:
         #     logger.info("Predicted | Actual")
@@ -66,7 +66,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
         total_loss += loss
         total_value_loss += value_loss
         total_accuracy += accuracy
-        #total_policy_loss += policy_loss
+        total_policy_loss += policy_loss
         num_batches += 1
     
     avg_loss = total_loss / num_batches
