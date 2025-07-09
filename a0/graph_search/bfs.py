@@ -83,12 +83,13 @@ class BFS(Generic[BFSState]):
                 continue
 
             # get the current node's reward and update its parents
-            node = current
             reward = self.problem.get_reward(current.state)
-            while node:
-                node.visits += 1
-                node.reward += reward
-                node = node.parent
+            if reward != 0:
+                node = current
+                while node:
+                    node.visits += 1
+                    node.reward += reward
+                    node = node.parent
 
             # if the current node is a goal state,
             if self.problem.is_goal(current.state):

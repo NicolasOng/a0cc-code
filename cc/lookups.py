@@ -73,22 +73,34 @@ class CCBaselineSolver:
         self.ccstate.initialize_from_board(board)
         return self.lookup(self.ccstate)
 
-    def get_outcome(self, board: Board) -> float:
+    def get_winner(self, board: Board) -> Player | None:
         '''
-        Returns the outcome of a board.
+        Returns the winner of a board, assuming perfect play.
+        If the game is a draw or illegal, returns None.
         '''
-        # get the raw result from the solve data
+        # get the raw result from the solve data (this is in Player X's perspective)
         solve_data_outcome = self.board_lookup(board)
 
-        # convert the result to an outcome in Player X's perspective
+        # convert the result to a Player
         if solve_data_outcome == 0 or solve_data_outcome == 3: # Draw or Illegal
             sd_winner = None
-        elif solve_data_outcome == 1: # Loss
+        elif solve_data_outcome == 1: # Loss for Player X
             sd_winner = Player.PLAYER_O
-        elif solve_data_outcome == 2: # Win
+        elif solve_data_outcome == 2: # Win for Player X
             sd_winner = Player.PLAYER_X
         else:
-            sd_winner = None  # Handle unexpected result
+            sd_winner = None # shouldn't happen
+
+        return sd_winner
+
+    def get_outcome(self, board: Board) -> float:
+        '''
+        Returns the outcome of a board, assuming perfect play.
+        Returns 1.0 for a win, -1.0 for a loss, and 0.0 for a draw or illegal state.
+        This is from the perspective of the current player.
+        '''
+        # get the winner from the solve data
+        sd_winner = self.get_winner(board)
         
         # convert the outcome to a float from the current player's perspective
         if sd_winner is None:

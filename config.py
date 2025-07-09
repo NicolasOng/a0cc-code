@@ -60,6 +60,8 @@ class Config:
         os.makedirs(self.eval_dir, exist_ok=True)
         self.validation_dir = self.output_dir + "validations/"
         os.makedirs(self.validation_dir, exist_ok=True)
+        self.stats_dir = self.output_dir + "stats/"
+        os.makedirs(self.stats_dir, exist_ok=True)
 
 config_path = sys.argv[1] if len(sys.argv) > 1 else "config/config.json"
 config = Config(config_path, "config/config.json")
