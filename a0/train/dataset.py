@@ -34,6 +34,7 @@ class BatchData:
     value_loss: float
     policy_loss: float
     total_loss: float
+    value_accuracy: float
     model_no: int | None = None
 
 class EpochData:
@@ -56,30 +57,34 @@ policy_loss_function = optax.softmax_cross_entropy
 def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     value, policy = model(batch['board'])
     value_loss = jnp.mean(value_loss_function(value, batch['value']))
+    value_classification = jnp.where(value <= 0, -1, 1)
+    value_accuracy = float(jnp.mean(value_classification == batch['value']))
     #masked_policy = jnp.where(batch['policy'], policy, 0)
     #policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_policy))
     total_loss = value_loss# + policy_loss
     policy_loss = 0
     # JAX requires the loss function to return a tuple of (loss, aux)
     # where aux can be any additional information you want to return
-    return total_loss, (value_loss, policy_loss)
+    return total_loss, (value_loss, policy_loss, value_accuracy)
 
 @nnx.jit
 def train_step(model: AlphaZeroModel, optimizer: nnx.Optimizer, batch: dict[str, Any]):
     grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
-    (loss, (value_loss, policy_loss)), grads = grad_fn(model, batch)
+    (loss, (value_loss, policy_loss, value_accuracy)), grads = grad_fn(model, batch)
     optimizer.update(grads)
-    return loss, value_loss, policy_loss
+    return loss, value_loss, policy_loss, value_accuracy
 
 def plot_epoch_data(epoch_num: int, epoch_data: EpochData):
     # Extract losses
     value_losses = [bd.value_loss for bd in epoch_data.batch_data]
     policy_losses = [bd.policy_loss for bd in epoch_data.batch_data]
     total_losses = [bd.total_loss for bd in epoch_data.batch_data]
+    value_accuracies = [bd.value_accuracy for bd in epoch_data.batch_data]
     steps = list(range(len(epoch_data.batch_data)))
 
     # Plotting
     plt.figure(figsize=(10, 6))
+    plt.plot(steps, value_accuracies, label='Value Accuracy')
     plt.plot(steps, value_losses, label='Value Loss')
     plt.plot(steps, policy_losses, label='Policy Loss')
     plt.plot(steps, total_losses, label='Total Loss')
@@ -124,7 +129,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
             'value': value_batch,  # (N, 1)
             'policy': policy_batch  # (N, board_size ** 4)
         }
-        loss, value_loss, policy_loss = train_step(model, optimizer, batch)
+        loss, value_loss, policy_loss, value_accuracy = train_step(model, optimizer, batch)
         logger.info(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
         print(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
         
@@ -134,6 +139,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
         batch_data.value_loss = value_loss
         batch_data.policy_loss = policy_loss
         batch_data.total_loss = loss
+        batch_data.value_accuracy = value_accuracy
 
         if save == "batch" and (ts + 1) % batches_per_save == 0:
             # Save the model after every save_batch_amount batches
@@ -153,6 +159,7 @@ def plot_dataset_data(dataset_num: int, dataset_data: DatasetData):
     value_losses: list[float] = []
     policy_losses: list[float] = []
     total_losses: list[float] = []
+    value_accuracies: list[float] = []
     batch_labels: list[str] = []
 
     for _, epoch in enumerate(all_epochs):
@@ -160,6 +167,7 @@ def plot_dataset_data(dataset_num: int, dataset_data: DatasetData):
             value_losses.append(batch.value_loss)
             policy_losses.append(batch.policy_loss)
             total_losses.append(batch.total_loss)
+            value_accuracies.append(batch.value_accuracy)
             batch_labels.append(f"{batch_idx + 1}")
 
     # Epoch boundary positions (between last and first batch of adjacent epochs)
@@ -171,6 +179,7 @@ def plot_dataset_data(dataset_num: int, dataset_data: DatasetData):
 
     # Plot losses
     plt.figure(figsize=(12, 6))
+    plt.plot(value_accuracies, label="Value Accuracy")
     plt.plot(value_losses, label="Value Loss")
     plt.plot(policy_losses, label="Policy Loss")
     plt.plot(total_losses, label="Total Loss")

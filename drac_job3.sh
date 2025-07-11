@@ -13,4 +13,4 @@ pip install --no-index -r requirements_drac.txt
 # Set the configuration file path, defaulting to config/config.json if not provided
 CONFIG_FILE="${1:-config/config.json}" 
 
-time python -m a0.train.dataset "$CONFIG_FILE"
+time python -m scripts.train_on_ground_truth "$CONFIG_FILE"
