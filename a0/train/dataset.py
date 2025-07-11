@@ -34,15 +34,18 @@ class BatchData:
     value_loss: float
     policy_loss: float
     total_loss: float
+    model_no: int | None = None
 
 class EpochData:
     batch_data: list[BatchData]
+    model_no: int | None = None
 
     def __init__(self):
         self.batch_data = []
 
 class DatasetData:
     epoch_data: list[EpochData]
+    model_no: int | None = None
 
     def __init__(self):
         self.epoch_data = []
@@ -124,18 +127,23 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
         loss, value_loss, policy_loss = train_step(model, optimizer, batch)
         logger.info(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
         print(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
-        # Store batch data
+        
+        # create batch data
         batch_data = BatchData()
         batch_data.batch_size = len(batch['board'])
         batch_data.value_loss = value_loss
         batch_data.policy_loss = policy_loss
         batch_data.total_loss = loss
-        epoch_data.batch_data.append(batch_data)
+
         if save == "batch" and (ts + 1) % batches_per_save == 0:
             # Save the model after every save_batch_amount batches
             cur_model_no += 1
             logger.info(f"Saving model {cur_model_no} after batch {ts + 1}...")
             save_model(config.training_dir + f'/model_{cur_model_no}.pkl', model)
+            batch_data.model_no = cur_model_no
+        
+        # add the batch data to the epoch data
+        epoch_data.batch_data.append(batch_data)
 
     return model, epoch_data, cur_model_no
 
@@ -155,7 +163,6 @@ def plot_dataset_data(dataset_num: int, dataset_data: DatasetData):
             batch_labels.append(f"{batch_idx + 1}")
 
     # Epoch boundary positions (between last and first batch of adjacent epochs)
-    #epoch_boundaries = [i * len(all_epochs[0].batch_data) for i in range(1, len(all_epochs))]
     epoch_boundaries: list[int] = []
     cur_boundary = 0
     for epoch in all_epochs[:-1]:  # Exclude the last epoch for boundaries
@@ -177,7 +184,6 @@ def plot_dataset_data(dataset_num: int, dataset_data: DatasetData):
              f"Epoch {i + 1}", rotation=90, va='top', ha='center', fontsize=9, color='gray')
 
     # Label and style
-    #plt.xticks(ticks=range(len(batch_labels)), labels=batch_labels, rotation=45)
     plt.xlabel("Batch")
     plt.ylabel("Loss")
     plt.title("Losses over Batches with Epoch Boundaries")
@@ -211,11 +217,12 @@ def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int,
     for epoch in range(num_epochs):
         logger.info(f"Training epoch {epoch + 1}/{num_epochs}...")
         model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no)
-        dataset_data.epoch_data.append(epoch_data)
         if save == "epoch":
             # Save the model after each epoch
             logger.info(f"Saving model after epoch {epoch + 1}...")
             save_model(config.training_dir + f'/model_{epoch + 1}.pkl', model)
+            epoch_data.model_no = epoch + 1
+        dataset_data.epoch_data.append(epoch_data)
         if plot:
             plot_epoch_data(epoch + 1, epoch_data)
             save_epoch_data(epoch + 1, epoch_data)
@@ -263,7 +270,7 @@ def train_model_with_generated_training_data(with_policy: bool = True):
         save_dataset=True
     )
 
-def train_model_on_ground_truth_dataset(num_epochs: int = 1) -> tuple[AlphaZeroModel, DatasetData]:
+def train_model_on_given_dataset(dataset: Dataset, num_epochs: int = 1, save_type: str = 'batch') -> tuple[AlphaZeroModel, DatasetData]:
     # create a model
     model = AlphaZeroModel(
         config.board_size,
@@ -271,21 +278,12 @@ def train_model_on_ground_truth_dataset(num_epochs: int = 1) -> tuple[AlphaZeroM
         rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
     )
     save_model(config.training_dir + '/model_0.pkl', model)
-
-    # load the dataset with pickle
-    dataset_path = config.eval_dir + '/gtd.pkl'
-    with open(dataset_path, 'rb') as file:
-        dataset: Dataset = pickle.load(file)
-    logger.info(f"Loaded dataset from {dataset_path}.")
-
-    #dataset.trim(25000)
-    #dataset.batch_size = 512
     
     model, dataset_data = train_model_epochs(
         model=model,
         dataset=dataset,
         num_epochs=num_epochs,
-        save="batch"
+        save=save_type
     )
 
     plot_dataset_data(1, dataset_data)
@@ -300,7 +298,7 @@ def main():
     # Train the model with generated training data
     #train_model_with_generated_training_data(with_policy=True)
 
-    train_model_on_ground_truth_dataset(5)
+    #train_model_on_ground_truth_dataset(5)
     
     logger.info("Training completed successfully.")
 

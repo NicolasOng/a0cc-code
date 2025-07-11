@@ -75,6 +75,13 @@ def generate_ground_truth_dataset(num_states: int | None = None):
         pickle.dump(dataset, file)
     logger.info(f"Ground truth dataset saved to {output_path}.")
 
+def load_ground_truth_dataset() -> Dataset:
+    dataset_path = config.eval_dir + '/gtd.pkl'
+    with open(dataset_path, 'rb') as file:
+        gt_dataset: Dataset = pickle.load(file)
+    logger.info(f"Loaded dataset from {dataset_path}.")
+    return gt_dataset
+
 def generate_random_dataset(num_states: int | None = None):
     # create useful objects
     r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)

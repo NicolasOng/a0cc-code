@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from collections import deque
 from typing import Generator
 
@@ -42,6 +44,25 @@ class Dataset:
         self.policies = jnp.stack([d.policy for d in self.data]) # (board_size ** 4) -> (N, board_size ** 4)
         self.data.clear()  # Clear the deque as we no longer need it
         self.static = True  # Mark the dataset as static
+    
+    def split_off_test(self, test_size: int) -> Dataset:
+        """Split off a test set of the specified size."""
+        assert self.static, "Dataset must be static to split off a test set."
+        assert test_size < self.states.shape[0], "Test size must be less than the dataset size."
+
+        # shuffle the dataset before splitting
+        self.shuffle()
+        
+        # Create a new dataset for the test set
+        test_dataset = Dataset(test_size, self.batch_size, static=True)
+        
+        # Split the data
+        test_dataset.set(self.states[-test_size:], self.values[-test_size:], self.policies[-test_size:])
+        
+        # Trim the original dataset
+        self.trim(len(self) - test_size)
+        
+        return test_dataset
 
     def shuffle(self) -> None:
         if not self.static:
@@ -68,6 +89,6 @@ class Dataset:
         """Return the number of complete batches that will be output by the batches method."""
         data_len = len(self)
         return data_len // self.batch_size
-    
+
     def __len__(self) -> int:
         return len(self.data) if not self.static else self.states.shape[0]
