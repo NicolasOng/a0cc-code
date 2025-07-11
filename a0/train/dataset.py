@@ -6,6 +6,7 @@ import os
 import pickle
 import dill
 import matplotlib.pyplot as plt
+import math
 
 import jax
 from flax import nnx
@@ -104,12 +105,13 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
     dataset.shuffle()
     batches = dataset.batches()
 
-    num_batches = len(dataset) // dataset.batch_size
-    save_batch_amount = max(num_batches // 50, 1)
+    num_batches = dataset.num_batches()
+    batches_per_save = math.ceil(num_batches / 50)
     logger.info(f"Number of batches: {num_batches}")
-    logger.info(f"Save batch amount: {save_batch_amount}")
+    logger.info(f"Batches per save: {batches_per_save}")
+    logger.info(f"Total models: {num_batches // batches_per_save}")
 
-    optimizer = nnx.Optimizer(model, optax.adamw(0.000005, 0.9))
+    optimizer = nnx.Optimizer(model, optax.adamw(0.00005))
 
     for ts, batch in enumerate(batches):
         # convert the batch to a dictionary
@@ -129,8 +131,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
         batch_data.policy_loss = policy_loss
         batch_data.total_loss = loss
         epoch_data.batch_data.append(batch_data)
-        # if save is "batch" and ts % save_batch_amount == 0:
-        if save == "batch" and ts + 1 % save_batch_amount == 0:
+        if save == "batch" and (ts + 1) % batches_per_save == 0:
             # Save the model after every save_batch_amount batches
             cur_model_no += 1
             logger.info(f"Saving model {cur_model_no} after batch {ts + 1}...")
@@ -277,13 +278,14 @@ def train_model_on_ground_truth_dataset(num_epochs: int = 1) -> tuple[AlphaZeroM
         dataset: Dataset = pickle.load(file)
     logger.info(f"Loaded dataset from {dataset_path}.")
 
-    dataset.trim(25000)
+    #dataset.trim(25000)
+    #dataset.batch_size = 512
     
     model, dataset_data = train_model_epochs(
         model=model,
         dataset=dataset,
         num_epochs=num_epochs,
-        save="None"
+        save="batch"
     )
 
     plot_dataset_data(1, dataset_data)

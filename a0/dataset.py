@@ -64,5 +64,10 @@ class Dataset:
                 break
             yield self.states[i:i + self.batch_size], self.values[i:i + self.batch_size], self.policies[i:i + self.batch_size]
 
+    def num_batches(self) -> int:
+        """Return the number of complete batches that will be output by the batches method."""
+        data_len = len(self)
+        return data_len // self.batch_size
+    
     def __len__(self) -> int:
         return len(self.data) if not self.static else self.states.shape[0]
