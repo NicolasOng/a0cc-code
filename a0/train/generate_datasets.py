@@ -31,10 +31,10 @@ def generate_ground_truth_dataset(num_states: int | None = None):
     max_rank = r.get_max_rank()
     n = max_rank if num_states is None else num_states
 
-    # create the jnp arrays to hold the data
-    jnp_states = jnp.zeros((n, config.board_size, config.board_size, 2)) # (N, board_size, board_size, 2)
-    jnp_values = jnp.zeros((n, 1)) # (N, 1)
-    jnp_policies = jnp.zeros((n, config.board_size ** 4)) # (N, board_size ** 4)
+    # create lists to hold the data
+    states = [] # (board_size, board_size, 2)
+    values = [] # (1,)
+    policies = [] # (board_size ** 4)
 
     # for the amount of ranks specified,
     for i in tqdm(range(n)):
@@ -55,10 +55,14 @@ def generate_ground_truth_dataset(num_states: int | None = None):
         # get the ideal policy for the state, based on the solve data
         # TODO: implement this - for now, blank.
         
-        # put these into the jnp arrays
-        jnp_states.at[i].set(board_input)
-        jnp_values.at[i].set(outcome)
-        #jnp_policies[i] = jnp.zeros((config.board_size ** 4,))
+        # put these into the lists
+        states.append(board_input)
+        values.append(outcome)
+        policies.append(jnp.zeros((config.board_size ** 4,)))
+    
+    jnp_states = jnp.stack(states, 0) # (board_size, board_size) -> (N, board_size, board_size)
+    jnp_values = jnp.stack(values, 0)  # (1,) -> (N, 1)
+    jnp_policies = jnp.stack(policies, 0) # (board_size ** 4) -> (N, board_size ** 4)
     
     # add these to a dataset
     dataset = Dataset(n, 256, True)
@@ -71,6 +75,58 @@ def generate_ground_truth_dataset(num_states: int | None = None):
         pickle.dump(dataset, file)
     logger.info(f"Ground truth dataset saved to {output_path}.")
 
+def generate_random_dataset(num_states: int | None = None):
+    # create useful objects
+    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
+    s = CCState(config.num_spots, config.num_pieces, config.num_players)
+
+    # decide how many states to generate (if None specified, generate all states)
+    max_rank = r.get_max_rank()
+    n = max_rank if num_states is None else num_states
+
+    # create lists to hold the data
+    states = [] # (board_size, board_size, 2)
+    values = [] # (1,)
+    policies = [] # (board_size ** 4)
+
+    # for the amount of ranks specified,
+    for i in tqdm(range(n)):
+        # get the rank to generate (if generating all states, use the index as the rank)
+        cur_rank = i if num_states is None else random.randint(0, max_rank)
+        
+        # unrank the current rank to get the state
+        r.unrank(cur_rank, s)
+        # get the board from the state
+        board = s.get_board()
+
+        # convert the board to a model input (board_size, board_size, 2)
+        board_input = board_to_input(board)[0]
+        # choose a random outcome for the state (1=win, -1=loss, 0=draw/illegal)
+        outcome = np.random.choice([-1, 1], p=[0.5, 0.5])
+        outcome = np.array([outcome])  # Convert to shape (1,)
+        # get the ideal policy for the state, based on the solve data
+        # TODO: implement this - for now, blank.
+        
+        # put these into the lists
+        states.append(board_input)
+        values.append(outcome)
+        policies.append(jnp.zeros((config.board_size ** 4,)))
+    
+    jnp_states = jnp.stack(states, 0) # (board_size, board_size) -> (N, board_size, board_size)
+    jnp_values = jnp.stack(values, 0)  # (1,) -> (N, 1)
+    jnp_policies = jnp.stack(policies, 0) # (board_size ** 4) -> (N, board_size ** 4)
+
+    # add these to a dataset
+    dataset = Dataset(n, 256, True)
+    dataset.set(jnp_states, jnp_values, jnp_policies)
+
+    # save the dataset
+    logger.info("Saving random dataset to file...")
+    output_path = f"{config.eval_dir}/rd.pkl"
+    with open(output_path, 'wb') as file:
+        pickle.dump(dataset, file)
+    logger.info(f"Random dataset saved to {output_path}.")
+
 def main():
     setup_logging(
         level=20,
@@ -80,6 +136,8 @@ def main():
     logger.info("Generating datasets...")
 
     generate_ground_truth_dataset()
+
+    #generate_random_dataset(1000)
 
     logger.info("Finished generating datasets.")
 

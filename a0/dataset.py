@@ -11,11 +11,10 @@ class TrainingData:
         self.policy: jnp.ndarray = policy
 
 class Dataset:
-    def __init__(self, size: int, batch_size: int, static: bool=False) -> None:
-        self.size = size
+    def __init__(self, max_size: int, batch_size: int, static: bool=False) -> None:
         self.batch_size = batch_size
         self.static = static
-        self.data: deque[TrainingData] = deque(maxlen=size)
+        self.data: deque[TrainingData] = deque(maxlen=max_size)
     
     def set(self, states: jnp.ndarray, values: jnp.ndarray, policies: jnp.ndarray) -> None:
         assert self.static, "Dataset is not static; cannot set new data."
@@ -26,6 +25,14 @@ class Dataset:
     def add(self, new_data: TrainingData) -> None:
         assert not self.static, "Dataset is static; cannot add new data."
         self.data.append(new_data)
+    
+    def trim(self, new_size: int) -> None:
+        if not self.static and new_size < len(self.data):
+            self.data = deque(list(self.data)[:new_size], maxlen=new_size)
+        elif self.static and new_size < self.states.shape[0]:
+            self.states = self.states[:new_size]
+            self.values = self.values[:new_size]
+            self.policies = self.policies[:new_size]
     
     def convert_to_static(self) -> None:
         assert not self.static, "Dataset is already static."
@@ -53,6 +60,8 @@ class Dataset:
     def batches(self) -> Generator[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], None, None]:
         data_len = self.states.shape[0]
         for i in range(0, data_len, self.batch_size):
+            if i + self.batch_size > data_len:
+                break
             yield self.states[i:i + self.batch_size], self.values[i:i + self.batch_size], self.policies[i:i + self.batch_size]
 
     def __len__(self) -> int:

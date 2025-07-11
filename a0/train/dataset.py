@@ -5,6 +5,7 @@ from concurrent.futures import Future, wait, FIRST_COMPLETED
 import os
 import pickle
 import dill
+import matplotlib.pyplot as plt
 
 import jax
 from flax import nnx
@@ -51,9 +52,10 @@ policy_loss_function = optax.softmax_cross_entropy
 def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     value, policy = model(batch['board'])
     value_loss = jnp.mean(value_loss_function(value, batch['value']))
-    masked_policy = jnp.where(batch['policy'], policy, 0)
-    policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_policy))
-    total_loss = value_loss + policy_loss
+    #masked_policy = jnp.where(batch['policy'], policy, 0)
+    #policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_policy))
+    total_loss = value_loss# + policy_loss
+    policy_loss = 0
     # JAX requires the loss function to return a tuple of (loss, aux)
     # where aux can be any additional information you want to return
     return total_loss, (value_loss, policy_loss)
@@ -65,7 +67,35 @@ def train_step(model: AlphaZeroModel, optimizer: nnx.Optimizer, batch: dict[str,
     optimizer.update(grads)
     return loss, value_loss, policy_loss
 
-def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None") -> tuple[AlphaZeroModel, EpochData]:
+def plot_epoch_data(epoch_num: int, epoch_data: EpochData):
+    # Extract losses
+    value_losses = [bd.value_loss for bd in epoch_data.batch_data]
+    policy_losses = [bd.policy_loss for bd in epoch_data.batch_data]
+    total_losses = [bd.total_loss for bd in epoch_data.batch_data]
+    steps = list(range(len(epoch_data.batch_data)))
+
+    # Plotting
+    plt.figure(figsize=(10, 6))
+    plt.plot(steps, value_losses, label='Value Loss')
+    plt.plot(steps, policy_losses, label='Policy Loss')
+    plt.plot(steps, total_losses, label='Total Loss')
+    
+    plt.xlabel('Batch')
+    plt.ylabel('Loss')
+    plt.title(f'Losses Over Batches in Epoch {epoch_num}')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}/epoch_{epoch_num}_losses.png")
+    plt.clf()
+
+def save_epoch_data(epoch_num: int, epoch_data: EpochData):
+    epoch_data_path = f"{config.training_dir}/epoch_{epoch_num}_data.pkl"
+    with open(epoch_data_path, 'wb') as file:
+        pickle.dump(epoch_data, file)
+    logger.info(f"Saved epoch data to {epoch_data_path}.")
+
+def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0) -> tuple[AlphaZeroModel, EpochData, int]:
     logger.info(f"Training model on the given dataset ({len(dataset)})...")
 
     epoch_data = EpochData()
@@ -74,13 +104,12 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
     dataset.shuffle()
     batches = dataset.batches()
 
-    num_batches = dataset.size // dataset.batch_size
+    num_batches = len(dataset) // dataset.batch_size
     save_batch_amount = max(num_batches // 50, 1)
     logger.info(f"Number of batches: {num_batches}")
     logger.info(f"Save batch amount: {save_batch_amount}")
-    cur_model_no = 0
 
-    optimizer = nnx.Optimizer(model, optax.adamw(0.005, 0.9))
+    optimizer = nnx.Optimizer(model, optax.adamw(0.000005, 0.9))
 
     for ts, batch in enumerate(batches):
         # convert the batch to a dictionary
@@ -107,21 +136,88 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
             logger.info(f"Saving model {cur_model_no} after batch {ts + 1}...")
             save_model(config.training_dir + f'/model_{cur_model_no}.pkl', model)
 
-    return model, epoch_data
+    return model, epoch_data, cur_model_no
 
-def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None") -> tuple[AlphaZeroModel, DatasetData]:
+def plot_dataset_data(dataset_num: int, dataset_data: DatasetData):
+    all_epochs = dataset_data.epoch_data
+    # Collect losses and labels
+    value_losses: list[float] = []
+    policy_losses: list[float] = []
+    total_losses: list[float] = []
+    batch_labels: list[str] = []
+
+    for _, epoch in enumerate(all_epochs):
+        for batch_idx, batch in enumerate(epoch.batch_data):
+            value_losses.append(batch.value_loss)
+            policy_losses.append(batch.policy_loss)
+            total_losses.append(batch.total_loss)
+            batch_labels.append(f"{batch_idx + 1}")
+
+    # Epoch boundary positions (between last and first batch of adjacent epochs)
+    #epoch_boundaries = [i * len(all_epochs[0].batch_data) for i in range(1, len(all_epochs))]
+    epoch_boundaries: list[int] = []
+    cur_boundary = 0
+    for epoch in all_epochs[:-1]:  # Exclude the last epoch for boundaries
+        cur_boundary += len(epoch.batch_data)
+        epoch_boundaries.append(cur_boundary)
+
+    # Plot losses
+    plt.figure(figsize=(12, 6))
+    plt.plot(value_losses, label="Value Loss")
+    plt.plot(policy_losses, label="Policy Loss")
+    plt.plot(total_losses, label="Total Loss")
+
+    # Add vertical lines for epoch boundaries
+    for i, boundary in enumerate(epoch_boundaries):
+        x=boundary - 0.5
+        plt.axvline(x=x, color='gray', linestyle='--', alpha=0.7,
+                    label='Epoch Boundary' if boundary == epoch_boundaries[0] else "")
+        plt.text(x, 0 - 0.05,
+             f"Epoch {i + 1}", rotation=90, va='top', ha='center', fontsize=9, color='gray')
+
+    # Label and style
+    #plt.xticks(ticks=range(len(batch_labels)), labels=batch_labels, rotation=45)
+    plt.xlabel("Batch")
+    plt.ylabel("Loss")
+    plt.title("Losses over Batches with Epoch Boundaries")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}/dataset_{dataset_num}_losses.png")
+    plt.clf()
+
+def save_dataset_data(dataset_num: int, dataset_data: DatasetData):
+    dataset_data_path = f"{config.training_dir}/dataset_{dataset_num}_data.pkl"
+    with open(dataset_data_path, 'wb') as file:
+        pickle.dump(dataset_data, file)
+    logger.info(f"Saved dataset data to {dataset_data_path}.")
+
+def load_dataset_data(dataset_num: int) -> DatasetData:
+    dataset_data_path = f"{config.training_dir}/dataset_{dataset_num}_data.pkl"
+    if not os.path.exists(dataset_data_path):
+        raise FileNotFoundError(f"Dataset data file {dataset_data_path} does not exist.")
+    with open(dataset_data_path, 'rb') as file:
+        dataset_data: DatasetData = pickle.load(file)
+    logger.info(f"Loaded dataset data from {dataset_data_path}.")
+    return dataset_data
+
+def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True) -> tuple[AlphaZeroModel, DatasetData]:
     """
     Train the model for a number of epochs on the given dataset.
     """
     dataset_data = DatasetData()
+    cur_model_no = 0
     for epoch in range(num_epochs):
         logger.info(f"Training epoch {epoch + 1}/{num_epochs}...")
-        model, epoch_data = train_model_epoch(model, dataset, save)
+        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no)
         dataset_data.epoch_data.append(epoch_data)
         if save == "epoch":
             # Save the model after each epoch
             logger.info(f"Saving model after epoch {epoch + 1}...")
             save_model(config.training_dir + f'/model_{epoch + 1}.pkl', model)
+        if plot:
+            plot_epoch_data(epoch + 1, epoch_data)
+            save_epoch_data(epoch + 1, epoch_data)
     return model, dataset_data
 
 def train_model_datasets(model: AlphaZeroModel, datasets: list[Dataset], num_epochs: int, save: str = "None") -> tuple[AlphaZeroModel, list[DatasetData]]:
@@ -180,22 +276,20 @@ def train_model_on_ground_truth_dataset(num_epochs: int = 1) -> tuple[AlphaZeroM
     with open(dataset_path, 'rb') as file:
         dataset: Dataset = pickle.load(file)
     logger.info(f"Loaded dataset from {dataset_path}.")
+
+    dataset.trim(25000)
     
     model, dataset_data = train_model_epochs(
         model=model,
         dataset=dataset,
         num_epochs=num_epochs,
-        save="batch"
+        save="None"
     )
 
-    # save the dataset data with pickle
-    dataset_data_path = config.training_dir + '/dataset_data.pkl'
-    with open(dataset_data_path, 'wb') as file:
-        pickle.dump(dataset_data, file)
-    logger.info(f"Saved dataset data to {dataset_data_path}.")
+    plot_dataset_data(1, dataset_data)
+    save_dataset_data(1, dataset_data)
 
     return model, dataset_data
-
 
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name="train_dataset")
@@ -207,3 +301,6 @@ def main():
     train_model_on_ground_truth_dataset(5)
     
     logger.info("Training completed successfully.")
+
+if __name__ == "__main__":
+    main()
