@@ -113,7 +113,7 @@ def random_ground_truth_values(n: int = 1000) -> None:
     
     # 4. load all this into a static Dataset object
     logger.info("Creating Dataset object with ground truth values...")
-    jnp_states = jnp.stack(states) # (N, board_size, board_size)
+    jnp_states = jnp.stack(states) # (N, board_size, board_size, 2)
     jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
     jnp_policies = jnp.zeros((len(boards), config.board_size ** 4)) # (N, board_size ** 4)
     gtv_dataset = Dataset(size=len(boards), batch_size=256, static=True)

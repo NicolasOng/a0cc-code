@@ -10,6 +10,7 @@ from cc.lookups import CCBaselineSolver
 import numpy as np
 import numpy.typing as npt
 import matplotlib.pyplot as plt
+import pickle
 
 def num_children_per_state(num_ranks: int | None):
     '''
@@ -168,12 +169,128 @@ def count_states_with_all_children_winning():
     percent_winning_children_array = percent_winning_children_data['percent_winning_children']
     # get the percentage of states where all children are winning
     num_states_with_all_children_winning = np.sum(percent_winning_children_array == 1.0)
-    num_states_with_all_children_winning /= len(percent_winning_children_array)
-    print(f'Percent of states with all children winning: {num_states_with_all_children_winning}')
+    percent_states_with_all_children_winning = num_states_with_all_children_winning / len(percent_winning_children_array)
+    print(f'Percent of states with all children winning: {percent_states_with_all_children_winning}')
     # do the same for the number of states with no winning children
     num_states_with_no_winning_children = np.sum(percent_winning_children_array == 0.0)
-    num_states_with_no_winning_children /= len(percent_winning_children_array)
-    print(f'Percent of states with no winning children: {num_states_with_no_winning_children}')
+    percent_states_with_no_winning_children = num_states_with_no_winning_children / len(percent_winning_children_array)
+    print(f'Percent of states with no winning children: {percent_states_with_no_winning_children}')
+    # save the results to a pkl file
+    results = {
+        'num_states_with_all_children_winning': num_states_with_all_children_winning,
+        'num_states_with_no_winning_children': num_states_with_no_winning_children,
+        'total_states': len(percent_winning_children_array),
+        'percent_states_with_all_children_winning': percent_states_with_all_children_winning,
+        'percent_states_with_no_winning_children': percent_states_with_no_winning_children
+    }
+    with open(config.stats_dir + 'states_with_all_children_winning.pkl', 'wb') as f:
+        pickle.dump(results, f)
+
+def count_num_winning_states(num_ranks: int | None = None):
+    '''
+    Prints the and saves the percentage of winning states for each player.
+    '''
+    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
+    s = CCState(config.num_spots, config.num_pieces, config.num_players)
+    cc = Game(config.board_size, config.num_pieces, False, False, False)
+    l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
+
+    px_wins = 0
+    po_wins = 0
+    draws = 0
+    illegal = 0
+    total_states = 0
+
+    px_win_on_px_turn = 0
+    po_win_on_po_turn = 0
+
+    px_turns = 0
+    po_turns = 0
+
+    # decide how many ranks to check (if None specified, check all ranks)
+    max_rank = r.get_max_rank()
+    n = max_rank if num_ranks is None else num_ranks
+
+    total_states = n
+
+    # for the amount of ranks specified,
+    for i in tqdm(range(n)):
+        # get the rank to check (if checking all ranks, use the index as the rank)
+        cur_rank = i if num_ranks is None else random.randint(0, max_rank)
+        
+        # unrank the current rank to get the state
+        r.unrank(cur_rank, s)
+        # get the board from the state
+        board = s.get_board()
+        # get the winner of the state based on the solve data
+        winner = l.get_winner(board)
+        # increment the counts
+        if board.current_player == Player.PLAYER_X:
+            px_turns += 1
+        elif board.current_player == Player.PLAYER_O:
+            po_turns += 1
+        if winner == Player.PLAYER_X:
+            px_wins += 1
+            if board.current_player == Player.PLAYER_X:
+                px_win_on_px_turn += 1
+        elif winner == Player.PLAYER_O:
+            po_wins += 1
+            if board.current_player == Player.PLAYER_O:
+                po_win_on_po_turn += 1
+        elif winner == None:
+            # no winner, check if it's a draw or illegal state
+            sd = l.board_lookup(board)
+            if sd == 0:
+                draws += 1
+            elif sd == 3:
+                illegal += 1
+    
+    # calculate the percentages
+    px_win_percentage = px_wins / total_states
+    po_win_percentage = po_wins / total_states
+    px_win_on_px_turn_percentage = px_win_on_px_turn / total_states
+    po_win_on_po_turn_percentage = po_win_on_po_turn / total_states
+    px_turn_percentage = px_turns / total_states
+    po_turn_percentage = po_turns / total_states
+    draw_percentage = draws / total_states
+    illegal_percentage = illegal / total_states
+
+    # print the results
+    print(f'Player X wins: {px_wins} ({px_win_percentage:.2%})')
+    print(f'Player O wins: {po_wins} ({po_win_percentage:.2%})')
+    print(f'Draws: {draws} ({draw_percentage:.2%})')
+    print(f'Illegal states: {illegal} ({illegal_percentage:.2%})')
+    print(f'Player X wins on Player X turn: {px_win_on_px_turn} ({px_win_on_px_turn_percentage:.2%})')
+    print(f'Player O wins on Player O turn: {po_win_on_po_turn} ({po_win_on_po_turn_percentage:.2%})')
+    print(f'Player X losses on Player X turn: {px_turns - px_win_on_px_turn} ({(px_turns - px_win_on_px_turn)/total_states:.2%})')
+    print(f'Player O losses on Player O turn: {po_turns - po_win_on_po_turn} ({(po_turns - po_win_on_po_turn)/total_states:.2%})')
+    print(f'Player X turns: {px_turns} ({px_turn_percentage:.2%})')
+    print(f'Player O turns: {po_turns} ({po_turn_percentage:.2%})')
+    print(f'Total states: {total_states}')
+
+    # save the results to a pkl file
+    results = {
+        'px_wins': px_wins,
+        'po_wins': po_wins,
+        'draws': draws,
+        'illegal': illegal,
+        'total_states': total_states,
+        'px_win_percentage': px_win_percentage,
+        'po_win_percentage': po_win_percentage,
+        'draw_percentage': draw_percentage,
+        'illegal_percentage': illegal_percentage,
+        'px_win_on_px_turn': px_win_on_px_turn,
+        'po_win_on_po_turn': po_win_on_po_turn,
+        'px_turns': px_turns,
+        'po_turns': po_turns,
+        'px_win_on_px_turn_percentage': px_win_on_px_turn_percentage,
+        'po_win_on_po_turn_percentage': po_win_on_po_turn_percentage,
+        'px_turn_percentage': px_turn_percentage,
+        'po_turn_percentage': po_turn_percentage
+    }
+
+    with open(config.stats_dir + 'num_winning_states.pkl', 'wb') as f:
+        pickle.dump(results, f)
 
 def main():
     '''
@@ -182,6 +299,8 @@ def main():
     '''
     count_children = False
     count_percent_winning_children = False
+    count_winning_states = True
+
     if count_children:
         # Generate the number of children per state
         num_children_per_state(num_ranks=None)  # Set to None for all ranks or specify a number
@@ -194,8 +313,12 @@ def main():
         # with 10 and 100 bins
         graph_percent_winning_children(100)
         graph_percent_winning_children(10)
+        # also count the states with all children winning/losing
         count_states_with_all_children_winning()
-    
+    if count_winning_states:
+        # Count the number of winning states
+        count_num_winning_states()
+        
 
 if __name__ == "__main__":
     main()

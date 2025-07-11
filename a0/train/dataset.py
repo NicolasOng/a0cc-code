@@ -27,17 +27,23 @@ from a0.players.a0 import board_to_input
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-class BatchLoss:
+class BatchData:
     batch_size: int
     value_loss: float
     policy_loss: float
     total_loss: float
 
-class EpochLoss:
-    batch_losses: list[BatchLoss]
+class EpochData:
+    batch_data: list[BatchData]
 
-class DatasetLoss:
-    epoch_losses: list[EpochLoss]
+    def __init__(self):
+        self.batch_data = []
+
+class DatasetData:
+    epoch_data: list[EpochData]
+
+    def __init__(self):
+        self.epoch_data = []
 
 value_loss_function = optax.l2_loss
 policy_loss_function = optax.softmax_cross_entropy
@@ -59,12 +65,20 @@ def train_step(model: AlphaZeroModel, optimizer: nnx.Optimizer, batch: dict[str,
     optimizer.update(grads)
     return loss, value_loss, policy_loss
 
-def train_model_epoch(model: AlphaZeroModel, dataset: Dataset) -> AlphaZeroModel:
+def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None") -> tuple[AlphaZeroModel, EpochData]:
     logger.info(f"Training model on the given dataset ({len(dataset)})...")
+
+    epoch_data = EpochData()
 
     # shuffle the dataset and create batches generator
     dataset.shuffle()
     batches = dataset.batches()
+
+    num_batches = dataset.size // dataset.batch_size
+    save_batch_amount = max(num_batches // 50, 1)
+    logger.info(f"Number of batches: {num_batches}")
+    logger.info(f"Save batch amount: {save_batch_amount}")
+    cur_model_no = 0
 
     optimizer = nnx.Optimizer(model, optax.adamw(0.005, 0.9))
 
@@ -79,34 +93,52 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset) -> AlphaZeroModel
         loss, value_loss, policy_loss = train_step(model, optimizer, batch)
         logger.info(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
         print(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
+        # Store batch data
+        batch_data = BatchData()
+        batch_data.batch_size = len(batch['board'])
+        batch_data.value_loss = value_loss
+        batch_data.policy_loss = policy_loss
+        batch_data.total_loss = loss
+        epoch_data.batch_data.append(batch_data)
+        # if save is "batch" and ts % save_batch_amount == 0:
+        if save == "batch" and ts + 1 % save_batch_amount == 0:
+            # Save the model after every save_batch_amount batches
+            cur_model_no += 1
+            logger.info(f"Saving model {cur_model_no} after batch {ts + 1}...")
+            save_model(config.training_dir + f'/model_{cur_model_no}.pkl', model)
 
-    return model
+    return model, epoch_data
 
-def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: bool = False) -> AlphaZeroModel:
+def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None") -> tuple[AlphaZeroModel, DatasetData]:
     """
     Train the model for a number of epochs on the given dataset.
     """
+    dataset_data = DatasetData()
     for epoch in range(num_epochs):
         logger.info(f"Training epoch {epoch + 1}/{num_epochs}...")
-        model = train_model_epoch(model, dataset)
-        if save:
+        model, epoch_data = train_model_epoch(model, dataset, save)
+        dataset_data.epoch_data.append(epoch_data)
+        if save == "epoch":
             # Save the model after each epoch
             logger.info(f"Saving model after epoch {epoch + 1}...")
             save_model(config.training_dir + f'/model_{epoch + 1}.pkl', model)
-    return model
+    return model, dataset_data
 
-def train_model_datasets(model: AlphaZeroModel, datasets: list[Dataset], num_epochs: int, save_epoch: bool = False, save_dataset: bool = False) -> AlphaZeroModel:
+def train_model_datasets(model: AlphaZeroModel, datasets: list[Dataset], num_epochs: int, save: str = "None") -> tuple[AlphaZeroModel, list[DatasetData]]:
     """
     Train the model for a number of epochs on each dataset in the list.
+    The model is saved either after each epoch or after each dataset, or never.
     """
+    dataset_data_list: list[DatasetData] = []
     for i, dataset in enumerate(datasets):
         logger.info(f"Training on dataset {i + 1}/{len(datasets)}...")
-        model = train_model_epochs(model, dataset, num_epochs, save_epoch)
-        if save_dataset:
+        model, dataset_data = train_model_epochs(model, dataset, num_epochs, save)
+        dataset_data_list.append(dataset_data)
+        if save == "dataset":
             # Save the model after each dataset
             logger.info(f"Saving model after dataset {i + 1}...")
             save_model(config.training_dir + f'/model_{i + 1}.pkl', model)
-    return model
+    return model, dataset_data_list
 
 def train_model_with_generated_training_data(with_policy: bool = True):
     '''
@@ -134,11 +166,44 @@ def train_model_with_generated_training_data(with_policy: bool = True):
         save_dataset=True
     )
 
+def train_model_on_ground_truth_dataset(num_epochs: int = 1) -> tuple[AlphaZeroModel, DatasetData]:
+    # create a model
+    model = AlphaZeroModel(
+        config.board_size,
+        training=True,
+        rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
+    )
+    save_model(config.training_dir + '/model_0.pkl', model)
+
+    # load the dataset with pickle
+    dataset_path = config.eval_dir + '/gtd.pkl'
+    with open(dataset_path, 'rb') as file:
+        dataset: Dataset = pickle.load(file)
+    logger.info(f"Loaded dataset from {dataset_path}.")
+    
+    model, dataset_data = train_model_epochs(
+        model=model,
+        dataset=dataset,
+        num_epochs=num_epochs,
+        save="batch"
+    )
+
+    # save the dataset data with pickle
+    dataset_data_path = config.training_dir + '/dataset_data.pkl'
+    with open(dataset_data_path, 'wb') as file:
+        pickle.dump(dataset_data, file)
+    logger.info(f"Saved dataset data to {dataset_data_path}.")
+
+    return model, dataset_data
+
+
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name="train_dataset")
     logger.info("Starting training with generated training data...")
     
     # Train the model with generated training data
-    train_model_with_generated_training_data(with_policy=True)
+    #train_model_with_generated_training_data(with_policy=True)
+
+    train_model_on_ground_truth_dataset(5)
     
     logger.info("Training completed successfully.")
