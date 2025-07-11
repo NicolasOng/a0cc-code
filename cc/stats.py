@@ -170,11 +170,11 @@ def count_states_with_all_children_winning():
     # get the percentage of states where all children are winning
     num_states_with_all_children_winning = np.sum(percent_winning_children_array == 1.0)
     percent_states_with_all_children_winning = num_states_with_all_children_winning / len(percent_winning_children_array)
-    print(f'Percent of states with all children winning: {percent_states_with_all_children_winning}')
+    print(f'Number of states with all children winning: {num_states_with_all_children_winning} ({percent_states_with_all_children_winning:.2%})')
     # do the same for the number of states with no winning children
     num_states_with_no_winning_children = np.sum(percent_winning_children_array == 0.0)
     percent_states_with_no_winning_children = num_states_with_no_winning_children / len(percent_winning_children_array)
-    print(f'Percent of states with no winning children: {percent_states_with_no_winning_children}')
+    print(f'Number of states with no winning children: {num_states_with_no_winning_children} ({percent_states_with_no_winning_children:.2%})')
     # save the results to a pkl file
     results = {
         'num_states_with_all_children_winning': num_states_with_all_children_winning,
