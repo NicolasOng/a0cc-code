@@ -58,7 +58,7 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     value, policy = model(batch['board'])
     value_loss = jnp.mean(value_loss_function(value, batch['value']))
     value_classification = jnp.where(value <= 0, -1, 1)
-    value_accuracy = float(jnp.mean(value_classification == batch['value']))
+    value_accuracy = jnp.mean(value_classification == batch['value']).astype(float)
     #masked_policy = jnp.where(batch['policy'], policy, 0)
     #policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_policy))
     total_loss = value_loss# + policy_loss
