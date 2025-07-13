@@ -157,8 +157,11 @@ def create_rotated_policy_mapping(board_size: int) -> list[int]:
 class Policy:
     def __init__(self, board_size: int):
         self.board_size = board_size
-        self.policy = jnp.zeros((board_size ** 4,), dtype=jnp.float32)
+        self.policy: list[float] = [0.0] * (board_size ** 4)
         self.policy_rotation_mapping = create_rotated_policy_mapping(board_size)
+    
+    def get_policy_list(self) -> list[float]:
+        return self.policy
     
     def move_to_policy_index(self, move: Move) -> int:
         '''
@@ -182,53 +185,60 @@ class Policy:
         end_y = end_pos % board_size
         return Move(start_x, start_y, end_x, end_y)
 
-    def rotate_policy_logits(self, logits: jnp.ndarray) -> jnp.ndarray:
+    def rotate_policy_logits(self, logits: list[float]) -> list[float]:
         '''
         Rotates the policy logits by 180 degrees using the precomputed mapping.
         This is used to adjust the policy distribution when the board is rotated.
+        Assumes the given logits has the correct length.
         '''
-        rotated_logits = jnp.zeros_like(logits)
-        for index in range(logits.shape[0]):
+        rotated_logits: list[float] = [0] * (self.board_size ** 4)
+        for index in range(len(logits)):
             rotated_index = self.policy_rotation_mapping[index]
-            rotated_logits = rotated_logits.at[rotated_index].set(logits[index])
+            rotated_logits[rotated_index] = logits[index]
         return rotated_logits
     
-    def set_logits(self, logits: jnp.ndarray, rotate_180: bool) -> None:
+    def set_logits(self, logits: list[float], rotate_180: bool) -> None:
         '''
         Initializes the policy distribution with the given logits
-        The logits are expected to be a 1D array of shape (BOARD_SIZE**4,).
+        The logits are expected to be a list of length BOARD_SIZE**4.
         rotate functionality is used if the board was rotated 180 degrees before being passed into the model.
         '''
-        assert logits.shape[0] == self.board_size ** 4, \
-            f"Expected logits shape ({self.board_size ** 4},), but got {logits.shape}."
+        assert len(logits) == self.board_size ** 4, \
+            f"Expected logits length {self.board_size ** 4}, but got {len(logits)}."
         self.policy = logits
 
         # rotate if necessary
         if rotate_180:
             self.policy = self.rotate_policy_logits(self.policy)
 
-    def set_logits_from_moves(self, moves: list[Move], values: list[float]) -> None:
+    def set_logits_from_moves(self, moves: list[Move], values: list[float], rotate_180: bool) -> None:
         '''
         Initializes the policy distribution with the given moves and their corresponding values.
         The moves are expected to be a list of Move objects, and values is a list of probabilities.
         '''
-        arr = np.zeros((self.board_size ** 4,), dtype=np.float32)
+        self.policy = [0.0] * (self.board_size ** 4)
         for move, value in zip(moves, values):
             index = self.move_to_policy_index(move)
-            arr[index] = value
-        self.policy = jnp.array(arr)
+            self.policy[index] = value
+        
+        # rotate if necessary
+        if rotate_180:
+            self.policy = self.rotate_policy_logits(self.policy)
     
-    def mask_non_legal_moves(self, legal_moves: list[Move]) -> None:
+    def mask_non_legal_moves(self, legal_moves: list[Move], mask_value: float = -float('inf')) -> None:
         '''
         Masks the non-legal moves in the policy distribution.
         '''
-        # create a 1D mask for the legal moves
-        mask = np.zeros_like(self.policy, dtype=bool)
+        # create a new policy list with the mask_value for non-legal moves
+        masked_policy = [mask_value] * len(self.policy)
+
+        # set legal moves to their original values
         for move in legal_moves:
             idx = self.move_to_policy_index(move)
-            mask[idx] = True
-        # apply the mask to the logits
-        self.policy = jnp.where(mask, self.policy, -jnp.inf)
+            masked_policy[idx] = self.policy[idx]
+        
+        # update the policy with the masked values
+        self.policy = masked_policy
     
     def apply_softmax(self) -> None:
         '''
