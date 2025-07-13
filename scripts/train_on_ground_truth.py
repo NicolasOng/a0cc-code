@@ -25,12 +25,12 @@ except FileNotFoundError:
     gt_dataset = load_ground_truth_dataset()
 
 # process the dataset (trim it, create train-test split, etc.)
-# gt_dataset.trim(25000)
+gt_dataset.trim(25000)
 gt_dataset_test = gt_dataset.split_off_test(len(gt_dataset) // 10)
 
 # train the model on the ground truth dataset
 logger.info("Training model on ground truth dataset...")
-_, dataset_data = train_model_on_given_dataset(gt_dataset, num_epochs=10, save_type='batch')
+_, dataset_data = train_model_on_given_dataset(gt_dataset, num_epochs=10, save_type='none')
 
 # from the dataset data, we can extract the number of models saved
 num_saved = 0

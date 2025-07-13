@@ -55,14 +55,21 @@ value_loss_function = optax.l2_loss
 policy_loss_function = optax.softmax_cross_entropy
 
 def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
+    # get the model's predictions
     value, policy = model(batch['board'])
+
+    # calculate the value loss and accuracy
     value_loss = jnp.mean(value_loss_function(value, batch['value']))
     value_classification = jnp.where(value <= 0, -1, 1)
     value_accuracy = jnp.mean(value_classification == batch['value']).astype(float)
-    #masked_policy = jnp.where(batch['policy'], policy, 0)
-    #policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_policy))
-    total_loss = value_loss# + policy_loss
-    policy_loss = 0
+
+    # calculate the policy loss
+    # masked_policy = jnp.where(batch['policy'], policy, 0)
+    policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=policy))
+
+    # calculate the total loss
+    total_loss = value_loss + policy_loss
+    #policy_loss = 0
     # JAX requires the loss function to return a tuple of (loss, aux)
     # where aux can be any additional information you want to return
     return total_loss, (value_loss, policy_loss, value_accuracy)

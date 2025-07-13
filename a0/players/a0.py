@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any
 import random
 import numpy as np
+from numpy.typing import NDArray
 import jax.numpy as jnp
 import jax
 
@@ -157,11 +158,12 @@ def create_rotated_policy_mapping(board_size: int) -> list[int]:
 class Policy:
     def __init__(self, board_size: int):
         self.board_size = board_size
-        self.policy: list[float] = [0.0] * (board_size ** 4)
+        self.policy: NDArray[np.float32] = np.zeros((self.board_size ** 4), dtype=np.float32) # (board_size ** 4,)
+        self.mask: NDArray[np.float32] = np.zeros((self.board_size ** 4), dtype=np.float32) # (board_size ** 4,)
         self.policy_rotation_mapping = create_rotated_policy_mapping(board_size)
     
     def get_policy_list(self) -> list[float]:
-        return self.policy
+        return self.policy.tolist()
     
     def move_to_policy_index(self, move: Move) -> int:
         '''
@@ -185,19 +187,27 @@ class Policy:
         end_y = end_pos % board_size
         return Move(start_x, start_y, end_x, end_y)
 
-    def rotate_policy_logits(self, logits: list[float]) -> list[float]:
+    def rotate_policy_list(self, logits: NDArray[np.float32]) -> NDArray[np.float32]:
         '''
         Rotates the policy logits by 180 degrees using the precomputed mapping.
         This is used to adjust the policy distribution when the board is rotated.
         Assumes the given logits has the correct length.
         '''
-        rotated_logits: list[float] = [0] * (self.board_size ** 4)
+        rotated_logits: NDArray[np.float32] = np.zeros((self.board_size ** 4), dtype=np.float32)
         for index in range(len(logits)):
             rotated_index = self.policy_rotation_mapping[index]
             rotated_logits[rotated_index] = logits[index]
         return rotated_logits
     
-    def set_logits(self, logits: list[float], rotate_180: bool) -> None:
+    def rotate_policy(self) -> None:
+        '''
+        Rotates the policy distribution by 180 degrees in-place.
+        This is used to adjust the policy distribution when the board is rotated.
+        '''
+        self.policy = self.rotate_policy_list(self.policy)
+        self.mask = self.rotate_policy_list(self.mask)
+    
+    def set_logits(self, logits: NDArray[np.float32], rotate_180: bool) -> None:
         '''
         Initializes the policy distribution with the given logits
         The logits are expected to be a list of length BOARD_SIZE**4.
@@ -209,42 +219,56 @@ class Policy:
 
         # rotate if necessary
         if rotate_180:
-            self.policy = self.rotate_policy_logits(self.policy)
+            self.rotate_policy()
 
     def set_logits_from_moves(self, moves: list[Move], values: list[float], rotate_180: bool) -> None:
         '''
         Initializes the policy distribution with the given moves and their corresponding values.
         The moves are expected to be a list of Move objects, and values is a list of probabilities.
         '''
-        self.policy = [0.0] * (self.board_size ** 4)
+        self.policy = np.zeros((self.board_size ** 4), dtype=np.float32)
         for move, value in zip(moves, values):
             index = self.move_to_policy_index(move)
             self.policy[index] = value
         
         # rotate if necessary
         if rotate_180:
-            self.policy = self.rotate_policy_logits(self.policy)
+            self.rotate_policy()
     
-    def mask_non_legal_moves(self, legal_moves: list[Move], mask_value: float = -float('inf')) -> None:
+    def set_legal_moves(self, legal_moves: list[Move]) -> None:
         '''
-        Masks the non-legal moves in the policy distribution.
+        Sets the legal moves in the policy object.
+        Creates a mask for future use.
         '''
-        # create a new policy list with the mask_value for non-legal moves
-        masked_policy = [mask_value] * len(self.policy)
-
-        # set legal moves to their original values
+        self.mask = np.zeros((self.board_size ** 4), dtype=np.float32)
         for move in legal_moves:
             idx = self.move_to_policy_index(move)
-            masked_policy[idx] = self.policy[idx]
-        
-        # update the policy with the masked values
-        self.policy = masked_policy
+            self.mask[idx] = 1
     
-    def apply_softmax(self) -> None:
+    def apply_softmax(self, temperature: float, mask: bool) -> None:
         '''
         Applies the softmax function to the logits to get the policy distribution.
+        Low temperature values make the distribution more deterministic,
+        while high temperature values make it more uniform.
+        Mask is used to set non-legal moves to zero probability.
+        Non-legal moves need to be set before using this.
         '''
-        self.policy = jax.nn.softmax(self.policy)
+        # apply temperature scaling
+        self.policy = self.policy / temperature
+
+        # mask non-legal moves
+        if mask:
+            self.policy = np.where(self.mask, self.policy, -np.inf)
+        
+        # Apply softmax using numpy
+        # Subtract max for numerical stability
+        max_val = np.max(self.policy[self.policy != -np.inf])
+        exp_values = np.exp(self.policy - max_val)
+        self.policy = exp_values / np.sum(exp_values)
+
+        # ensure non-legal moves have zero probability
+        if mask:
+            self.policy = np.where(self.mask, self.policy, 0)
     
     def apply_power_normalize(self, tau: float) -> None:
         '''
@@ -284,7 +308,7 @@ class Policy:
         '''
         Returns the move with the highest probability based on the policy distribution.
         '''
-        index = jnp.argmax(self.policy)
+        index = np.argmax(self.policy)
         return self.policy_index_to_move(index)
     
     def sample_move(self, rng: int) -> Move:

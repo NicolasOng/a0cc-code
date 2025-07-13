@@ -30,7 +30,7 @@ def generate_ground_truth_dataset(num_states: int | None = None):
     l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
     gt = GroundTruth()
     # decide how many states to generate (if None specified, generate all states)
-    max_rank = r.get_max_rank()
+    max_rank = gt.get_max_rank()
     n = max_rank if num_states is None else num_states
 
     # create lists to hold the data
@@ -45,6 +45,11 @@ def generate_ground_truth_dataset(num_states: int | None = None):
         
         # unrank the current rank to get the state
         board = gt.unrank(cur_rank)
+
+        # skip if the current player is O
+        # this is because the outcomes/policies are symmetric
+        if board.current_player == Player.PLAYER_O:
+            continue
 
         # convert the board to a model input (board_size, board_size, 2)
         board_input = board_to_input(board)[0]

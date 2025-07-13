@@ -30,6 +30,13 @@ class GroundTruth:
         '''
         self.r.unrank(rank, self.s)
         return self.s.get_board()
+
+    def get_max_rank(self) -> int:
+        '''
+        Returns the maximum rank for the current configuration.
+        This is the total number of unique board states.
+        '''
+        return self.r.get_max_rank()
     
     def get_outcome(self, board: Board) -> float:
         '''
@@ -92,11 +99,24 @@ class GroundTruth:
         If this will be used for a model,
         it will be rotated 180 degrees when the current player is Player.PLAYER_O.
         '''
-        rotate_board = board.current_player == Player.PLAYER_O
+        # decide if we need to rotate the board
+        rotate_board = (board.current_player == Player.PLAYER_O) and for_model
+        # get the moves and outcomes for the board
         moves, move_outcomes = self.get_1ply_policy_moves(board)
-        
-        # create a Policy object and set the logits from the moves and outcomes
+        # create a Policy object
         p = Policy(config.board_size)
-        p.set_logits_from_moves(moves, move_outcomes, rotate_180=rotate_board and for_model)
+        # set the logits from the moves and outcomes
+        p.set_logits_from_moves(moves, move_outcomes, rotate_180=False)
+        # set the legal moves in the policy object
+        p.set_legal_moves(moves)
+        # apply softmax to the policy distribution,
+        # while masking illegal moves
+        p.apply_softmax(1.0, mask=True)
+        # rotate the policy if necessary
+        # this is used to adjust the policy distribution when the board is rotated
+        # for the model
+        if rotate_board:
+            p.rotate_policy()
+        # return the policy as a list
         return p.get_policy_list()
 
