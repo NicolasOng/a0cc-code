@@ -12,6 +12,7 @@ import jax
 from flax import nnx
 import jax.numpy as jnp
 import optax
+import numpy as np
 
 from config import config
 
@@ -63,9 +64,16 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     value_classification = jnp.where(value <= 0, -1, 1)
     value_accuracy = jnp.mean(value_classification == batch['value']).astype(float)
 
+    # create legal move mask (non-zero entries in policy labels)
+    legal_mask = batch['policy'] > 0
+
     # calculate the policy loss
-    # masked_policy = jnp.where(batch['policy'], policy, 0)
-    policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=policy))
+    masked_logits = jnp.where(legal_mask, policy, -1e9)
+    policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_logits))
+
+    # calculate the accuracy of the policy TODO
+    max_value = np.max(batch['policy'])
+    all_max_indices = np.where(batch['policy'] == max_value)[0]
 
     # calculate the total loss
     total_loss = value_loss + policy_loss
@@ -126,6 +134,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
     logger.info(f"Batches per save: {batches_per_save}")
     logger.info(f"Total models: {num_batches // batches_per_save}")
 
+    # value: 0.00005
     optimizer = nnx.Optimizer(model, optax.adamw(0.00005))
 
     for ts, batch in enumerate(batches):
