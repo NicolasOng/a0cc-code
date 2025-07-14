@@ -7,6 +7,7 @@ import pickle
 import dill
 import matplotlib.pyplot as plt
 import math
+import time
 
 import jax
 from flax import nnx
@@ -36,18 +37,18 @@ class BatchData:
     policy_loss: float
     total_loss: float
     value_accuracy: float
+    policy_accuracy: float
     model_no: int | None = None
 
 class EpochData:
     batch_data: list[BatchData]
-    model_no: int | None = None
+    time: Optional[float] = None
 
     def __init__(self):
         self.batch_data = []
 
 class DatasetData:
     epoch_data: list[EpochData]
-    model_no: int | None = None
 
     def __init__(self):
         self.epoch_data = []
@@ -68,59 +69,39 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     legal_mask = batch['policy'] > 0
 
     # calculate the policy loss
+    # note that the policy loss function (optax.softmax_cross_entropy) expects logits,
+    # so we set illegal moves to a very low value (e.g., -1e9)
     masked_logits = jnp.where(legal_mask, policy, -1e9)
     policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_logits))
 
-    # calculate the accuracy of the policy TODO
-    max_value = np.max(batch['policy'])
-    all_max_indices = np.where(batch['policy'] == max_value)[0]
+    # calculate the accuracy of the policy
+    max_value = jnp.max(batch['policy'], axis=1, keepdims=True)  # Keep batch dimension
+    is_max = batch['policy'] == max_value  # Boolean mask for max values
+    max_pred_indices = jnp.argmax(policy, axis=1)  # Shape: (batch_size,)
+    
+    # Create one-hot encoding of predicted max indices
+    pred_one_hot = jax.nn.one_hot(max_pred_indices, num_classes=batch['policy'].shape[1])
+    
+    # Check if the predicted max index corresponds to any of the true max indices
+    policy_accuracy = jnp.mean(jnp.any(is_max * pred_one_hot, axis=1)).astype(float)
 
     # calculate the total loss
     total_loss = value_loss + policy_loss
     #policy_loss = 0
     # JAX requires the loss function to return a tuple of (loss, aux)
     # where aux can be any additional information you want to return
-    return total_loss, (value_loss, policy_loss, value_accuracy)
+    return total_loss, (value_loss, policy_loss, value_accuracy, policy_accuracy)
 
 @nnx.jit
 def train_step(model: AlphaZeroModel, optimizer: nnx.Optimizer, batch: dict[str, Any]):
     grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
-    (loss, (value_loss, policy_loss, value_accuracy)), grads = grad_fn(model, batch)
+    (loss, (value_loss, policy_loss, value_accuracy, policy_accuracy)), grads = grad_fn(model, batch)
     optimizer.update(grads)
-    return loss, value_loss, policy_loss, value_accuracy
-
-def plot_epoch_data(epoch_num: int, epoch_data: EpochData):
-    # Extract losses
-    value_losses = [bd.value_loss for bd in epoch_data.batch_data]
-    policy_losses = [bd.policy_loss for bd in epoch_data.batch_data]
-    total_losses = [bd.total_loss for bd in epoch_data.batch_data]
-    value_accuracies = [bd.value_accuracy for bd in epoch_data.batch_data]
-    steps = list(range(len(epoch_data.batch_data)))
-
-    # Plotting
-    plt.figure(figsize=(10, 6))
-    plt.plot(steps, value_accuracies, label='Value Accuracy')
-    plt.plot(steps, value_losses, label='Value Loss')
-    plt.plot(steps, policy_losses, label='Policy Loss')
-    plt.plot(steps, total_losses, label='Total Loss')
-    
-    plt.xlabel('Batch')
-    plt.ylabel('Loss')
-    plt.title(f'Losses Over Batches in Epoch {epoch_num}')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/epoch_{epoch_num}_losses.png")
-    plt.clf()
-
-def save_epoch_data(epoch_num: int, epoch_data: EpochData):
-    epoch_data_path = f"{config.training_dir}/epoch_{epoch_num}_data.pkl"
-    with open(epoch_data_path, 'wb') as file:
-        pickle.dump(epoch_data, file)
-    logger.info(f"Saved epoch data to {epoch_data_path}.")
+    return loss, value_loss, policy_loss, value_accuracy, policy_accuracy
 
 def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0) -> tuple[AlphaZeroModel, EpochData, int]:
     logger.info(f"Training model on the given dataset ({len(dataset)})...")
+    start = time.perf_counter()
 
     epoch_data = EpochData()
 
@@ -145,9 +126,9 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
             'value': value_batch,  # (N, 1)
             'policy': policy_batch  # (N, board_size ** 4)
         }
-        loss, value_loss, policy_loss, value_accuracy = train_step(model, optimizer, batch)
-        logger.info(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
-        print(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = train_step(model, optimizer, batch)
+        logger.info(f"Training Step {ts}/{num_batches}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
+        print(f"Training Step {ts}/{num_batches}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
         
         # create batch data
         batch_data = BatchData()
@@ -156,6 +137,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
         batch_data.policy_loss = policy_loss
         batch_data.total_loss = loss
         batch_data.value_accuracy = value_accuracy
+        batch_data.policy_accuracy = policy_accuracy
 
         if save == "batch" and (ts + 1) % batches_per_save == 0:
             # Save the model after every save_batch_amount batches
@@ -166,57 +148,82 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
         
         # add the batch data to the epoch data
         epoch_data.batch_data.append(batch_data)
+    
+    end = time.perf_counter()
+    epoch_data.time = end - start
 
     return model, epoch_data, cur_model_no
 
-def plot_dataset_data(dataset_num: int, dataset_data: DatasetData):
-    all_epochs = dataset_data.epoch_data
-    # Collect losses and labels
+def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
+    # Collect model performance data over all epochs
+    batch_x: list[int] = []
     value_losses: list[float] = []
     policy_losses: list[float] = []
     total_losses: list[float] = []
     value_accuracies: list[float] = []
-    batch_labels: list[str] = []
-
-    for _, epoch in enumerate(all_epochs):
-        for batch_idx, batch in enumerate(epoch.batch_data):
-            value_losses.append(batch.value_loss)
-            policy_losses.append(batch.policy_loss)
-            total_losses.append(batch.total_loss)
-            value_accuracies.append(batch.value_accuracy)
-            batch_labels.append(f"{batch_idx + 1}")
-
-    # Epoch boundary positions (between last and first batch of adjacent epochs)
+    policy_accuracies: list[float] = []
+    batch_i = 0
+    for _, dataset in enumerate(dataset_datas):
+        for _, epoch in enumerate(dataset.epoch_data):
+            for _, batch in enumerate(epoch.batch_data):
+                batch_x.append(batch_i)
+                batch_i += 1
+                value_losses.append(batch.value_loss)
+                policy_losses.append(batch.policy_loss)
+                total_losses.append(batch.total_loss)
+                value_accuracies.append(batch.value_accuracy)
+                policy_accuracies.append(batch.policy_accuracy)
+    
+    # get dataset and epoch boundaries
+    dataset_boundaries: list[int] = []
     epoch_boundaries: list[int] = []
     cur_boundary = 0
-    for epoch in all_epochs[:-1]:  # Exclude the last epoch for boundaries
-        cur_boundary += len(epoch.batch_data)
-        epoch_boundaries.append(cur_boundary)
+    for dataset in dataset_datas:
+        for epoch in dataset.epoch_data:
+            # Add the number of batches in the epoch to the current boundary
+            cur_boundary += len(epoch.batch_data)
+            epoch_boundaries.append(cur_boundary)
+        # Rrmove the last epoch boundary in each dataset
+        epoch_boundaries = epoch_boundaries[:-1]
+        dataset_boundaries.append(cur_boundary)
 
-    # Plot losses
+    # Add vertical lines for epoch boundaries
+    for _, boundary in enumerate(epoch_boundaries):
+        x=boundary - 0.5
+        plt.axvline(x=x, color='gray', linestyle='--', alpha=0.35,
+                    label='Epoch Boundary' if boundary == epoch_boundaries[0] else "")
+        #plt.text(x, 0 - 0.05, f"Epoch {i + 1}", rotation=90, va='top', ha='center', fontsize=9, color='gray')
+    
+    # Add vertical lines for dataset boundaries
+    for _, boundary in enumerate(dataset_boundaries):
+        x=boundary - 0.5
+        plt.axvline(x=x, color='gray', linestyle='--', alpha=0.7,
+                    label='Dataset Boundary' if boundary == dataset_boundaries[0] else "")
+        #plt.text(x, 0 - 0.05, f"Dataset {i + 1}", rotation=90, va='top', ha='center', fontsize=9, color='gray')
+    
+    # Plot the metrics
     plt.figure(figsize=(12, 6))
     plt.plot(value_accuracies, label="Value Accuracy")
+    plt.plot(policy_accuracies, label="Policy Accuracy")
     plt.plot(value_losses, label="Value Loss")
     plt.plot(policy_losses, label="Policy Loss")
     plt.plot(total_losses, label="Total Loss")
 
-    # Add vertical lines for epoch boundaries
-    for i, boundary in enumerate(epoch_boundaries):
-        x=boundary - 0.5
-        plt.axvline(x=x, color='gray', linestyle='--', alpha=0.7,
-                    label='Epoch Boundary' if boundary == epoch_boundaries[0] else "")
-        plt.text(x, 0 - 0.05,
-             f"Epoch {i + 1}", rotation=90, va='top', ha='center', fontsize=9, color='gray')
-
     # Label and style
     plt.xlabel("Batch")
-    plt.ylabel("Loss")
-    plt.title("Losses over Batches with Epoch Boundaries")
+    plt.ylabel("Performance")
+    plt.title("Model Performance over Batches")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/dataset_{dataset_num}_losses.png")
+    plt.savefig(f"{config.plot_dir}/model_performance_{fn}.png")
     plt.clf()
+
+def save_epoch_data(epoch_num: int, epoch_data: EpochData):
+    epoch_data_path = f"{config.training_dir}/epoch_{epoch_num}_data.pkl"
+    with open(epoch_data_path, 'wb') as file:
+        pickle.dump(epoch_data, file)
+    logger.info(f"Saved epoch data to {epoch_data_path}.")
 
 def save_dataset_data(dataset_num: int, dataset_data: DatasetData):
     dataset_data_path = f"{config.training_dir}/dataset_{dataset_num}_data.pkl"
@@ -246,11 +253,13 @@ def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int,
             # Save the model after each epoch
             logger.info(f"Saving model after epoch {epoch + 1}...")
             save_model(config.training_dir + f'/model_{epoch + 1}.pkl', model)
-            epoch_data.model_no = epoch + 1
+            epoch_data.batch_data[-1].model_no = epoch + 1
         dataset_data.epoch_data.append(epoch_data)
         if plot:
-            plot_epoch_data(epoch + 1, epoch_data)
             save_epoch_data(epoch + 1, epoch_data)
+            temp_dd = DatasetData()
+            temp_dd.epoch_data.append(epoch_data)
+            plot_model_performance(f"epoch_{epoch + 1}", [temp_dd])
     return model, dataset_data
 
 def train_model_datasets(model: AlphaZeroModel, datasets: list[Dataset], num_epochs: int, save: str = "None") -> tuple[AlphaZeroModel, list[DatasetData]]:
@@ -311,7 +320,7 @@ def train_model_on_given_dataset(dataset: Dataset, num_epochs: int = 1, save_typ
         save=save_type
     )
 
-    plot_dataset_data(1, dataset_data)
+    plot_model_performance(f"dataset_{1}", [dataset_data])
     save_dataset_data(1, dataset_data)
 
     return model, dataset_data
