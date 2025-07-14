@@ -5,6 +5,8 @@ import optax
 import pickle
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import numpy as np
+from numpy.typing import NDArray
 
 from a0.model import AlphaZeroModel, load_model
 from a0.dataset import Dataset
@@ -13,7 +15,23 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no: int) -> tuple[float, float, float, float]:
+def policy_accuracy(pred_policy: NDArray[np.float32], label_policy: NDArray[np.float32]):
+    # Argmax of the predicted policy (model's choice)
+    pred_top_move = np.argmax(pred_policy)
+
+    # Identify all top moves in the label policy (handle ties)
+    label_max = np.max(label_policy)
+    label_top_moves = np.where(label_policy == label_max)[0]
+
+    # Check if predicted move is among the top label moves
+    return pred_top_move in label_top_moves
+
+def policy_accuracy_batch(pred_policy: NDArray[np.float32], label_policy: NDArray[np.float32]) -> float:
+    accuracies = [policy_accuracy(p, l) for p, l in zip(pred_policy, label_policy)]
+    mean_accuracy = np.mean(accuracies)
+    return float(mean_accuracy)
+
+def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no: int) -> tuple[float, float, float, float, float]:
     '''
     Evaluates the model on the given evaluation dataset.
     The evaluation dataset is a Dataset object containing
@@ -30,7 +48,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
     evaluation_dataset.shuffle()
     batches = evaluation_dataset.batches()
 
-    total_loss, total_value_loss, total_policy_loss = 0.0, 0.0, 0.0
+    total_loss, total_value_loss, total_policy_loss, total_policy_accuracy = 0.0, 0.0, 0.0, 0.0
     total_accuracy = 0.0
     num_batches = 0
     
@@ -43,7 +61,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
             'policy': policy_batch  # (N, board_size ** 4)
         }
         value, policy = model(batch['board'])
-        masked_policy = jnp.where(batch['policy'], policy, 0)
+        #masked_policy = jnp.where(batch['policy'], policy, 0)
         # TODO: what about boards what value=0? how to handle those? and how many are there?
         value_classification = jnp.where(value <= 0, -1, 1)
 
@@ -52,7 +70,9 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
         
         # Calculate accuracy (fraction of correct classifications)
         accuracy = float(jnp.mean(value_classification == batch['value']))
-        policy_loss = float(jnp.mean(optax.softmax_cross_entropy(labels=batch['policy'], logits=masked_policy)))
+        policy_loss = float(jnp.mean(optax.softmax_cross_entropy(labels=batch['policy'], logits=policy)))
+
+        policy_accuracy = policy_accuracy_batch(policy, batch['policy'])
 
         # if model_no > 15 and (ts - 1) % 10 == 0:
         #     logger.info("Predicted | Actual")
@@ -61,21 +81,23 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
         #     for pred, actual in zip(preds[:10], labels[:10]):
         #         logger.info(f"{int(pred):9} | {int(actual)}")
         
-        loss = value_loss# + policy_loss
+        loss = value_loss + policy_loss
 
         total_loss += loss
         total_value_loss += value_loss
         total_accuracy += accuracy
         total_policy_loss += policy_loss
+        total_policy_accuracy += policy_accuracy
         num_batches += 1
     
     avg_loss = total_loss / num_batches
     avg_value_loss = total_value_loss / num_batches
-    avg_accuracy = total_accuracy / num_batches
+    avg_value_accuracy = total_accuracy / num_batches
     avg_policy_loss = total_policy_loss / num_batches
+    avg_policy_accuracy = total_policy_accuracy / num_batches
 
-    logger.info(f"Validation Loss: {avg_loss}, Value Loss: {avg_value_loss}, Policy Loss: {avg_policy_loss}, Accuracy: {avg_accuracy}")
-    return avg_loss, avg_value_loss, avg_policy_loss, avg_accuracy
+    logger.info(f"Validation Loss: {avg_loss}, Value Loss: {avg_value_loss}, Policy Loss: {avg_policy_loss}, Value Accuracy: {avg_value_accuracy}, Policy Accuracy: {avg_policy_accuracy}")
+    return avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy
 
 def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Dataset, fn: str) -> None:
     '''

@@ -1,10 +1,6 @@
 from typing import Optional, Any
-import multiprocessing
-import concurrent.futures
-from concurrent.futures import Future, wait, FIRST_COMPLETED
 import os
 import pickle
-import dill
 import matplotlib.pyplot as plt
 import math
 import time
@@ -17,19 +13,22 @@ import numpy as np
 
 from config import config
 
-from a0.game import play, GameData
-from a0.players.a0 import A0Player, board_to_input
-from a0.model import AlphaZeroModel, load_model, save_model
-from cc.core import Game
-from a0.dataset import Dataset, TrainingData
-from a0.eval.dataset_evaluation import load_dataset_list
-
-from a0.model import AlphaZeroModel, load_model, save_model
+from a0.model import AlphaZeroModel, save_model
 from a0.dataset import Dataset
-from a0.players.a0 import board_to_input
+from a0.eval.dataset_evaluation import load_dataset_list, evaluate_model
+
+from a0.model import AlphaZeroModel, save_model
+from a0.dataset import Dataset
 
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
+
+class TestData:
+    value_loss: float
+    policy_loss: float
+    total_loss: float
+    value_accuracy: float
+    policy_accuracy: float
 
 class BatchData:
     batch_size: int
@@ -39,6 +38,7 @@ class BatchData:
     value_accuracy: float
     policy_accuracy: float
     model_no: int | None = None
+    test_metrics: TestData | None = None
 
 class EpochData:
     batch_data: list[BatchData]
@@ -100,7 +100,7 @@ def train_step(model: AlphaZeroModel, optimizer: nnx.Optimizer, batch: dict[str,
     optimizer.update(grads)
     return loss, value_loss, policy_loss, value_accuracy, policy_accuracy
 
-def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0) -> tuple[AlphaZeroModel, EpochData, int]:
+def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0, test_dataset: Dataset | None = None) -> tuple[AlphaZeroModel, EpochData, int]:
     logger.info(f"Training model on the given dataset ({len(dataset)})...")
     start = time.perf_counter()
 
@@ -128,8 +128,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
             'policy': policy_batch  # (N, board_size ** 4)
         }
         loss, value_loss, policy_loss, value_accuracy, policy_accuracy = train_step(model, optimizer, batch)
-        logger.info(f"Training Step {ts}/{num_batches}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
-        print(f"Training Step {ts}/{num_batches}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
+        logger.info(f"Training Step {ts}/{num_batches}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
         
         # create batch data
         batch_data = BatchData()
@@ -139,6 +138,17 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
         batch_data.total_loss = loss
         batch_data.value_accuracy = value_accuracy
         batch_data.policy_accuracy = policy_accuracy
+
+        if test_dataset is not None and (ts + 1) % batches_per_save == 0:
+            # evaluate the model on the test dataset every ... batches
+            avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy = evaluate_model(model, test_dataset, cur_model_no)
+            test_data = TestData()
+            test_data.value_loss = avg_value_loss
+            test_data.policy_loss = avg_policy_loss
+            test_data.total_loss = avg_loss
+            test_data.value_accuracy = avg_value_accuracy
+            test_data.policy_accuracy = avg_policy_accuracy
+            batch_data.test_metrics = test_data
 
         if save == "batch" and (ts + 1) % batches_per_save == 0:
             # Save the model after every save_batch_amount batches
@@ -155,7 +165,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
 
     return model, epoch_data, cur_model_no
 
-def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True) -> tuple[AlphaZeroModel, DatasetData]:
+def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True, test_dataset: Dataset | None = None) -> tuple[AlphaZeroModel, DatasetData]:
     """
     Train the model for a number of epochs on the given dataset.
     """
@@ -163,7 +173,7 @@ def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int,
     cur_model_no = 0
     for epoch in range(num_epochs):
         logger.info(f"Training epoch {epoch + 1}/{num_epochs}...")
-        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no)
+        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no, test_dataset)
         if save == "epoch":
             # Save the model after each epoch
             logger.info(f"Saving model after epoch {epoch + 1}...")
@@ -202,16 +212,29 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     value_accuracies: list[float] = []
     policy_accuracies: list[float] = []
     batch_i = 0
+    test_x: list[int] = []
+    test_value_losses: list[float] = []
+    test_policy_losses: list[float] = []
+    test_total_losses: list[float] = []
+    test_value_accuracies: list[float] = []
+    test_policy_accuracies: list[float] = []
     for _, dataset in enumerate(dataset_datas):
         for _, epoch in enumerate(dataset.epoch_data):
             for _, batch in enumerate(epoch.batch_data):
                 batch_x.append(batch_i)
-                batch_i += 1
                 value_losses.append(batch.value_loss)
                 policy_losses.append(batch.policy_loss)
                 total_losses.append(batch.total_loss)
                 value_accuracies.append(batch.value_accuracy)
                 policy_accuracies.append(batch.policy_accuracy)
+                if batch.test_metrics is not None:
+                    test_x.append(batch_i)
+                    test_value_losses.append(batch.test_metrics.value_loss)
+                    test_policy_losses.append(batch.test_metrics.policy_loss)
+                    test_total_losses.append(batch.test_metrics.total_loss)
+                    test_value_accuracies.append(batch.test_metrics.value_accuracy)
+                    test_policy_accuracies.append(batch.test_metrics.policy_accuracy)
+                batch_i += 1
     
     # get dataset and epoch boundaries
     dataset_boundaries: list[int] = []
@@ -242,11 +265,18 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     
     # Plot the metrics
     plt.figure(figsize=(12, 6))
-    plt.plot(value_accuracies, label="Value Accuracy")
-    plt.plot(policy_accuracies, label="Policy Accuracy")
-    plt.plot(value_losses, label="Value Loss")
-    plt.plot(policy_losses, label="Policy Loss")
-    plt.plot(total_losses, label="Total Loss")
+    plt.plot(batch_x, value_accuracies, label="Value Accuracy")
+    plt.plot(batch_x, policy_accuracies, label="Policy Accuracy")
+    plt.plot(batch_x, value_losses, label="Value Loss")
+    plt.plot(batch_x, policy_losses, label="Policy Loss")
+    plt.plot(batch_x, total_losses, label="Total Loss")
+
+    if len(test_x) > 0:
+        plt.plot(test_x, test_value_accuracies, label="Test Value Accuracy", linestyle='--')
+        plt.plot(test_x, test_policy_accuracies, label="Test Policy Accuracy", linestyle='--')
+        plt.plot(test_x, test_value_losses, label="Test Value Loss", linestyle='--')
+        plt.plot(test_x, test_policy_losses, label="Test Policy Loss", linestyle='--')
+        plt.plot(test_x, test_total_losses, label="Test Total Loss", linestyle='--')
 
     # Label and style
     plt.xlabel("Batch")
@@ -305,7 +335,7 @@ def train_model_with_generated_training_data(with_policy: bool = True):
         save_dataset=True
     )
 
-def train_model_on_given_dataset(dataset: Dataset, num_epochs: int = 1, save_type: str = 'batch') -> tuple[AlphaZeroModel, DatasetData]:
+def train_model_on_given_dataset(dataset: Dataset, num_epochs: int = 1, save_type: str = 'batch', test_dataset: Dataset | None = None) -> tuple[AlphaZeroModel, DatasetData]:
     # create a model
     model = AlphaZeroModel(
         config.board_size,
@@ -318,7 +348,8 @@ def train_model_on_given_dataset(dataset: Dataset, num_epochs: int = 1, save_typ
         model=model,
         dataset=dataset,
         num_epochs=num_epochs,
-        save=save_type
+        save=save_type,
+        test_dataset=test_dataset
     )
 
     plot_model_performance(f"dataset_{1}", [dataset_data])
