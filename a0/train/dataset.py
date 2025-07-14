@@ -72,6 +72,7 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     # note that the policy loss function (optax.softmax_cross_entropy) expects logits,
     # so we set illegal moves to a very low value (e.g., -1e9)
     masked_logits = jnp.where(legal_mask, policy, -1e9)
+    masked_logits = policy
     policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_logits))
 
     # calculate the accuracy of the policy
@@ -153,6 +154,44 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
     epoch_data.time = end - start
 
     return model, epoch_data, cur_model_no
+
+def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True) -> tuple[AlphaZeroModel, DatasetData]:
+    """
+    Train the model for a number of epochs on the given dataset.
+    """
+    dataset_data = DatasetData()
+    cur_model_no = 0
+    for epoch in range(num_epochs):
+        logger.info(f"Training epoch {epoch + 1}/{num_epochs}...")
+        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no)
+        if save == "epoch":
+            # Save the model after each epoch
+            logger.info(f"Saving model after epoch {epoch + 1}...")
+            save_model(config.training_dir + f'/model_{epoch + 1}.pkl', model)
+            epoch_data.batch_data[-1].model_no = epoch + 1
+        dataset_data.epoch_data.append(epoch_data)
+        if plot:
+            save_epoch_data(epoch + 1, epoch_data)
+            temp_dd = DatasetData()
+            temp_dd.epoch_data.append(epoch_data)
+            plot_model_performance(f"epoch_{epoch + 1}", [temp_dd])
+    return model, dataset_data
+
+def train_model_datasets(model: AlphaZeroModel, datasets: list[Dataset], num_epochs: int, save: str = "None") -> tuple[AlphaZeroModel, list[DatasetData]]:
+    """
+    Train the model for a number of epochs on each dataset in the list.
+    The model is saved either after each epoch or after each dataset, or never.
+    """
+    dataset_data_list: list[DatasetData] = []
+    for i, dataset in enumerate(datasets):
+        logger.info(f"Training on dataset {i + 1}/{len(datasets)}...")
+        model, dataset_data = train_model_epochs(model, dataset, num_epochs, save)
+        dataset_data_list.append(dataset_data)
+        if save == "dataset":
+            # Save the model after each dataset
+            logger.info(f"Saving model after dataset {i + 1}...")
+            save_model(config.training_dir + f'/model_{i + 1}.pkl', model)
+    return model, dataset_data_list
 
 def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     # Collect model performance data over all epochs
@@ -239,44 +278,6 @@ def load_dataset_data(dataset_num: int) -> DatasetData:
         dataset_data: DatasetData = pickle.load(file)
     logger.info(f"Loaded dataset data from {dataset_data_path}.")
     return dataset_data
-
-def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True) -> tuple[AlphaZeroModel, DatasetData]:
-    """
-    Train the model for a number of epochs on the given dataset.
-    """
-    dataset_data = DatasetData()
-    cur_model_no = 0
-    for epoch in range(num_epochs):
-        logger.info(f"Training epoch {epoch + 1}/{num_epochs}...")
-        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no)
-        if save == "epoch":
-            # Save the model after each epoch
-            logger.info(f"Saving model after epoch {epoch + 1}...")
-            save_model(config.training_dir + f'/model_{epoch + 1}.pkl', model)
-            epoch_data.batch_data[-1].model_no = epoch + 1
-        dataset_data.epoch_data.append(epoch_data)
-        if plot:
-            save_epoch_data(epoch + 1, epoch_data)
-            temp_dd = DatasetData()
-            temp_dd.epoch_data.append(epoch_data)
-            plot_model_performance(f"epoch_{epoch + 1}", [temp_dd])
-    return model, dataset_data
-
-def train_model_datasets(model: AlphaZeroModel, datasets: list[Dataset], num_epochs: int, save: str = "None") -> tuple[AlphaZeroModel, list[DatasetData]]:
-    """
-    Train the model for a number of epochs on each dataset in the list.
-    The model is saved either after each epoch or after each dataset, or never.
-    """
-    dataset_data_list: list[DatasetData] = []
-    for i, dataset in enumerate(datasets):
-        logger.info(f"Training on dataset {i + 1}/{len(datasets)}...")
-        model, dataset_data = train_model_epochs(model, dataset, num_epochs, save)
-        dataset_data_list.append(dataset_data)
-        if save == "dataset":
-            # Save the model after each dataset
-            logger.info(f"Saving model after dataset {i + 1}...")
-            save_model(config.training_dir + f'/model_{i + 1}.pkl', model)
-    return model, dataset_data_list
 
 def train_model_with_generated_training_data(with_policy: bool = True):
     '''
