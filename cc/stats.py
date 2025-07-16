@@ -129,6 +129,10 @@ def percent_winning_childen_per_state(num_ranks: int | None):
         if board_winner is None:
             continue
 
+        # ignore states where it's Player ??'s turn
+        # if board.current_player == Player.PLAYER_O:
+        #     continue
+
         # get the moves for the board
         moves = cc.generate_moves_for_given_board(board)
 

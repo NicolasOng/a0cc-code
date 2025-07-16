@@ -28,7 +28,9 @@ class Dataset:
         assert not self.static, "Dataset is static; cannot add new data."
         self.data.append(new_data)
     
-    def trim(self, new_size: int) -> None:
+    def trim(self, new_size: int, shuffle: bool) -> None:
+        if shuffle:
+            self.shuffle()
         if not self.static and new_size < len(self.data):
             self.data = deque(list(self.data)[:new_size], maxlen=new_size)
         elif self.static and new_size < self.states.shape[0]:
@@ -45,13 +47,14 @@ class Dataset:
         self.data.clear()  # Clear the deque as we no longer need it
         self.static = True  # Mark the dataset as static
     
-    def split_off_test(self, test_size: int) -> Dataset:
+    def split_off_test(self, test_size: int, shuffle: bool) -> Dataset:
         """Split off a test set of the specified size."""
         assert self.static, "Dataset must be static to split off a test set."
         assert test_size < self.states.shape[0], "Test size must be less than the dataset size."
 
         # shuffle the dataset before splitting
-        self.shuffle()
+        if shuffle:
+            self.shuffle()
         
         # Create a new dataset for the test set
         test_dataset = Dataset(test_size, self.batch_size, static=True)
@@ -60,7 +63,7 @@ class Dataset:
         test_dataset.set(self.states[-test_size:], self.values[-test_size:], self.policies[-test_size:])
         
         # Trim the original dataset
-        self.trim(len(self) - test_size)
+        self.trim(len(self) - test_size, False)
         
         return test_dataset
 

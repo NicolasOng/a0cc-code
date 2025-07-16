@@ -114,7 +114,7 @@ def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Datase
     value_accuracies: list[float] = []
     for i, model in tqdm(enumerate(models)):
         logger.info(f"Evaluating model {i + 1}")
-        loss, value_loss, policy_loss, value_accuracy = evaluate_model(model, evaluation_dataset, i + 1)
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy_num = evaluate_model(model, evaluation_dataset, i + 1)
         losses.append(loss)
         value_losses.append(value_loss)
         policy_losses.append(policy_loss)
