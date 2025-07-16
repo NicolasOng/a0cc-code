@@ -69,6 +69,7 @@ class CCBaselineSolver:
         '''
         Looks up the outcome of a board state.
         This is a convenience method that converts a Board to CCState and calls lookup.
+        0: Draw, 1: Loss for Player X, 2: Win for Player X, 3: Illegal.
         '''
         self.ccstate.initialize_from_board(board)
         return self.lookup(self.ccstate)

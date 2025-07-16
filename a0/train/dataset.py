@@ -342,7 +342,8 @@ def train_model_on_given_dataset(dataset: Dataset, num_epochs: int = 1, save_typ
         training=True,
         rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
     )
-    save_model(config.training_dir + '/model_0.pkl', model)
+    if save_type != 'none':
+        save_model(config.training_dir + '/model_0.pkl', model)
     
     model, dataset_data = train_model_epochs(
         model=model,

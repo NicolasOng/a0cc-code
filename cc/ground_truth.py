@@ -53,6 +53,20 @@ class GroundTruth:
         '''
         return self.l.get_winner(board)
     
+    def is_illegal(self, board: Board) -> bool:
+        '''
+        Checks if the given board is illegal.
+        Returns True if illegal, False otherwise.
+        '''
+        return self.l.board_lookup(board) == 3
+    
+    def is_draw(self, board: Board) -> bool:
+        '''
+        Checks if the given board results in a draw.
+        Returns True if draw, False otherwise.
+        '''
+        return self.l.board_lookup(board) == 0
+    
     def get_1ply_policy_moves(self, board: Board) -> tuple[list[Move], list[float]]:
         '''
         Returns the 1ply policy for the given board.

@@ -20,7 +20,7 @@ def main():
 
     # choose a random rank to generate
     rank = random.randint(0, max_rank)
-    rank = 298093
+    #rank = 298093
     board = gt.unrank(rank)
     # get the legal moves for the board
     legal_moves = cc.generate_moves_for_given_board(board)
@@ -33,8 +33,8 @@ def main():
     print(f"Board rank: {rank}")
     print(board.board_view())
     print(f"Current player: {board.current_player}")
-    print(f"Number of legal moves: {len(legal_moves)}")
     print(f"Board state is trivial: {len(np.unique(np.array(gt_move_probs))) == 1}")
+    print(f"Number of legal moves: {len(legal_moves)}")
 
     rotate_board = board.current_player == Player.PLAYER_O
     board_input = board_to_input(board)
@@ -48,7 +48,14 @@ def main():
     p.apply_softmax(1.0, True)
     move_probs = p.get_move_probabilities(legal_moves)
 
-    print(f"Number of non-zero elements in policy: {np.count_nonzero(p.policy)}")
+    nmp = Policy(config.board_size)
+    nmp.set_logits(pred_policy[0], rotate_board)
+    nmp.apply_softmax(1.0, False)
+
+    #print([f'{x:.2f}' for x in nmp.policy])
+
+    print(f"Number of non-zero elements in masked predicted policy: {np.count_nonzero(p.policy)}")
+    #print(f"Number of non-near-zero elements in non-masked predicted policy: {np.sum(nmp.policy > 1e-2)}")
 
     print(f"Predicted value: {pred_value}")
     #print(f"Predicted policy: {p.policy}")

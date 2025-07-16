@@ -6,6 +6,7 @@ from config import config
 from cc.ranking import CCDefaultRank, CCState
 from cc.core import Game, Player
 from cc.lookups import CCBaselineSolver
+from cc.ground_truth import GroundTruth
 
 import numpy as np
 import numpy.typing as npt
@@ -96,10 +97,8 @@ def percent_winning_childen_per_state(num_ranks: int | None):
     Generates an np array with the percent of winning children per state
     from the perspective of the current player.
     '''
-    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-    s = CCState(config.num_spots, config.num_pieces, config.num_players)
     cc = Game(config.board_size, config.num_pieces, False, False, False)
-    l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
+    gt = GroundTruth()
 
     # full list of ranks and percent winning children
     rank_list: list[int] = []
@@ -112,45 +111,60 @@ def percent_winning_childen_per_state(num_ranks: int | None):
     pwc_on_losing_ranks: list[float] = []
 
     # decide how many ranks to check (if None specified, check all ranks)
-    max_rank = r.get_max_rank()
+    max_rank = gt.get_max_rank()
     n = max_rank if num_ranks is None else num_ranks
 
     # for the amount of ranks specified,
     for i in tqdm(range(n)):
         # get the rank to check (if checking all ranks, use the index as the rank)
-        cur_rank = i if num_ranks is None else random.randint(0, max_rank)
+        cur_rank = i if num_ranks is None else random.randint(0, max_rank - 1)
         
         # unrank the current rank to get the state
-        r.unrank(cur_rank, s)
-        # get the board from the state
-        board = s.get_board()
+        board = gt.unrank(cur_rank)
+
         # get the winner of the state based on the solve data
-        winner = l.get_winner(board)
+        board_winner = gt.get_winner(board)
+
+        # ignore illegal and draw states
+        if board_winner is None:
+            continue
+
         # get the moves for the board
         moves = cc.generate_moves_for_given_board(board)
+
         # for each move, check if it results in a "winning" state for the current player
         current_player = board.current_player
         num_winners = 0
+        num_moves = 0
         for move in moves:
             # apply the move to the state
             board.apply_move(move)
             # get the winner of the state based on the solve data
-            winner = l.get_winner(board)
+            move_winner = gt.get_winner(board)
+            # ignore illegal and draw moves
+            if move_winner is None:
+                board.undo_move(move)
+                continue
             # if the winner is the current player, increment the count
-            if winner == current_player:
+            # if move_winner == Player.PLAYER_X: # (to do everything from Player X's perspective)
+            if move_winner == current_player:
                 num_winners += 1
             # un-apply the move
             board.undo_move(move)
-        percent_winners = num_winners / len(moves) if len(moves) > 0 else 0.0
+            num_moves += 1
+        percent_winners = num_winners / num_moves if num_moves > 0 else 0.0
 
         # append the rank and the percent of winning moves to the lists
         rank_list.append(cur_rank)
         percent_winning_children_list.append(percent_winners)
 
-        if winner == current_player:
+        # do pwc the winning and losing ranks
+        # this ignores children of draws and illegal states
+        other_player = Player.PLAYER_O if current_player == Player.PLAYER_X else Player.PLAYER_X
+        if board_winner == current_player:
             winning_ranks.append(cur_rank)
             pwc_on_winning_ranks.append(percent_winners)
-        else:
+        elif board_winner == other_player:
             losing_ranks.append(cur_rank)
             pwc_on_losing_ranks.append(percent_winners)
     
