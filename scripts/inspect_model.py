@@ -26,7 +26,7 @@ def create_batch(gt: GroundTruth, num_samples: int):
     for _ in range(num_samples):
         rank = random.randint(0, max_rank - 1)
         board = gt.unrank(rank)
-        gt_policy = np.array(gt.get_1ply_policy_list(board, for_model=True))
+        gt_policy = np.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))
         gt_outcome = np.array([gt.get_outcome(board)])
         batch.append({
             'board_input': board_to_input(board)[0],
@@ -72,9 +72,11 @@ def inspect_model():
     legal_moves = cc.generate_moves_for_given_board(board)
     # get the ground truth policy for the board
     gt_policy = Policy(config.board_size)
-    gt_numpy_policy = np.array(gt.get_1ply_policy_list(board, False))
+    gt_numpy_policy = np.array(gt.get_1ply_policy_prob_dist_list(board, False))
     gt_policy.set_logits(gt_numpy_policy, False)
     gt_move_probs = gt_policy.get_move_probabilities(legal_moves)
+
+    gt_outcomes = gt.get_1ply_policy_outcomes_list(board, for_model=True)
 
     print(f"Board rank: {rank}")
     print(board.board_view())
@@ -98,10 +100,15 @@ def inspect_model():
     nmp.set_logits(pred_policy[0], rotate_board)
     nmp.apply_softmax(1.0, False)
 
+    outp = Policy(config.board_size)
+    outp.set_logits(np.array(gt_outcomes), rotate_board)
+    out_p_move_probs = outp.get_move_probabilities(legal_moves)
+
     #print([f'{x:.2f}' for x in nmp.policy])
 
     print(f"Number of non-zero elements in masked predicted policy: {np.count_nonzero(p.policy)}")
     #print(f"Number of non-near-zero elements in non-masked predicted policy: {np.sum(nmp.policy > 1e-2)}")
+    print(f"Number of elements > -1 in outcomes: {np.sum(np.array(gt_outcomes) > -1)}")
 
     print(f"Predicted value: {pred_value}")
     #print(f"Predicted policy: {p.policy}")
@@ -109,6 +116,7 @@ def inspect_model():
     #print(f"Ground truth policy: {gt_move_probs}")
     print(f"Move probabilities: {[f'{x:.2f}' for x in move_probs]}")
     print(f"Ground truth policy: {[f'{x:.2f}' for x in gt_move_probs]}")
+    print(f"outcomes probabilities: {[f'{x:.2f}' for x in out_p_move_probs]}")
     print(f"Policy accuracy: {policy_accuracy_function(np.array(p.policy), gt_numpy_policy)}")
 
 def main():

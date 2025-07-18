@@ -19,16 +19,14 @@ import pickle
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def generate_ground_truth_dataset(num_states: int | None = None):
+def generate_ground_truth_dataset(num_states: int | None = None, prob_dist: bool = True):
     '''
     Generates a dataset of ground truth data for the game.
     It either does the number of states specified, or all states if None is specified.
     '''
     # create useful objects
-    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-    s = CCState(config.num_spots, config.num_pieces, config.num_players)
-    l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
     gt = GroundTruth()
+
     # decide how many states to generate (if None specified, generate all states)
     max_rank = gt.get_max_rank()
     n = max_rank if num_states is None else num_states
@@ -59,8 +57,11 @@ def generate_ground_truth_dataset(num_states: int | None = None):
         outcome = np.array([gt.get_outcome(board)])
         # get the ideal policy for the state, based on the solve data
         # (board_size ** 4,)
-        policy = np.array(gt.get_1ply_policy_list(board, for_model=True))
-        
+        if prob_dist:
+            policy = np.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))
+        else:
+            policy = np.array(gt.get_1ply_policy_outcomes_list(board, for_model=True))
+
         # put these into the lists
         states.append(board_input)
         values.append(outcome)
@@ -148,7 +149,7 @@ def main():
     )
     logger.info("Generating datasets...")
 
-    generate_ground_truth_dataset()
+    generate_ground_truth_dataset(prob_dist=False)
 
     #generate_random_dataset(1000)
 

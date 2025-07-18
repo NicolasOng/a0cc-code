@@ -104,11 +104,12 @@ class GroundTruth:
         
         return moves, move_outcomes
 
-    def get_1ply_policy_list(self, board: Board, for_model: bool) -> list[float]:
+    def get_1ply_policy_prob_dist_list(self, board: Board, for_model: bool) -> list[float]:
         '''
         Returns the 1ply policy for the given board.
         It is based on the outcomes of the moves from the current board.
         The policy is a list of probabilities for each action.
+        The entire list is a probability distribution.
         Its length is board_size ** 4.
         If this will be used for a model,
         it will be rotated 180 degrees when the current player is Player.PLAYER_O.
@@ -134,3 +135,34 @@ class GroundTruth:
         # return the policy as a list
         return p.get_policy_list()
 
+    def get_1ply_policy_outcomes_list(self, board: Board, for_model: bool) -> list[float]:
+        '''
+        Returns the 1ply policy for the given board.
+        It is based on the outcomes of the moves from the current board.
+        The policy is a list of probabilities for each action.
+        Each action's probability is independent.
+        Its length is board_size ** 4.
+        If this will be used for a model,
+        it will be rotated 180 degrees when the current player is Player.PLAYER_O.
+        '''
+        # decide if we need to rotate the board
+        rotate_board = (board.current_player == Player.PLAYER_O) and for_model
+        # get the moves and outcomes for the board
+        moves, move_outcomes = self.get_1ply_policy_moves(board)
+        # adjust the move outcomes (-1 to 1 by default) to be in 0 to 1
+        move_outcomes = [0.5 * (x + 1) for x in move_outcomes]
+        # create a Policy object
+        p = Policy(config.board_size)
+        # set the logits from the moves and outcomes
+        p.set_logits_from_moves(moves, move_outcomes, rotate_180=False)
+        # set the legal moves in the policy object
+        p.set_legal_moves(moves)
+        # apply a mask so illegal moves are -1
+        p.apply_mask(-1.0)
+        # rotate the policy if necessary
+        # this is used to adjust the policy distribution when the board is rotated
+        # for the model
+        if rotate_board:
+            p.rotate_policy()
+        # return the policy as a list
+        return p.get_policy_list()

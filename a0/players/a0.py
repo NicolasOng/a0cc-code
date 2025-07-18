@@ -245,6 +245,13 @@ class Policy:
             idx = self.move_to_policy_index(move)
             self.mask[idx] = 1
     
+    def apply_mask(self, mask_value: float) -> None:
+        '''
+        Applies a mask to the policy distribution.
+        Sets non-legal moves to the specified mask value.
+        '''
+        self.policy = np.where(self.mask, self.policy, mask_value)
+    
     def apply_softmax(self, temperature: float, mask: bool) -> None:
         '''
         Applies the softmax function to the logits to get the policy distribution.

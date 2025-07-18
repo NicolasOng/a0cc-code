@@ -67,12 +67,12 @@ def value_accuracy_function(pred_values: jnp.ndarray, values_label: jnp.ndarray)
     labels_classification = jnp.where(values_label <= 0, -1, 1)
     return jnp.mean(pred_classification == labels_classification).astype(float)
 
-def get_policy_mask_prob_dist(policy: jnp.ndarray) -> jnp.ndarray:
+def get_policy_mask(policy: jnp.ndarray, mask_value: float) -> jnp.ndarray:
     """
     Creates a mask for the policy distribution where valid moves are 1 and illegal moves are 0.
-    Use this when the policy label is a probability distribution.
+    Or for the binary cross-entropy loss, where illegal moves are -1.
     """
-    return policy > 0
+    return policy > mask_value
 
 def policy_loss_function(policy_label: jnp.ndarray, pred_logits: jnp.ndarray) -> jnp.ndarray:
     """
@@ -83,6 +83,16 @@ def policy_loss_function(policy_label: jnp.ndarray, pred_logits: jnp.ndarray) ->
     and use 0 for the policy probability distribution.
     """
     return jnp.mean(optax.softmax_cross_entropy(labels=policy_label, logits=pred_logits))
+
+def policy_loss_function_binary(pred_policy: jnp.ndarray, label_policy: jnp.ndarray) -> jnp.ndarray:
+    '''
+    Computes the policy loss using binary cross-entropy.
+    The label policy is expected to contain the probability each move is a win (0 to 1).
+    The pred_policy is expected to be logits (not probabilities).
+    When masking illegal moves, use 0 for both the predicted policy and the label policy.
+    '''
+    # Calculate binary cross-entropy loss
+    return jnp.mean(optax.sigmoid_binary_cross_entropy(logits=pred_policy, labels=label_policy))
 
 def policy_accuracy_function(pred_policy: jnp.ndarray, policy_label: jnp.ndarray) -> float:
     """
@@ -115,15 +125,21 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     value_accuracy = value_accuracy_function(value, value_label)
 
     # get the mask for valid moves in the policy
-    policy_mask = get_policy_mask_prob_dist(policy_label)
+    mask_value = 0.0 # 0.0 for CE, -1.0 for BCE
+    policy_mask = get_policy_mask(policy_label, mask_value=mask_value)
     # mask both the predicted policy and the label policy
     # The mask value when using Softmax Cross Entropy loss should be -1e9
     # When using Binary Cross Entropy, it should be 0.0
-    masked_pred_logits = jnp.where(policy_mask, policy, -1e9)
+    mask_value = -1e9 # -1e9 for CE, 0.0 for BCE
+    masked_pred_logits = jnp.where(policy_mask, policy, mask_value)
     #masked_pred_logits = policy
     masked_label_policy = jnp.where(policy_mask, policy_label, 0.0)
     # Use the masked logits and label policy to calculate the policy loss
-    policy_loss = policy_loss_function(masked_label_policy, masked_pred_logits)
+    policy_loss = policy_loss_function(masked_label_policy, masked_pred_logits) # for CE
+    #policy_loss = policy_loss_function_binary(masked_pred_logits, masked_label_policy) # for BCE
+    # (for BCE) set mask to be very negative,
+    # as the logits of illegal moves must be lower than those of legal moves.
+    #masked_pred_logits = jnp.where(policy_mask, masked_pred_logits, -1e9)
     policy_accuracy = policy_accuracy_function(masked_pred_logits, masked_label_policy)
     
     # calculate the total loss
@@ -282,11 +298,15 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
                 batch_i += 1
     
     # get dataset and epoch boundaries
+    num_datasets = 0
+    num_epochs = 0
     dataset_boundaries: list[int] = []
     epoch_boundaries: list[int] = []
     cur_boundary = 0
     for dataset in dataset_datas:
+        num_datasets += 1
         for epoch in dataset.epoch_data:
+            num_epochs += 1
             # Add the number of batches in the epoch to the current boundary
             cur_boundary += len(epoch.batch_data)
             epoch_boundaries.append(cur_boundary)
