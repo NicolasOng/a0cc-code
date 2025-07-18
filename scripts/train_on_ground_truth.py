@@ -25,12 +25,12 @@ except FileNotFoundError:
     gt_dataset = load_ground_truth_dataset()
 
 # process the dataset (trim it, create train-test split, etc.)
-gt_dataset.trim(25000, shuffle=True)
+gt_dataset.trim(25000, shuffle=False)
 gt_dataset_test = gt_dataset.split_off_test(len(gt_dataset) // 10, shuffle=True)
 
 # train the model on the ground truth dataset
 logger.info("Training model on ground truth dataset...")
-_, dataset_data = train_model_on_given_dataset(gt_dataset, num_epochs=1, save_type='epoch', test_dataset=gt_dataset_test)
+_, dataset_data = train_model_on_given_dataset(gt_dataset, num_epochs=1, save_type='none', test_dataset=gt_dataset_test)
 
 # the test happens during training, so don't need the rest here.
 exit()

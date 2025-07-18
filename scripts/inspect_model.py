@@ -8,7 +8,7 @@ from a0.model import load_model
 from a0.players.a0 import board_to_input, Policy
 from cc.ground_truth import GroundTruth
 from cc.core import Player, Game
-from a0.eval.dataset_evaluation import policy_accuracy, policy_accuracy_batch
+from a0.eval.dataset_evaluation import policy_accuracy_function, policy_accuracy_batch
 from a0.train.generate_datasets import load_ground_truth_dataset
 
 from config import config
@@ -109,7 +109,7 @@ def inspect_model():
     #print(f"Ground truth policy: {gt_move_probs}")
     print(f"Move probabilities: {[f'{x:.2f}' for x in move_probs]}")
     print(f"Ground truth policy: {[f'{x:.2f}' for x in gt_move_probs]}")
-    print(f"Policy accuracy: {policy_accuracy(np.array(p.policy), gt_numpy_policy)}")
+    print(f"Policy accuracy: {policy_accuracy_function(np.array(p.policy), gt_numpy_policy)}")
 
 def main():
     inspect_model()

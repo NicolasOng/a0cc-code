@@ -53,42 +53,82 @@ class DatasetData:
     def __init__(self):
         self.epoch_data = []
 
-value_loss_function = optax.l2_loss
-policy_loss_function = optax.softmax_cross_entropy
+def value_loss_function(pred_values: jnp.ndarray, values_label: jnp.ndarray) -> jnp.ndarray:
+    """
+    Computes the L2 loss between predicted values and ground truth values.
+    """
+    return jnp.mean(optax.l2_loss(pred_values, values_label)).astype(jnp.float32)
 
-def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
-    total_loss, value_loss, policy_loss, value_accuracy, policy_accuracy = 0.0, 0.0, 0.0, 0.0, 0.0
-    # get the model's predictions
-    value, policy = model(batch['board'])
+def value_accuracy_function(pred_values: jnp.ndarray, values_label: jnp.ndarray) -> float:
+    '''
+    Computes the accuracy of the predicted values against the ground truth values.
+    '''
+    pred_classification = jnp.where(pred_values <= 0, -1, 1)
+    labels_classification = jnp.where(values_label <= 0, -1, 1)
+    return jnp.mean(pred_classification == labels_classification).astype(float)
 
-    # calculate the value loss and accuracy
-    value_loss = jnp.mean(value_loss_function(value, batch['value']))
-    value_classification = jnp.where(value <= 0, -1, 1)
-    value_accuracy = jnp.mean(value_classification == batch['value']).astype(float)
+def get_policy_mask_prob_dist(policy: jnp.ndarray) -> jnp.ndarray:
+    """
+    Creates a mask for the policy distribution where valid moves are 1 and illegal moves are 0.
+    Use this when the policy label is a probability distribution.
+    """
+    return policy > 0
 
-    # create legal move mask (non-zero entries in policy labels)
-    legal_mask = batch['policy'] > 0
+def policy_loss_function(policy_label: jnp.ndarray, pred_logits: jnp.ndarray) -> jnp.ndarray:
+    """
+    Computes the policy loss using softmax cross-entropy.
+    pred_logits should be the logits (unnormalized scores) for the policy.
+    policy_label should be the ground truth policy distribution.
+    When masking illegal moves, use a very low value (e.g., -1e9) in the logits,
+    and use 0 for the policy probability distribution.
+    """
+    return jnp.mean(optax.softmax_cross_entropy(labels=policy_label, logits=pred_logits))
 
-    # calculate the policy loss
-    # note that the policy loss function (optax.softmax_cross_entropy) expects logits,
-    # so we set illegal moves to a very low value (e.g., -1e9)
-    masked_logits = jnp.where(legal_mask, policy, -1e9)
-    masked_logits = policy
-    policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_logits))
-
+def policy_accuracy_function(pred_policy: jnp.ndarray, policy_label: jnp.ndarray) -> float:
+    """
+    Computes the accuracy of the predicted policy against the ground truth policy.
+    """
     # calculate the accuracy of the policy
-    max_value = jnp.max(batch['policy'], axis=1, keepdims=True)  # Keep batch dimension
-    is_max = batch['policy'] == max_value  # Boolean mask for max values
-    max_pred_indices = jnp.argmax(policy, axis=1)  # Shape: (batch_size,)
+    max_value = jnp.max(policy_label, axis=1, keepdims=True)  # Keep batch dimension
+    is_max = policy_label == max_value  # Boolean mask for max values
+    max_pred_indices = jnp.argmax(pred_policy, axis=1)  # Shape: (batch_size,)
     
     # Create one-hot encoding of predicted max indices
-    pred_one_hot = jax.nn.one_hot(max_pred_indices, num_classes=batch['policy'].shape[1])
+    pred_one_hot = jax.nn.one_hot(max_pred_indices, num_classes=pred_policy.shape[1])
     
     # Check if the predicted max index corresponds to any of the true max indices
     policy_accuracy = jnp.mean(jnp.any(is_max * pred_one_hot, axis=1)).astype(float)
 
+    return policy_accuracy
+
+def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
+    total_loss, value_loss, policy_loss, value_accuracy, policy_accuracy = 0.0, 0.0, 0.0, 0.0, 0.0
+    board_input: jnp.ndarray = batch['board']  # (N, board_size, board_size, 2)
+    value_label: jnp.ndarray = batch['value']
+    policy_label: jnp.ndarray = batch['policy']
+
+    # get the model's predictions
+    value, policy = model(board_input)
+
+    # calculate the value loss and accuracy
+    value_loss = value_loss_function(value, value_label)
+    value_accuracy = value_accuracy_function(value, value_label)
+
+    # get the mask for valid moves in the policy
+    policy_mask = get_policy_mask_prob_dist(policy_label)
+    # mask both the predicted policy and the label policy
+    # The mask value when using Softmax Cross Entropy loss should be -1e9
+    # When using Binary Cross Entropy, it should be 0.0
+    masked_pred_logits = jnp.where(policy_mask, policy, -1e9)
+    #masked_pred_logits = policy
+    masked_label_policy = jnp.where(policy_mask, policy_label, 0.0)
+    # Use the masked logits and label policy to calculate the policy loss
+    policy_loss = policy_loss_function(masked_label_policy, masked_pred_logits)
+    policy_accuracy = policy_accuracy_function(masked_pred_logits, masked_label_policy)
+    
     # calculate the total loss
     total_loss = value_loss + policy_loss
+
     # JAX requires the loss function to return a tuple of (loss, aux)
     # where aux can be any additional information you want to return
     return total_loss, (value_loss, policy_loss, value_accuracy, policy_accuracy)
@@ -128,8 +168,13 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
             'policy': policy_batch  # (N, board_size ** 4)
         }
         loss, value_loss, policy_loss, value_accuracy, policy_accuracy = train_step(model, optimizer, batch)
-        logger.info(f"Training Step {ts}/{num_batches}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
-        
+        logger.info(f"Training Step {ts}/{num_batches}, "
+                    f"Loss: {loss:.4f}, "
+                    f"Value Loss: {value_loss:.4f}, "
+                    f"Value Accuracy: {value_accuracy:.2%}, "
+                    f"Policy Loss: {policy_loss:.4f}, "
+                    f"Policy Accuracy: {policy_accuracy:.2%}")
+
         # create batch data
         batch_data = BatchData()
         batch_data.batch_size = len(batch['board'])
@@ -245,9 +290,14 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
             # Add the number of batches in the epoch to the current boundary
             cur_boundary += len(epoch.batch_data)
             epoch_boundaries.append(cur_boundary)
-        # Rrmove the last epoch boundary in each dataset
+        # Remove the last epoch boundary in each dataset
         epoch_boundaries = epoch_boundaries[:-1]
         dataset_boundaries.append(cur_boundary)
+    # remove the last dataset boundary
+    dataset_boundaries = dataset_boundaries[:-1]
+
+    # start plotting
+    plt.figure(figsize=(12, 6))
 
     # Add vertical lines for epoch boundaries
     for _, boundary in enumerate(epoch_boundaries):
@@ -264,7 +314,6 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
         #plt.text(x, 0 - 0.05, f"Dataset {i + 1}", rotation=90, va='top', ha='center', fontsize=9, color='gray')
     
     # Plot the metrics
-    plt.figure(figsize=(12, 6))
     plt.plot(batch_x, value_accuracies, label="Value Accuracy")
     plt.plot(batch_x, policy_accuracies, label="Policy Accuracy")
     plt.plot(batch_x, value_losses, label="Value Loss")
@@ -286,6 +335,48 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/model_performance_{fn}.png")
+    plt.clf()
+
+    # plot each metric separately
+    plot_single_metric(batch_x, total_losses, test_x, test_total_losses, dataset_boundaries, epoch_boundaries, "Total Loss", fn)
+    plot_single_metric(batch_x, value_losses, test_x, test_value_losses, dataset_boundaries, epoch_boundaries, "Value Loss", fn)
+    plot_single_metric(batch_x, policy_losses, test_x, test_policy_losses, dataset_boundaries, epoch_boundaries, "Policy Loss", fn)
+    plot_single_metric(batch_x, value_accuracies, test_x, test_value_accuracies, dataset_boundaries, epoch_boundaries, "Value Accuracy", fn)
+    plot_single_metric(batch_x, policy_accuracies, test_x, test_policy_accuracies, dataset_boundaries, epoch_boundaries, "Policy Accuracy", fn)
+
+def plot_single_metric(x_train: list[int], metric_train: list[float],
+                       x_test: list[int], metric_test: list[float],
+                       dataset_boundaries: list[int], epoch_boundaries: list[int],
+                       label: str, fn: str):
+    # set figure size
+    plt.figure(figsize=(12, 6))
+
+    # Add vertical lines for epoch boundaries
+    for _, boundary in enumerate(epoch_boundaries):
+        x=boundary - 0.5
+        plt.axvline(x=x, color='gray', linestyle='--', alpha=0.35,
+                    label='Epoch Boundary' if boundary == epoch_boundaries[0] else "")
+        #plt.text(x, 0 - 0.05, f"Epoch {i + 1}", rotation=90, va='top', ha='center', fontsize=9, color='gray')
+    
+    # Add vertical lines for dataset boundaries
+    for _, boundary in enumerate(dataset_boundaries):
+        x=boundary - 0.5
+        plt.axvline(x=x, color='gray', linestyle='--', alpha=0.7,
+                    label='Dataset Boundary' if boundary == dataset_boundaries[0] else "")
+        #plt.text(x, 0 - 0.05, f"Dataset {i + 1}", rotation=90, va='top', ha='center', fontsize=9, color='gray')
+
+    plt.plot(x_train, metric_train, label=f"Train {label}")
+    if metric_test:
+        plt.plot(x_test, metric_test, label=f"Test {label}", linestyle='--')
+
+    # Label and style
+    plt.xlabel("Batch")
+    plt.ylabel(label)
+    plt.title(f"{label} over Batches")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}/model_performance_{fn}_{label}.png")
     plt.clf()
 
 def save_epoch_data(epoch_num: int, epoch_data: EpochData):
