@@ -144,22 +144,22 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
         value_accuracy = value_accuracy_function(pred_value, value_label)
 
         # get the mask for valid moves in the policy
-        mask_value = 0.0 # 0.0 for CE, -1.0 for BCE
+        mask_value = -1.0 # 0.0 for CE, -1.0 for BCE
         policy_mask = get_policy_mask(policy_label, mask_value=mask_value)
         # Apply the mask to the predicted policy and label policy
         # The mask value when using Softmax Cross Entropy loss should be -1e9
         # When using Binary Cross Entropy, it should be 0.0
-        mask_value = -1e9 # -1e9 for CE, 0.0 for BCE
+        mask_value = 0.0 # -1e9 for CE, 0.0 for BCE
         masked_policy_pred = np.where(policy_mask, pred_policy, mask_value)
         #masked_policy_pred = pred_policy
         masked_policy_label = np.where(policy_mask, policy_label, 0.0)
         # Calculate policy loss
-        policy_loss = policy_loss_function(masked_policy_pred, masked_policy_label) # for CE
-        #policy_loss = policy_loss_function_binary(masked_policy_pred, masked_policy_label) # for BCE
+        # policy_loss = policy_loss_function(masked_policy_pred, masked_policy_label) # for CE
+        policy_loss = policy_loss_function_binary(masked_policy_pred, masked_policy_label) # for BCE
         # Calculate policy accuracy
         # (for BCE) set mask to be very negative,
         # as the logits of illegal moves must be lower than those of legal moves.
-        #masked_policy_pred = np.where(policy_mask, pred_policy, -1e9)
+        masked_policy_pred = np.where(policy_mask, pred_policy, -1e9)
         policy_accuracy = policy_accuracy_batch(masked_policy_pred, masked_policy_label)
 
         loss = value_loss + policy_loss
