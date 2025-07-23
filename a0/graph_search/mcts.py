@@ -4,6 +4,11 @@ import math
 
 from typing import Optional, Protocol, Any
 
+import networkx as nx
+import matplotlib.pyplot as plt
+
+from collections import deque
+
 class MCTSProblem(Protocol):
     def initial_state(self) -> Any:
         '''
@@ -44,6 +49,7 @@ class MCTSNode:
     def fully_expanded(self) -> bool:
         '''
         a node is fully expanded if it has children and all of its children have been visited at least once.
+        a visit: a simulation or rollout that has been performed on the node.
         '''
         return bool(self.children) and all(child.visits > 0 for child in self.children)
 
@@ -52,9 +58,11 @@ class MCTS:
     Monte Carlo Tree Search (MCTS) implementation for a generic graph problem.
     Based on https://int8.io/monte-carlo-tree-search-beginners-guide/#Policy_network_training_in_Alpha_Go_and_Alpha_Zero
     '''
-    def __init__(self, problem: MCTSProblem):
+    def __init__(self, problem: MCTSProblem, selection_policy: str = 'uct'):
         self.problem = problem
         self.root = MCTSNode(problem.initial_state(), 1.0)
+
+        self.key = self.uct if selection_policy == 'uct' else self.puct
 
     def run(self, iterations: int=64) -> None:
         for _ in range(iterations):
@@ -62,12 +70,12 @@ class MCTS:
             # starting at the root, traverse the tree using a selection policy (UCT, PUCT, etc.),
             # until reaching a node that is
             # - not fully expanded
-            #     - node is not a terminal state, but has no child nodes -> expand it, then select one of its children
-            #     - node has unvisited child nodes -> select one of them
-            # - a terminal state
+            #     - has no child nodes
+            #     - or has unvisited child nodes
+            # - or a terminal state
             node = self.root
             while node.fully_expanded() and not self.problem.is_terminal(node.state):
-                node = max(node.children, key=self.puct)
+                node = max(node.children, key=self.key)
             
             # 1.1
             # if the node is not terminal, yet has no children,
@@ -128,3 +136,55 @@ class MCTS:
     
     def get_root_children(self) -> list[MCTSNode]:
         return self.root.children
+
+    def draw_graph(self) -> None:
+        '''
+        Draws the MCTS tree as a directed graph using NetworkX and Matplotlib.
+        '''
+        # create a dict to hold the nodes and their IDs
+        node_ids: dict[int, int] = {}
+        # use a queue to perform a breadth-first traversal of the tree
+        queue = deque([self.root])
+        # create a directed graph
+        G = nx.DiGraph()
+        # simple BFS implementation to traverse the tree
+        while queue:
+            # pop the first node from the queue
+            node = queue.popleft()
+            # create its (custom) ID 
+            node_id = len(node_ids)
+            node_ids[id(node)] = node_id
+
+            # add the node to the graph with its ID and attributes
+            G.add_node(node_id, label=f"V={node.visits}\nR={node.reward:.2f}\nP={node.prior:.2f}\nAR={node.reward/node.visits if node.visits > 0 else 0.0:.2f}")
+
+            # if the node has a parent, add an edge from the parent to this node
+            if node.parent is not None:
+                parent_id = node_ids[id(node.parent)]
+                G.add_edge(parent_id, node_id)
+            
+            # add all children to the queue for further processing
+            for child in node.children:
+                queue.append(child)
+        # draw the graph using NetworkX and Matplotlib
+        #pos = nx.spring_layout(G, seed=42)  # positions for all nodes
+        try:
+            pos = nx.nx_agraph.graphviz_layout(G, prog='dot')  # Best for trees
+        except Exception as _:
+            # Fallback if pygraphviz not available
+            pos = nx.kamada_kawai_layout(G)
+        labels = nx.get_node_attributes(G, 'label')
+        nx.draw(G, pos, with_labels=True, labels=labels, node_size=1500, font_size=8)
+        plt.show()
+        #plt.savefig("mcts_tree.png")
+        plt.clf()
+    
+    def print_children(self) -> None:
+        '''
+        Prints the children of the root node.
+        '''
+        print(f"Root has {len(self.root.children)} children:")
+        print("Visits, Reward, Average Reward, Prior")
+        print(f"{self.root.visits}, {self.root.reward:.2f}, {self.root.reward / self.root.visits if self.root.visits > 0 else 0.0:.2f}, {self.root.prior:.2f}")
+        for child in self.root.children:
+            print(f"\t{child.visits}, {child.reward:.2f}, {child.reward / child.visits if child.visits > 0 else 0.0:.2f}, {child.prior:.2f}")

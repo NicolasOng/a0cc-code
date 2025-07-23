@@ -2,11 +2,11 @@ from __future__ import annotations
 from typing import Optional, Any
 import random
 
-from cc.core import Game, Board, Move, Player
+from cc.core import Game, Board, Move
 from a0.graph_search.mcts import MCTS
 
 class SearchMoves:
-    def __init__(self, initial_state: Board, player: UCTPlayer, max_depth: int):
+    def __init__(self, initial_state: Board, player: MCTSRolloutPlayer, max_depth: int):
         self._initial_state = initial_state
         self.player = player
         self.max_depth = max_depth
@@ -25,7 +25,7 @@ class SearchMoves:
         '''
         Checks if the given state is a terminal state.
         '''
-        return self.player.game.terminal_state(state)
+        return self.player.game.get_done(state)
 
     def get_successors(self, state: Board) -> tuple[list[Board], list[Optional[float]]]:
         '''
@@ -52,23 +52,18 @@ class SearchMoves:
     def get_reward(self, state: Board) -> float:
         '''
         Returns the reward for the given state,
-        considering the current player's perspective.
+        considering the perspective of the player at the initial state of the search.
         Uses a random rollout to determine the reward.
         '''
-        current_player = state.current_player
         current_board = state
         for _ in range(self.max_depth):
-            # if the state is terminal, return the reward
-            if self.is_terminal(current_board):
-                px, po = current_board.check_for_winner(self.starting_board)
-                winner_is_current_player = (px and current_player == Player.PLAYER_X) or (po and current_player == Player.PLAYER_O)
-                winner_is_opponent = (px and current_player == Player.PLAYER_O) or (po and current_player == Player.PLAYER_X)
-                if winner_is_current_player:
-                    return 1.0
-                elif winner_is_opponent:
-                    return -1.0
-                else:
+            # check if the current board is terminal, and get its winner
+            is_done, winner = self.player.game.get_done_and_winner(current_board)
+            if is_done:
+                # if the game is done, return the value based on the winner
+                if winner is None:
                     return 0.0
+                return 1.0 if winner == self._initial_state.current_player else -1.0
             
             # if the state is not terminal, perform a random rollout
             moves = self.player.game.generate_moves_for_given_board(current_board)
@@ -78,18 +73,22 @@ class SearchMoves:
             new_board.copy_board(current_board)
             new_board.apply_move(move)
             current_board = new_board
+        # if the maximum depth is reached, just return 0.
         return 0
 
-class UCTPlayer:
-    def __init__(self, board_size: int, num_pieces: int):
-        self.game = Game(board_size=board_size, num_pieces=num_pieces)
-        self.temperature = 1.0  # Temperature for exploration in MCTS
-        self.mcts_iterations = 100
+class MCTSRolloutPlayer:
+    def __init__(self, board_size: int, num_pieces: int, no_reverse_moves: bool = True):
+        self.game = Game(board_size, num_pieces, False, no_reverse_moves, False)
+        self.mcts_iterations = 10000
+        self.max_depth = 1000
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         # perform mcts and get the root's children
-        mcts = MCTS(SearchMoves(state, self, 100))
+        mcts = MCTS(SearchMoves(state, self, self.max_depth), 'uct')
         mcts.run(iterations=self.mcts_iterations)
+
+        #mcts.print_children()
+        #mcts.draw_graph()
         
         child = mcts.get_best_root_child()
         if child:

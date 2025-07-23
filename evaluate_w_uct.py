@@ -2,7 +2,7 @@ import jax
 from flax import nnx
 
 from a0.eval.player import player_evaluation
-from a0.players.uct import UCTPlayer
+from a0.players.mcts_rollout import MCTSRolloutPlayer
 from a0.players.a0 import A0Player
 from a0.model import AlphaZeroModel, load_model
 
@@ -22,7 +22,7 @@ model49 = load_model("a0_data/model_49.pkl", model)
 # Create players
 player00 = A0Player(model=model00, board_size=board_size, num_pieces=num_pieces)
 player49 = A0Player(model=model49, board_size=board_size, num_pieces=num_pieces)
-player_uct = UCTPlayer(board_size=board_size, num_pieces=num_pieces)
+player_uct = MCTSRolloutPlayer(board_size=board_size, num_pieces=num_pieces)
 
 # evaluate the players
 print("Evaluating A0 Player 0 against UCT Player...")
