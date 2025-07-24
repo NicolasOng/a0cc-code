@@ -27,6 +27,7 @@ class GameData:
         self.ended: bool = False
         self.winner: Optional[Player] = None
         self.time: float = 0.0
+        self.final_board: Optional[Board] = None
 
 def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = None) -> GameData:
     '''
@@ -64,7 +65,7 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
     else:
         logger.info(f"Player {game.winner} wins!")
     
-    # TODO: Should I add the final board state to the turn data?
+    data.final_board = copy.deepcopy(game.board)
     
     data.ended = game.end
     data.winner = game.winner
