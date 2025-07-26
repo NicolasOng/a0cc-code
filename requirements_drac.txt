@@ -1,5 +1,5 @@
-absl_py==2.2.2+computecanada
-cached-property==1.5.2+computecanada
+absl_py==2.3.0+computecanada
+cached_property==2.0.1+computecanada
 chex==0.1.89+computecanada
 cmake==3.27.7+dummy.computecanada
 contourpy==1.3.1+computecanada
@@ -9,7 +9,7 @@ dm_haiku==0.0.13+computecanada
 etils==1.12.2+computecanada
 flax==0.10.4+computecanada
 fonttools==4.56.0+computecanada
-fsspec==2025.5.1+computecanada
+fsspec==2025.7.0+computecanada
 humanize==4.12.2+computecanada
 importlib_resources==6.5.2+computecanada
 jax==0.4.35+computecanada
@@ -22,17 +22,18 @@ mdurl==0.1.2+computecanada
 ml_dtypes==0.5.0+computecanada
 msgpack==1.1.0+computecanada
 nest_asyncio==1.6.0+computecanada
+networkx==3.4.2+computecanada
 numpy==2.2.2+computecanada
 opt_einsum==3.4.0+computecanada
-optax==0.2.4+computecanada
+optax==0.2.5+computecanada
 orbax==0.1.7+computecanada
 orbax_checkpoint==0.11.1+computecanada
 packaging==25.0+computecanada
 pillow==11.1.0+computecanada
 protobuf==5.29.3+computecanada
 pybind11==2.13.6+computecanada
-pygments==2.19.1+computecanada
-pyparsing==3.2.1+computecanada
+pygments==2.19.2+computecanada
+pyparsing==3.2.3+computecanada
 python_dateutil==2.9.0.post0+computecanada
 PyYAML==6.0.2+computecanada
 rich==14.0.0+computecanada
@@ -44,5 +45,5 @@ tensorstore==0.1.69+computecanada
 toolz==1.0.0+computecanada
 tqdm==4.67.1+computecanada
 treescope==0.1.9+computecanada
-typing_extensions==4.14.0+computecanada
+typing_extensions==4.14.1+computecanada
 zipp==3.23.0+computecanada
