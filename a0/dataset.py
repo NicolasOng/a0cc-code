@@ -23,6 +23,9 @@ class Dataset:
         self.states = states
         self.values = values
         self.policies = policies
+    
+    def set_batch_size(self, batch_size: int) -> None:
+        self.batch_size = batch_size
 
     def add(self, new_data: TrainingData) -> None:
         assert not self.static, "Dataset is static; cannot add new data."

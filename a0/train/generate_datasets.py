@@ -66,8 +66,8 @@ def generate_ground_truth_dataset(num_states: int | None = None, prob_dist: bool
         states.append(board_input)
         values.append(outcome)
         policies.append(policy)
-    
-    jnp_states = jnp.stack(states, 0) # (board_size, board_size) -> (N, board_size, board_size)
+
+    jnp_states = jnp.stack(states, 0) # (board_size, board_size, 2) -> (N, board_size, board_size, 2)
     jnp_values = jnp.stack(values, 0)  # (1,) -> (N, 1)
     jnp_policies = jnp.stack(policies, 0) # (board_size ** 4) -> (N, board_size ** 4)
     

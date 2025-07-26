@@ -27,7 +27,7 @@ class SearchMoves:
         '''
         return self.player.game.get_done(state)
 
-    def get_successors(self, state: Board) -> tuple[list[Board], list[Optional[float]]]:
+    def get_successors(self, state: Board) -> tuple[list[Board], None]:
         '''
         Returns a list of successor states for the given state.
         '''
@@ -36,7 +36,6 @@ class SearchMoves:
 
         # create a list of successor states by applying each move
         successors: list[Board] = []
-        successor_priors: list[Optional[float]] = []
         for move in moves:
             # create a copy of the board and apply the move
             new_board = Board()
@@ -45,9 +44,8 @@ class SearchMoves:
 
             # add the new board to the list of successors
             successors.append(new_board)
-            successor_priors.append(None)
 
-        return successors, successor_priors
+        return successors, None
 
     def get_reward(self, state: Board) -> float:
         '''
@@ -87,7 +85,9 @@ class MCTSRolloutPlayer:
         mcts = MCTS(SearchMoves(state, self, self.max_depth), 'uct')
         mcts.run(iterations=self.mcts_iterations)
 
-        #mcts.print_children()
+        mcts.print_children()
+        mcts.remove_unvisited_nodes(None)
+        mcts.print_metrics()
         #mcts.draw_graph()
         
         child = mcts.get_best_root_child()

@@ -22,7 +22,7 @@ class MCTSProblem(Protocol):
         '''
         ...
 
-    def get_successors(self, state: Any) -> tuple[list[Any], list[Optional[float]]]:
+    def get_successors(self, state: Any) -> tuple[list[Any], Optional[list[float]]]:
         '''
         Returns a list of successor states for the given state.
         Optionally, returns a list of prior probabilities for each successor.
@@ -62,7 +62,13 @@ class MCTS:
         self.problem = problem
         self.root = MCTSNode(problem.initial_state(), 1.0)
 
-        self.key = self.uct if selection_policy == 'uct' else self.puct
+        # set the selection policy
+        if selection_policy == 'uct':
+            self.key = self.uct
+        elif selection_policy == 'puct':
+            self.key = self.puct
+        else:
+            raise ValueError(f"Invalid selection policy: {selection_policy}. Choose 'uct' or 'puct'.")
 
     def run(self, iterations: int=64) -> None:
         for _ in range(iterations):
@@ -82,9 +88,10 @@ class MCTS:
             # expand it by generating its successors
             if not self.problem.is_terminal(node.state) and not node.children:
                 successors, priors = self.problem.get_successors(node.state)
-                default_prior = 1.0 / len(successors) if successors else 0.0
+                if priors is None:
+                    default_prior = 1.0 / len(successors) if successors else 0.0
+                    priors = [default_prior] * len(successors)
                 for succ, prior in zip(successors, priors):
-                    prior = prior if prior is not None else default_prior
                     child = MCTSNode(succ, prior, parent=node)
                     node.children.append(child)
             
@@ -174,6 +181,7 @@ class MCTS:
             # Fallback if pygraphviz not available
             pos = nx.kamada_kawai_layout(G)
         labels = nx.get_node_attributes(G, 'label')
+        plt.figure(figsize=(12, 8))
         nx.draw(G, pos, with_labels=True, labels=labels, node_size=1500, font_size=8)
         plt.show()
         #plt.savefig("mcts_tree.png")
@@ -188,3 +196,73 @@ class MCTS:
         print(f"{self.root.visits}, {self.root.reward:.2f}, {self.root.reward / self.root.visits if self.root.visits > 0 else 0.0:.2f}, {self.root.prior:.2f}")
         for child in self.root.children:
             print(f"\t{child.visits}, {child.reward:.2f}, {child.reward / child.visits if child.visits > 0 else 0.0:.2f}, {child.prior:.2f}")
+
+    def remove_unvisited_nodes(self, node: MCTSNode | None) -> None:
+        '''
+        Removes all nodes from the tree that have not been visited.
+        This is useful to clean up the tree after a search.
+        '''
+        # If no node is provided, start from the root
+        if node is None:
+            self.remove_unvisited_nodes(self.root)
+            return
+        
+        # This code is run if a node is provided
+        # first, remove all children that have not been visited
+        node.children = [child for child in node.children if child.visits > 0]
+        # then, recursively remove unvisited nodes from the children
+        for child in node.children:
+            self.remove_unvisited_nodes(child)
+    
+    def print_metrics(self) -> None:
+        '''
+        Gets and prints the following metrics:
+        - Number of nodes in the tree
+        - number of leaves
+        - max/min/avg depth of the tree
+        - max/min/avg branching factor
+        '''
+        if not self.root:
+            print("Empty tree")
+            return
+        
+        # Initialize metrics
+        total_nodes = 0
+        total_leaves = 0
+        depths = []
+        branching_factors = []
+        
+        # Use BFS to traverse the tree and collect metrics
+        queue = deque([(self.root, 0)])  # (node, depth)
+        
+        while queue:
+            node, depth = queue.popleft()
+            total_nodes += 1
+            
+            # Check if it's a leaf node
+            if not node.children:
+                total_leaves += 1
+                # record the leaf node depths
+                depths.append(depth)
+            else:
+                # record the internal branching factors
+                branching_factors.append(len(node.children))
+                # Add children to queue
+                for child in node.children:
+                    queue.append((child, depth + 1))
+        
+        # Calculate statistics
+        max_depth = max(depths) if depths else 0
+        min_depth = min(depths) if depths else 0
+        avg_depth = sum(depths) / len(depths) if depths else 0
+        
+        max_branching = max(branching_factors) if branching_factors else 0
+        min_branching = min(branching_factors) if branching_factors else 0
+        avg_branching = sum(branching_factors) / len(branching_factors) if branching_factors else 0
+        
+        # Print metrics
+        print(f"MCTS Tree Metrics:")
+        print(f"  Number of nodes: {total_nodes}")
+        print(f"  Number of leaves: {total_leaves}")
+        print(f"  Depth - Max: {max_depth}, Min: {min_depth}, Avg: {avg_depth:.2f}")
+        print(f"  Branching factor - Max: {max_branching}, Min: {min_branching}, Avg: {avg_branching:.2f}")

@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 import jax.numpy as jnp
 import jax
 
-from cc.core import Board, Move, Player, player_to_tile
+from cc.core import Board, Move, Player, player_to_tile, board_to_home_size
 
 def board_to_input(board: Board) -> NDArray[np.float32]:
     '''
@@ -52,6 +52,37 @@ def board_to_input(board: Board) -> NDArray[np.float32]:
         board.rotate_board_180()
 
     return input_array
+
+def input_to_board(input_array: NDArray[np.float32], player_o: bool = False) -> Board:
+    '''
+    Converts a numpy array back to a Board object.
+    The input is expected to be a 4D array with shape (1, BOARD_SIZE, BOARD_SIZE, 2).
+    The last dimension represents the two players' pieces.
+    The first channel is for the current player, and the second channel is for the opponent.
+    '''
+    # create a board (default is Player X)
+    board_size = input_array.shape[1]
+    board = Board(board_size, board_to_home_size[board_size])
+
+    # get the tiles for each player
+    cp_tiles = input_array[0, :, :, 0] > 0.5
+    op_tiles = input_array[0, :, :, 1] > 0.5
+
+    # fill the board with the tiles
+    for x in range(board_size):
+        for y in range(board_size):
+            if cp_tiles[x, y]:
+                board.board[x][y] = player_to_tile[Player.PLAYER_X]
+            elif op_tiles[x, y]:
+                board.board[x][y] = player_to_tile[Player.PLAYER_O]
+    
+    if player_o:
+        # if the board is for Player O, rotate it 180 degrees
+        board.rotate_board_180()
+        board.flip_pieces()
+        board.switch_player()
+    
+    return board
 
 def create_rotated_policy_mapping(board_size: int) -> list[int]:
     '''
@@ -234,12 +265,20 @@ class Policy:
         Returns the probabilities of the given moves based on the policy distribution.
         '''
         return [self.get_move_probability(move) for move in moves]
-    
-    def get_best_move(self) -> Move:
+
+    def get_best_move(self, random_ties: bool = False, rng_seed: int | None = None) -> Move:
         '''
         Returns the move with the highest probability based on the policy distribution.
+        If random_ties=True, breaks ties randomly instead of choosing the first occurrence.
         '''
-        index = int(np.argmax(self.policy))
+        if random_ties:
+            if rng_seed is not None:
+                np.random.seed(rng_seed)
+            max_prob = np.max(self.policy)
+            max_indices = np.where(self.policy == max_prob)[0]
+            index = int(np.random.choice(max_indices))
+        else:
+            index = int(np.argmax(self.policy))
         return self.policy_index_to_move(index)
     
     def sample_move(self, rng: int) -> Move:

@@ -14,13 +14,13 @@ from config import config
 def main():
     human_player = HumanPlayer()
 
-    # other_player = MCTSRolloutPlayer(board_size=config.board_size, num_pieces=config.num_pieces)
+    other_player = MCTSRolloutPlayer(board_size=config.board_size, num_pieces=config.num_pieces, no_reverse_moves=False)
     
     # other_player = GroundTruthPlayer(print_info=True)
 
-    model_filename = "..."
-    model = load_model(model_filename)
-    other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
+    # model_filename = "..."
+    # model = load_model(model_filename)
+    # other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
 
     results = play(
         Game(config.board_size, config.num_pieces, False, False, False),
