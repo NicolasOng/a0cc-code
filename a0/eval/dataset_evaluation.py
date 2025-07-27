@@ -199,13 +199,15 @@ def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Datase
     value_losses: list[float] = []
     policy_losses: list[float] = []
     value_accuracies: list[float] = []
+    policy_accuracies: list[float] = []
     for i, model in tqdm(enumerate(models)):
         logger.info(f"Evaluating model {i + 1}")
-        loss, value_loss, policy_loss, value_accuracy, policy_accuracy_num = evaluate_model(model, evaluation_dataset, i + 1)
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, evaluation_dataset, i + 1)
         losses.append(loss)
         value_losses.append(value_loss)
         policy_losses.append(policy_loss)
         value_accuracies.append(value_accuracy)
+        policy_accuracies.append(policy_accuracy)
     
     # save the losses to a file
     losses_path = f"{config.eval_dir}/{fn}.pkl"
@@ -214,7 +216,8 @@ def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Datase
             'losses': losses,
             'value_losses': value_losses,
             'policy_losses': policy_losses,
-            'value_accuracies': value_accuracies
+            'value_accuracies': value_accuracies,
+            'policy_accuracies': policy_accuracies
         }, f)
 
 def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list[Dataset], fn: str) -> None:
@@ -230,14 +233,16 @@ def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list
     value_losses: list[float] = []
     policy_losses: list[float] = []
     value_accuracies: list[float] = []
+    policy_accuracies: list[float] = []
     for i, (model, dataset) in tqdm(enumerate(zip(models, datasets))):
         logger.info(f"Evaluating model {i + 1}")
-        loss, value_loss, policy_loss, value_accuracy = evaluate_model(model, dataset, i + 1)
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, dataset, i + 1)
         losses.append(loss)
         value_losses.append(value_loss)
         policy_losses.append(policy_loss)
         value_accuracies.append(value_accuracy)
-    
+        policy_accuracies.append(policy_accuracy)
+
     # save the losses to a file
     losses_path = f"{config.eval_dir}/{fn}.pkl"
     with open(losses_path, 'wb') as f:
@@ -245,7 +250,8 @@ def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list
             'losses': losses,
             'value_losses': value_losses,
             'policy_losses': policy_losses,
-            'value_accuracies': value_accuracies
+            'value_accuracies': value_accuracies,
+            'policy_accuracies': policy_accuracies
         }, f)
 
 def load_dataset(dataset_path: str) -> Dataset:
@@ -298,10 +304,10 @@ def load_models(dir: str, n: int) -> list[AlphaZeroModel]:
             logger.error(f"Failed to load model {i + 1} at {model_path}: {e}")
     return models
 
-def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float], list[float]]:
+def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float], list[float], list[float]]:
     '''
     Loads losses from the given path.
-    Returns a tuple of lists: (losses, value_losses, policy_losses, value_accuracies).
+    Returns a tuple of lists: (losses, value_losses, policy_losses, value_accuracies, policy_accuracies).
     If the file does not exist, it will log an error and exit.
     '''
     try:
@@ -309,7 +315,7 @@ def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float]
             losses_data = pickle.load(f)
         logger.info(f"Loaded evaluation losses from {losses_path}.")
         return (losses_data['losses'], losses_data['value_losses'], 
-                losses_data['policy_losses'], losses_data['value_accuracies'])
+                losses_data['policy_losses'], losses_data['value_accuracies'], losses_data['policy_accuracies'])
     except FileNotFoundError:
         logger.error(f"Losses file not found at {losses_path}. Please generate the losses first.")
         sys.exit()
@@ -317,11 +323,12 @@ def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float]
         logger.error(f"Error loading losses: {e}")
         sys.exit()
 
-def plot_losses(losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float], fn: str) -> None:
+def plot_losses(losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float], policy_accuracies: list[float], fn: str) -> None:
     plt.plot(losses, label='Loss')
     plt.plot(value_losses, label='Value Loss')
     plt.plot(policy_losses, label='Policy Loss')
     plt.plot(value_accuracies, label='Value Accuracy')
+    plt.plot(policy_accuracies, label='Policy Accuracy')
     plt.legend()
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.clf()
@@ -368,19 +375,19 @@ def main():
     evaluate_all_models(models, training_e_dataset, "training_e_eval")
 
     # load and plot the losses
-    tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies = load_losses(f"{config.eval_dir}/training_eval.pkl")
-    plot_losses(tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, "training_eval")
-    rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies = load_losses(f"{config.eval_dir}/random_eval.pkl")
-    plot_losses(rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, "random_eval")
-    telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies = load_losses(f"{config.eval_dir}/training_e_eval.pkl")
-    plot_losses(telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, "training_e_eval")
+    tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies = load_losses(f"{config.eval_dir}/training_eval.pkl")
+    plot_losses(tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies, "training_eval")
+    rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies = load_losses(f"{config.eval_dir}/random_eval.pkl")
+    plot_losses(rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies, "random_eval")
+    telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies = load_losses(f"{config.eval_dir}/training_e_eval.pkl")
+    plot_losses(telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies, "training_e_eval")
     plot_two_accuracies(tvalue_accuracies, rvalue_accuracies, "Training Accuracy", "Random Accuracy", "training_vs_random_accuracy")
 
     # load the training data dataset
     training_datasets = load_dataset_list(f"{config.eval_dir}/training_datasets.pkl")
     evaluate_all_models_progressive(models, training_datasets, "training_perf")
-    losses, value_losses, policy_losses, value_accuracies = load_losses(f"{config.eval_dir}/training_perf.pkl")
-    plot_losses(losses, value_losses, policy_losses, value_accuracies, "training_perf")
+    losses, value_losses, policy_losses, value_accuracies, policy_accuracies = load_losses(f"{config.eval_dir}/training_perf.pkl")
+    plot_losses(losses, value_losses, policy_losses, value_accuracies, policy_accuracies, "training_perf")
 
     logger.info("Dataset evaluation completed.")
 

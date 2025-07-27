@@ -61,14 +61,14 @@ def training_ground_truth_values(n: int | None = None) -> None:
     solver = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
     for board in tqdm(boards):
         values.append(solver.get_outcome(board))
-        states.append(board_to_input(board))
+        states.append(jnp.array(board_to_input(board)))
     
     # 4. load all this into a static Dataset object
     logger.info("Creating Dataset object with ground truth values...")
     jnp_states = jnp.stack(states) # (N, board_size, board_size)
     jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
     jnp_policies = jnp.zeros((len(boards), config.board_size ** 4)) # (N, board_size ** 4)
-    gtv_dataset = Dataset(size=len(boards), batch_size=256, static=True)
+    gtv_dataset = Dataset(max_size=len(boards), batch_size=256, static=True)
     gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
 
     # 5. save the Dataset object to config.data_folder + "training_gtv.pkl"
@@ -109,14 +109,14 @@ def random_ground_truth_values(n: int = 1000) -> None:
     solver = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
     for board in tqdm(boards):
         values.append(solver.get_outcome(board))
-        states.append(board_to_input(board))
+        states.append(jnp.array(board_to_input(board)))
     
     # 4. load all this into a static Dataset object
     logger.info("Creating Dataset object with ground truth values...")
     jnp_states = jnp.stack(states) # (N, board_size, board_size, 2)
     jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
     jnp_policies = jnp.zeros((len(boards), config.board_size ** 4)) # (N, board_size ** 4)
-    gtv_dataset = Dataset(size=len(boards), batch_size=256, static=True)
+    gtv_dataset = Dataset(max_size=len(boards), batch_size=256, static=True)
     gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
 
     # 5. save the Dataset object to config.data_folder + "random_gtv.pkl"
@@ -147,7 +147,7 @@ def training_datasets() -> None:
     # and add the training data to it
     for i, training_data_list in tqdm(enumerate(training_data_lists)):
         replay_buffer = Dataset(
-            size=config.replay_buffer_size,
+            max_size=config.replay_buffer_size,
             batch_size=config.training_batch_size,
             static=False
         )
@@ -211,7 +211,7 @@ def training_experienced_values(n: int | None = None) -> None:
                 board = turn.board
                 experienced_outcome = 0.0 if game_winner is None else 1.0 if game_winner == board.current_player else -1.0
                 experienced_policy = turn.player_data
-                experienced_target = TrainingData(board_to_input(board), experienced_outcome, experienced_policy)
+                experienced_target = TrainingData(jnp.array(board_to_input(board)), experienced_outcome, experienced_policy)
 
                 # add this to a set
                 boards_set.add(experienced_target)
@@ -224,7 +224,7 @@ def training_experienced_values(n: int | None = None) -> None:
     if n is not None: boards = random.sample(boards, n)
     
     # 4. load all this into a Dataset object
-    ev_dataset = Dataset(size=len(boards), batch_size=256, static=False)
+    ev_dataset = Dataset(max_size=len(boards), batch_size=256, static=False)
     for data in tqdm(boards):
         ev_dataset.add(data)
     ev_dataset.convert_to_static()
