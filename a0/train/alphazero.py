@@ -18,6 +18,7 @@ from a0.players.a0 import A0Player, board_to_input
 from a0.model import AlphaZeroModel, load_model, save_model
 from cc.core import Game
 from a0.dataset import Dataset, TrainingData
+from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData
 
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
@@ -51,7 +52,7 @@ def game_data_to_training_set(game_data: GameData) -> list[TrainingData]:
         
         # create a training example
         training_example: TrainingData = TrainingData(
-            board=board_to_input(board),
+            board=jnp.array(board_to_input(board)),
             value=value,
             policy=mcts_policy
         )
@@ -61,13 +62,13 @@ def game_data_to_training_set(game_data: GameData) -> list[TrainingData]:
 
     return training_set
 
-def _play(player: bytes) -> tuple[list[TrainingData], GameData]:
+def _play(serialized_player: bytes) -> tuple[list[TrainingData], GameData]:
     '''
     Plays a game of chinese checkers with the given players,
     then converts the game data into a training set.
     This function returns both the training set and the game data.
     '''
-    # first, set up logging
+    # first, set up logging (since this is a separate process)
     setup_logging(
         level=20,
         log_dir=config.log_dir,
@@ -75,7 +76,7 @@ def _play(player: bytes) -> tuple[list[TrainingData], GameData]:
     )
     # then play the game
     game = Game(config.board_size, config.num_pieces, True, False, False)
-    player: A0Player = dill.loads(player)
+    player: A0Player = dill.loads(serialized_player)
     game_data = play(game, [player, player], config.turn_limit)
     return game_data_to_training_set(game_data), game_data
 
@@ -101,12 +102,14 @@ def self_play(player: A0Player) -> tuple[list[TrainingData], list[GameData]]:
     num_cores = os.cpu_count() or 4
     logger.info(f"Using {num_cores} cores for self-play.")
     with concurrent.futures.ProcessPoolExecutor() as executor:
+        # create a list to hold the futures
         futures: list[Future[tuple[list[TrainingData], GameData]]] = []
 
+        # create a function to start a game
         def start_game() -> None:
             future = executor.submit(
                 _play,
-                player=player_serialized
+                serialized_player=player_serialized
             )
             futures.append(future)
         
@@ -136,6 +139,7 @@ def self_play(player: A0Player) -> tuple[list[TrainingData], list[GameData]]:
             # stop when the training set is full
             if len(training_set) >= config.training_samples:
                 logger.info("Training set is full, cancelling all games")
+                # need to wait for remaining games to finish
                 for future in futures:
                     future.cancel()
                 break
@@ -144,6 +148,7 @@ def self_play(player: A0Player) -> tuple[list[TrainingData], list[GameData]]:
     return training_set, game_data_list
 
 def train_model(model: AlphaZeroModel, replay_buffer: Dataset) -> AlphaZeroModel:
+    # TODO: remove this
     logger.info(f"Training model on the replay buffer ({len(replay_buffer)})...")
 
     # shuffle the replay buffer and create batches generator
@@ -201,11 +206,12 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
         save_model(config.training_dir + f'/model_{0}.pkl', model)
     
     replay_buffer = Dataset(
-        size=config.replay_buffer_size,
+        max_size=config.replay_buffer_size,
         batch_size=config.training_batch_size,
         static=False
     )
 
+    train_datas: list[DatasetData] = []
     for i in range(starting_iteration, iterations):
         print(f"Iteration {i + 1}/{iterations}")
         logger.info(f"Iteration {i + 1}/{iterations}")
@@ -230,11 +236,25 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
             replay_buffer.add(example)
         
         # train the model on the experiences in the replay buffer
-        model = train_model(model, replay_buffer)
+        model, train_data = train_model_epochs(
+            model=model,
+            dataset=replay_buffer.get_new_static_dataset(),
+            num_epochs=1,
+            save="none",
+            plot=False,
+            test_dataset=None
+        )
+        train_datas.append(train_data)
+
+        # plot the model performance
+        plot_model_performance(f"iteration_{i + 1}", [train_data])
         
         # save the model after each iteration
         if config.training_dir:
             save_model(config.training_dir + f'model_{i + 1}.pkl', model)
+    
+    # after all iterations, plot all the training data
+    plot_model_performance("full_a0", train_datas)
 
 if __name__ == "__main__":
     setup_logging(

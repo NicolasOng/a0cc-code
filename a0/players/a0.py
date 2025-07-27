@@ -110,10 +110,11 @@ class A0Player:
         mcts_root_children_visit_counts = [float(child.visits) for child in children]
         mcts_root_children_moves = [state.child_board_to_move(child.state) for child in children]
 
-        # create a well-shaped policy ditribution,
-        p.set_logits_from_moves(mcts_root_children_moves, mcts_root_children_visit_counts)
+        # create a well-shaped policy distribution,
+        p.set_logits_from_moves(mcts_root_children_moves, mcts_root_children_visit_counts, rotate_180=False)
         # mask non-legal moves,
-        p.mask_non_legal_moves(moves)
+        p.set_legal_moves(moves)
+        p.apply_mask(0.0)
         # softmax it to get the policy distribution
         p.apply_power_normalize(self.temperature)
 

@@ -5,8 +5,8 @@
     "solve_data": "solve-data/CC-SOLVE-BASELINE-16-3.dat",
     "output_dir": "data/",
     "training_iterations": 51,
-    "training_samples": 5000,
+    "training_samples": 1000,
     "turn_limit": 80,
-    "replay_buffer_size": 50000,
+    "replay_buffer_size": 5000,
     "training_batch_size": 256
 }

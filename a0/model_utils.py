@@ -235,23 +235,20 @@ class Policy:
     def apply_power_normalize(self, tau: float) -> None:
         '''
         Computes the AlphaZero-style softmax over visit counts.
+        Ensure there are no -inf or NaN values in the policy before applying this.
         Args:
             tau (float): Temperature parameter (τ). Lower values → more deterministic.
         '''
-        # remove -inf values (non-legal moves)
-        # this normalization is necessary to avoid NaNs
-        self.policy = jnp.where(self.policy == -jnp.inf, 0.0, self.policy)
-
         # Avoid divide-by-zero or NaNs if all counts are zero
-        if jnp.sum(self.policy) == 0:
-            return jnp.ones_like(self.policy) / self.policy.size
+        if np.sum(self.policy) == 0:
+            self.policy = np.array(np.ones_like(self.policy) / self.policy.size, dtype=np.float32)
 
         # Apply the (1/τ) power transform
         powered = self.policy ** (1.0 / tau)
 
         # Normalize to form a probability distribution
-        self.policy = powered / jnp.sum(powered)
-    
+        self.policy = np.array(powered / np.sum(powered), dtype=np.float32)
+
     def get_move_probability(self, move: Move) -> float:
         '''
         Returns the probability of the given move based on the policy distribution.

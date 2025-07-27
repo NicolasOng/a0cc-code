@@ -50,6 +50,18 @@ class Dataset:
         self.data.clear()  # Clear the deque as we no longer need it
         self.static = True  # Mark the dataset as static
     
+    def get_new_static_dataset(self) -> Dataset:
+        """Returns a new static dataset with the same properties as this one."""
+        assert not self.static, "Dataset is static; cannot create a new static dataset."
+        # Create a new static dataset with the same maxlen and batch_size
+        new_dataset = Dataset(self.data.maxlen, self.batch_size, static=True)
+        new_dataset.set(
+            jnp.stack([d.board for d in self.data]),
+            jnp.array([d.value for d in self.data]) [:, None],
+            jnp.stack([d.policy for d in self.data])
+            )
+        return new_dataset
+    
     def split_off_test(self, test_size: int, shuffle: bool) -> Dataset:
         """Split off a test set of the specified size."""
         assert self.static, "Dataset must be static to split off a test set."
