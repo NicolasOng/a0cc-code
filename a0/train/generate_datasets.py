@@ -77,13 +77,13 @@ def generate_ground_truth_dataset(num_states: int | None = None, prob_dist: bool
 
     # save the dataset
     logger.info("Saving ground truth dataset to file...")
-    output_path = f"{config.eval_dir}/gtd.pkl"
+    output_path = f"{config.dataset_dir}/gtd.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(dataset, file)
     logger.info(f"Ground truth dataset saved to {output_path}.")
 
 def load_ground_truth_dataset() -> Dataset:
-    dataset_path = config.eval_dir + '/gtd.pkl'
+    dataset_path = config.dataset_dir + '/gtd.pkl'
     with open(dataset_path, 'rb') as file:
         gt_dataset: Dataset = pickle.load(file)
     logger.info(f"Loaded dataset from {dataset_path}.")
@@ -136,7 +136,7 @@ def generate_random_dataset(num_states: int | None = None):
 
     # save the dataset
     logger.info("Saving random dataset to file...")
-    output_path = f"{config.eval_dir}/rd.pkl"
+    output_path = f"{config.dataset_dir}/rd.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(dataset, file)
     logger.info(f"Random dataset saved to {output_path}.")

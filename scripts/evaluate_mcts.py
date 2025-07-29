@@ -51,7 +51,7 @@ def policy_from_mcts(mcts: MCTS, board: Board) -> Policy:
 def main():
     # TODO: make this a parameter?
     model_filename = "..."
-    num_boards_per_iteration = 10000
+    num_boards_per_iteration = 500
 
     # load the given model
     model = load_model(model_filename)
@@ -79,7 +79,7 @@ def main():
     puct_value_acc = [value_acc]
     puct_policy_acc = [policy_acc]
     gt_dataset.set_batch_size(1)
-    for i in range(100, 10000, 100):
+    for i in range(25, 500, 25):
         logger.info(f"Evaluating model with {i} MCTS iterations...")
         total_uct_value_acc = 0
         total_puct_value_acc = 0
