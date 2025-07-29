@@ -52,78 +52,6 @@ def training_data_generator() -> Generator[list[TrainingData], None, None]:
     #logger.info(f"Loaded {len(training_data_lists)} training data lists from {config.training_dir}.")
     #return training_data_lists
 
-def check_gd_and_td_equivalence(game_data_lists: list[list[GameData]] | Generator[list[GameData], None, None], training_data_lists: list[list[TrainingData]] | Generator[list[TrainingData], None, None]) -> bool:
-    '''
-    Check if the game data and training data are equivalent.
-    This is done by comparing the game data and training data for each iteration.
-
-    Game data lists is a list of lists of GameData objects,
-    where each inner list holds all the gamedata from a single training iteration.
-    Training data lists is a list of lists of TrainingData objects,
-    where each inner list holds all the training data objects from a single training iteration.
-    '''
-    # in each iteration,
-    for i, (game_data_list, training_data_list) in enumerate(zip_longest(game_data_lists, training_data_lists)):
-        if game_data_list is None:
-            logger.error(f"Game data list for iteration {i} is None.")
-            return False
-        if training_data_list is None:
-            logger.error(f"Training data list for iteration {i} is None.")
-            return False
-        state_no = 0
-        # for each game in the iteration,
-        for j, game_data in enumerate(game_data_list):
-            # for each state in the game,
-            for k, game_state in enumerate(game_data.turn_data):
-                # get the corresponding training data
-                training_data = training_data_list[state_no]
-                state_no += 1
-                # check if the board states match
-                gs_policy = game_state.player_data
-                td_policy = training_data.policy
-                if not np.array_equal(gs_policy, td_policy):
-                    logger.debug(f"Policy mismatch at iteration {i}, game {j}, turn {k}.")
-                    return False
-                gs_value = 0 if game_data.winner is None else 1 if game_data.winner == game_state.board.current_player else -1
-                td_value = training_data.value
-                if gs_value != td_value:
-                    logger.error(f"Value mismatch at iteration {i}, game {j}, turn {k}: {gs_value} != {td_value}")
-                    return False
-                gs_state = board_to_input(game_state.board)
-                td_state = training_data.board
-                if not np.array_equal(gs_state, td_state):
-                    logger.error(f"State mismatch at iteration {i}, game {j}, turn {k}.")
-                    return False
-
-    logger.info("Game data and training data equivalence check completed.")
-    return True
-
-def check_winners_match(game_data_lists: list[list[GameData]] | Generator[list[GameData], None, None]) -> bool:
-    '''
-    Check if the winners in the game data match the winners in the game objects.
-    This is done by comparing the winner in each GameData object with the winner in the Game object
-    and the winner in the last TurnData object.
-    Returns True if all winners match, False otherwise.
-    '''
-    for i, game_data_list in enumerate(game_data_lists):
-        for j, game_data in enumerate(game_data_list):
-            game = game_data.game
-            winner = game_data.winner
-            game_winner = game.winner
-            board_winner = game.get_winner(game_data.turn_data[-1].board)
-            if winner != game_winner:
-                logger.error(f"Game winner mismatch at iteration {i}, game {j}: {winner} != {game_winner}")
-                return False
-            # the final board state is not recorded yet, so this check doesn't work.
-            # if winner != board_winner:
-            #     logger.error(f"Board winner mismatch at iteration {i}, game {j}: {winner} != {board_winner}")
-            #     logger.error(f"\n{game_data.turn_data[-1].board.board_view()}")
-            #     logger.error("BOARD HISTORY:")
-            #     for board in game.board_history:
-            #         logger.error(f"\n{board.board_view()}")
-            #     return False
-    return True
-
 def check_game_data_accuracy(game_data_lists: list[list[GameData]] | Generator[list[GameData], None, None]) -> None:
 
     solver = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
@@ -180,10 +108,11 @@ class GameDataStats:
                 f"{sum(self.draws_timeout)}, "
                 f"{np.mean(self.game_lengths) if self.game_lengths else 0:.2f}, "
                 f"{np.std(self.game_lengths) if self.game_lengths else 0:.2f}, "
-                f"{np.mean(self.game_times) if self.game_times else 0:.2f} seconds, "
-                f"{np.std(self.game_times) if self.game_times else 0:.2f} seconds")
+                f"{np.mean(self.game_times) if self.game_times else 0:.2f}s, "
+                f"{np.std(self.game_times) if self.game_times else 0:.2f}s")
     
-    def get_header(self) -> str:
+    @staticmethod
+    def get_header() -> str:
         '''
         Get a header string for the statistics.
         '''
@@ -191,6 +120,31 @@ class GameDataStats:
                 "Draws (Repeat), Draws (Timeout), "
                 "Avg Game Length, Std Game Length, "
                 "Avg Game Time, Std Game Time")
+
+def game_data_list_stats(game_data_list: list[GameData]) -> GameDataStats:
+    '''
+    Collects stats about a list of GameData objects.
+    This includes the number of games, turns, and players.
+    '''
+    logger.info(f"Processing {len(game_data_list)} games to get their stats.")
+    stats = GameDataStats()
+    for game_data in game_data_list:
+        stats.total_games += 1
+        # get the game length and time,
+        stats.game_lengths.append(len(game_data.turn_data))
+        stats.game_times.append(game_data.time)
+        # check for a winner
+        px_won = 1 if game_data.winner == Player.PLAYER_X else 0
+        po_won = 1 if game_data.winner == Player.PLAYER_O else 0
+        stats.player_x_wins.append(px_won)
+        stats.player_o_wins.append(po_won)
+        # check for draws
+        draw_repeat = 1 if game_data.ended and game_data.winner is None else 0
+        draw_timeout = 1 if not game_data.ended else 0
+        stats.draws_repeat.append(draw_repeat)
+        stats.draws_timeout.append(draw_timeout)
+    # add the stats for this iteration to the list
+    return stats
 
 def game_data_stats() -> None:
     '''
@@ -204,23 +158,7 @@ def game_data_stats() -> None:
     for game_data_list in gd_gen:
         # get the stats for the game data generated in that iteration
         # wins/losses/draws, types of draws, num turns (mean, etc), avg length in time, who won
-        logger.info(f"Processing {len(game_data_list)} games in this iteration.")
-        stats = GameDataStats()
-        for game_data in game_data_list:
-            stats.total_games += 1
-            # get the game length and time,
-            stats.game_lengths.append(len(game_data.turn_data))
-            stats.game_times.append(game_data.time)
-            # check for a winner
-            px_won = 1 if game_data.winner == Player.PLAYER_X else 0
-            po_won = 1 if game_data.winner == Player.PLAYER_O else 0
-            stats.player_x_wins.append(px_won)
-            stats.player_o_wins.append(po_won)
-            # check for draws
-            draw_repeat = 1 if game_data.ended and game_data.winner is not None else 0
-            draw_timeout = 1 if not game_data.ended else 0
-            stats.draws_repeat.append(draw_repeat)
-            stats.draws_timeout.append(draw_timeout)
+        stats = game_data_list_stats(game_data_list)
         # add the stats for this iteration to the list
         iteration_stats.append(stats)
     
@@ -229,11 +167,11 @@ def game_data_stats() -> None:
     output_path = f"{config.eval_dir}/gamedata_stats.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(iteration_stats, file)
-    logger.info(f"Game data accuracies saved to {output_path}.")
+    logger.info(f"Game data stats saved to {output_path}.")
 
     # log the statistics
     logger.info("Game Data Statistics:")
-    logger.info(iteration_stats[0].get_header())
+    logger.info(GameDataStats.get_header())
     for i, stats in enumerate(iteration_stats):
         logger.info(f"Iteration {i}: {stats.get_line()}")
     
@@ -241,14 +179,27 @@ def game_data_stats() -> None:
     logger.info("Plotting game data statistics...")
 
     # first, plot outcomes
-    logger.info("Plotting game outcomes (stacked)...")
+    # get the number of games won by each player, draws, etc.
     iterations = list(range(len(iteration_stats)))
+    total_games = [stats.total_games for stats in iteration_stats]
     player_x_wins = [sum(stats.player_x_wins) for stats in iteration_stats]
     player_o_wins = [sum(stats.player_o_wins) for stats in iteration_stats]
     draws_repeat = [sum(stats.draws_repeat) for stats in iteration_stats]
     draws_timeout = [sum(stats.draws_timeout) for stats in iteration_stats]
 
+    # plot the total number of games played in each iteration
+    logger.info("Plotting total games played...")
     plt.clf()
+    plt.plot(iterations, total_games, marker='o')
+    plt.title('Total Games Played by Training Iteration')
+    plt.xlabel('Training Iteration')
+    plt.ylabel('Total Games')
+    plt.grid(True, alpha=0.3)
+    plt.savefig(f"{config.plot_dir}/gamedata_total_games.png")
+    plt.clf()
+
+    # plot them in a stacked plot
+    logger.info("Plotting game outcomes (stacked)...")
     plt.stackplot(iterations, player_x_wins, player_o_wins, draws_repeat, draws_timeout,
         labels=['Player X Wins', 'Player O Wins', 'Draws (Repeat)', 'Draws (Timeout)'],
     )
@@ -260,6 +211,7 @@ def game_data_stats() -> None:
     plt.savefig(f"{config.plot_dir}/gamedata_outcomes_stacked.png")
     plt.clf()
 
+    # plot them in a line plot
     logger.info("Plotting game outcomes (line)...")
     plt.plot(iterations, player_x_wins, label='Player X Wins')
     plt.plot(iterations, player_o_wins, label='Player O Wins')
@@ -274,17 +226,25 @@ def game_data_stats() -> None:
     plt.savefig(f"{config.plot_dir}/gamedata_outcomes_lines.png")
     plt.clf()
 
-    # then, plot game lengths
+    # then, plot game lengths (both turns and time)
     logger.info("Plotting game lengths...")
-    avg_game_lengths = [np.mean(stats.game_lengths) for stats in iteration_stats]
-    std_game_lengths = [np.std(stats.game_lengths) for stats in iteration_stats]
-    plt.errorbar(iterations, avg_game_lengths, yerr=std_game_lengths, 
-                 marker='o', capsize=5, capthick=2, linewidth=2)
-    plt.title('Average Game Length by Training Iteration')
+    # turns
+    avg_game_lengths = [float(np.mean(stats.game_lengths)) for stats in iteration_stats]
+    std_game_lengths = [float(np.std(stats.game_lengths)) for stats in iteration_stats]
+    plot_game_lengths(iterations, avg_game_lengths, std_game_lengths, "Turns")
+    # time
+    avg_game_times = [float(np.mean(stats.game_times)) for stats in iteration_stats]
+    std_game_times = [float(np.std(stats.game_times)) for stats in iteration_stats]
+    plot_game_lengths(iterations, avg_game_times, std_game_times, "Time (seconds)")
+
+def plot_game_lengths(iterations: list[int], avg_lengths: list[float], std_length: list[float], l_type: str):
+    plt.errorbar(iterations, avg_lengths, yerr=std_length, 
+                 marker='o', capsize=5, capthick=1, linewidth=1)
+    plt.title(f'Average Game Length ({l_type}) by Training Iteration')
     plt.xlabel('Training Iteration')
-    plt.ylabel('Average Number of Turns')
+    plt.ylabel(f'Length ({l_type})')
     plt.grid(True, alpha=0.3)
-    plt.savefig(f"{config.plot_dir}/game_lengths.png")
+    plt.savefig(f"{config.plot_dir}/game_lengths_{l_type.lower()}.png")
     plt.clf()
 
 def main():
@@ -292,8 +252,6 @@ def main():
     
     logger.info("Starting training data evaluations...")
 
-    #check_winners_match(game_data_generator())
-    #check_gd_and_td_equivalence(game_data_generator(), training_data_generator())
     check_game_data_accuracy(game_data_generator())
     game_data_stats()
 

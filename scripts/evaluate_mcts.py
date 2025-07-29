@@ -184,7 +184,7 @@ def main():
     logger.info(f"Results saved to {output_path}")
 
     # plot the results
-    plt.figure(figsize=(16, 9))
+    plt.figure(figsize=(16 * 0.75, 9 * 0.75))
     plt.plot(uct_x, uct_value_acc, label="UCT Value Accuracy", color='blue', linestyle='-')
     plt.plot(uct_x, uct_policy_acc, label="UCT Policy Accuracy", color='blue', linestyle='--')
     plt.plot(puct_x, puct_value_acc, label="PUCT Value Accuracy", color='red', linestyle='-')

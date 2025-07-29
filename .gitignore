@@ -1,7 +1,6 @@
 __pycache__/
 dfs_progress.pkl
 data/
-output/
 graphs/
 solve-data/
 logs/
@@ -24,3 +23,6 @@ action_accuracy.png
 policy_results.p
 
 default/
+
+output/
+input/

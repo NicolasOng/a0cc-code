@@ -10,6 +10,7 @@ class Config:
 
     solve_data: str
     output_dir: str
+    input_dir: str
 
     training_iterations: int
     training_samples: int
@@ -62,6 +63,12 @@ class Config:
         os.makedirs(self.validation_dir, exist_ok=True)
         self.stats_dir = self.output_dir + "stats/"
         os.makedirs(self.stats_dir, exist_ok=True)
+
+        os.makedirs(self.input_dir, exist_ok=True)
+        self.dataset_dir = self.input_dir + "datasets/"
+        os.makedirs(self.dataset_dir, exist_ok=True)
+        self.solvedata_dir = self.input_dir + "solvedata/"
+        os.makedirs(self.solvedata_dir, exist_ok=True)
 
 config_path = sys.argv[1] if len(sys.argv) > 1 else "config/config.json"
 config = Config(config_path, "config/config.json")

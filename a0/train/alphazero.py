@@ -19,6 +19,7 @@ from a0.model import AlphaZeroModel, load_model, save_model
 from cc.core import Game
 from a0.dataset import Dataset, TrainingData
 from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData
+from a0.eval.training_data import GameDataStats, game_data_list_stats
 
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
@@ -147,50 +148,6 @@ def self_play(player: A0Player) -> tuple[list[TrainingData], list[GameData]]:
     logger.info(f"Generated training set of size: {len(training_set)}/{config.training_samples}")
     return training_set, game_data_list
 
-def train_model(model: AlphaZeroModel, replay_buffer: Dataset) -> AlphaZeroModel:
-    # TODO: remove this
-    logger.info(f"Training model on the replay buffer ({len(replay_buffer)})...")
-
-    # shuffle the replay buffer and create batches generator
-    replay_buffer.shuffle()
-    batches = replay_buffer.batches()
-
-    optimizer = nnx.Optimizer(model, optax.adamw(0.005, 0.9))
-
-    value_loss_function = optax.l2_loss
-    policy_loss_function = optax.softmax_cross_entropy
-
-    def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
-        value, policy = model(batch['board'])
-        value_loss = jnp.mean(value_loss_function(value, batch['value']))
-        masked_policy = jnp.where(batch['policy'], policy, 0)
-        policy_loss = jnp.mean(policy_loss_function(labels=batch['policy'], logits=masked_policy))
-        total_loss = value_loss + policy_loss
-        # JAX requires the loss function to return a tuple of (loss, aux)
-        # where aux can be any additional information you want to return
-        return total_loss, (value_loss, policy_loss)
-    
-    @nnx.jit
-    def train_step(model: AlphaZeroModel, optimizer: nnx.Optimizer, batch: dict[str, Any]):
-        grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
-        (loss, (value_loss, policy_loss)), grads = grad_fn(model, batch)
-        optimizer.update(grads)
-        return loss, value_loss, policy_loss
-    
-    for ts, batch in enumerate(batches):
-        # convert the batch to a dictionary
-        board_batch, value_batch, policy_batch = batch
-        batch = {
-            'board': board_batch,  # (N, board_size, board_size)
-            'value': value_batch,  # (N, 1)
-            'policy': policy_batch  # (N, board_size ** 4)
-        }
-        loss, value_loss, policy_loss = train_step(model, optimizer, batch)
-        logger.info(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
-        print(f"Training Step {ts}, Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}")
-
-    return model
-
 def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> None:
     iterations = config.training_iterations
     # create/load a model
@@ -212,6 +169,7 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
     )
 
     train_datas: list[DatasetData] = []
+    logger.log(25, GameDataStats.get_header())
     for i in range(starting_iteration, iterations):
         print(f"Iteration {i + 1}/{iterations}")
         logger.info(f"Iteration {i + 1}/{iterations}")
@@ -220,6 +178,10 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
 
         # generate training data with self-play
         training_set, game_data = self_play(player)
+
+        # generate and print stats about the game data
+        game_data_stats = game_data_list_stats(game_data)
+        logger.log(25, f"{game_data_stats.get_line()}")
 
         # save the training set to a file
         if config.training_dir:
