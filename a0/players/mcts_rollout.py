@@ -84,11 +84,6 @@ class MCTSRolloutPlayer:
         # perform mcts and get the root's children
         mcts = MCTS(SearchMoves(state, self, self.max_depth), 'uct')
         mcts.run(iterations=self.mcts_iterations)
-
-        mcts.print_children()
-        mcts.remove_unvisited_nodes(None)
-        mcts.print_metrics()
-        #mcts.draw_graph()
         
         child = mcts.get_best_root_child()
         if child:
@@ -96,6 +91,11 @@ class MCTSRolloutPlayer:
         else:
             # if no child is found, select a random move
             move = random.choice(moves)
+        
+        mcts.print_children()
+        mcts.remove_unvisited_nodes(None)
+        mcts.print_metrics()
+        #mcts.draw_graph()
 
         # return the selected move
         return move, None

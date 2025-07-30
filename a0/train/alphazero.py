@@ -210,6 +210,8 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
 
         # plot the model performance
         plot_model_performance(f"iteration_{i + 1}", [train_data])
+
+        # TODO: log and save performance metrics.
         
         # save the model after each iteration
         if config.training_dir:

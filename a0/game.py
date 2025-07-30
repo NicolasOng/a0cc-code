@@ -26,7 +26,7 @@ class GameData:
         self.turn_data: list[TurnData] = []
         self.ended: bool = False
         self.winner: Optional[Player] = None
-        self.time: float = 0.0
+        self.time: float = 0.0 # seconds
         self.final_board: Optional[Board] = None
 
 def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = None) -> GameData:

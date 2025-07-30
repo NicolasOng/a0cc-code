@@ -3,9 +3,7 @@ import random
 from tqdm import tqdm
 
 from config import config
-from cc.ranking import CCDefaultRank, CCState
-from cc.core import Game, Player
-from cc.lookups import CCBaselineSolver
+from cc.core import Player
 from a0.dataset import Dataset
 from cc.ground_truth import GroundTruth
 
@@ -39,14 +37,15 @@ def generate_ground_truth_dataset(num_states: int | None = None, prob_dist: bool
     # for the amount of ranks specified,
     for i in tqdm(range(n)):
         # get the rank to generate (if generating all states, use the index as the rank)
-        cur_rank = i if num_states is None else random.randint(0, max_rank)
+        cur_rank = i if num_states is None else random.randint(0, max_rank - 1)
         
         # unrank the current rank to get the state
         board = gt.unrank(cur_rank)
 
         # skip if the current player is O
         # this is because the outcomes/policies are symmetric
-        if board.current_player == Player.PLAYER_O:
+        # we skip if num_states is specified, as we want to generate exactly num_states
+        if num_states is None and board.current_player == Player.PLAYER_O:
             continue
 
         # convert the board to a model input (board_size, board_size, 2)
@@ -91,11 +90,10 @@ def load_ground_truth_dataset() -> Dataset:
 
 def generate_random_dataset(num_states: int | None = None):
     # create useful objects
-    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-    s = CCState(config.num_spots, config.num_pieces, config.num_players)
+    gt = GroundTruth()
 
     # decide how many states to generate (if None specified, generate all states)
-    max_rank = r.get_max_rank()
+    max_rank = gt.get_max_rank()
     n = max_rank if num_states is None else num_states
 
     # create lists to hold the data
@@ -106,19 +104,17 @@ def generate_random_dataset(num_states: int | None = None):
     # for the amount of ranks specified,
     for i in tqdm(range(n)):
         # get the rank to generate (if generating all states, use the index as the rank)
-        cur_rank = i if num_states is None else random.randint(0, max_rank)
+        cur_rank = i if num_states is None else random.randint(0, max_rank - 1)
         
         # unrank the current rank to get the state
-        r.unrank(cur_rank, s)
-        # get the board from the state
-        board = s.get_board()
+        board = gt.unrank(cur_rank)
 
         # convert the board to a model input (board_size, board_size, 2)
         board_input = board_to_input(board)[0]
         # choose a random outcome for the state (1=win, -1=loss, 0=draw/illegal)
         outcome = np.random.choice([-1, 1], p=[0.5, 0.5])
         outcome = np.array([outcome])  # Convert to shape (1,)
-        # get the ideal policy for the state, based on the solve data
+        # get a random policy for the state, based on the solve data
         # TODO: implement this - for now, blank.
         
         # put these into the lists
@@ -149,9 +145,9 @@ def main():
     )
     logger.info("Generating datasets...")
 
-    generate_ground_truth_dataset(prob_dist=False)
+    generate_ground_truth_dataset(num_states=865000, prob_dist=True)
 
-    #generate_random_dataset(1000)
+    #generate_random_dataset(865000)
 
     logger.info("Finished generating datasets.")
 
