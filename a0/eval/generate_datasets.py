@@ -11,7 +11,7 @@ from cc.ranking import CCDefaultRank, CCState
 from a0.dataset import Dataset, TrainingData
 from a0.game import GameData
 from a0.train.alphazero import board_to_input
-from a0.eval.training_data import game_data_generator, training_data_generator
+from a0.eval.training_data import game_data_generator
 
 from config import config
 
@@ -126,41 +126,6 @@ def random_ground_truth_values(n: int = 1000) -> None:
         pickle.dump(gtv_dataset, file)
     logger.info(f"Ground truth values saved to {output_path}.")
 
-def training_datasets() -> None:
-    '''
-    Generates a list of datasets based on the
-    training data generated during training/self-play.
-    Each dataset contains the training data generated in a single training iteration.
-    '''
-    logger.info("Generating training datasets from training data...")
-    # load all the training data objects from config.training_dir
-    training_data_lists: list[list[TrainingData]] = []
-    for i in tqdm(range(config.training_iterations)):
-        file_path = f"{config.training_dir}/training_set_{i + 1}.pkl"
-        with open(file_path, 'rb') as file:
-            data: list[TrainingData] = pickle.load(file)
-            training_data_lists.append(data)
-    logger.info(f"Loaded {len(training_data_lists)} training data lists from {config.training_dir}.")
-
-    datasets: list[Dataset] = []
-    # create a Dataset object for each training data list
-    # and add the training data to it
-    for i, training_data_list in tqdm(enumerate(training_data_lists)):
-        replay_buffer = Dataset(
-            max_size=config.replay_buffer_size,
-            batch_size=config.training_batch_size,
-            static=False
-        )
-        for training_data in training_data_list:
-            replay_buffer.add(training_data)
-        datasets.append(replay_buffer)
-    
-    # save the datasets
-    output_path = f"{config.eval_dir}/training_datasets.pkl"
-    with open(output_path, 'wb') as file:
-        pickle.dump(datasets, file)
-    logger.info(f"List of training datasets saved to {output_path}.")
-
 def get_unique_boards_from_training_data() -> set[Board]:
     '''
     Extracts all unique boards from the training data generated during training/self-play.
@@ -246,8 +211,6 @@ def main():
     training_ground_truth_values()
 
     random_ground_truth_values()
-
-    training_datasets()
 
     training_experienced_values()
 

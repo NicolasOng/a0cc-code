@@ -101,7 +101,7 @@ def graph_player_evaluation_results(fn: str) -> None:
     losses = results['losses']
     draws = results['draws']
 
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(16, 9))
     plt.plot(wins, label='Wins', color='green')
     plt.plot(losses, label='Losses', color='red')
     plt.plot(draws, label='Draws', color='blue')
@@ -109,6 +109,8 @@ def graph_player_evaluation_results(fn: str) -> None:
     plt.ylabel('Count')
     plt.title('Player Evaluation Results')
     plt.legend()
+    plt.grid(True, which='both')
+    plt.tight_layout()
     plt.savefig(config.plot_dir + '/player_evaluation_results.png')
 
 def main():

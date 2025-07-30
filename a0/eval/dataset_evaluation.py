@@ -323,20 +323,32 @@ def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float]
         logger.error(f"Error loading losses: {e}")
         sys.exit()
 
-def plot_losses(losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float], policy_accuracies: list[float], fn: str) -> None:
+def plot_losses(title: str, losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float], policy_accuracies: list[float], fn: str) -> None:
+    plt.figure(figsize=(16, 9))
     plt.plot(losses, label='Loss')
     plt.plot(value_losses, label='Value Loss')
     plt.plot(policy_losses, label='Policy Loss')
     plt.plot(value_accuracies, label='Value Accuracy')
     plt.plot(policy_accuracies, label='Policy Accuracy')
+    plt.xlabel("Iteration")
+    plt.ylabel("Performance")
+    plt.title(title)
     plt.legend()
+    plt.grid(True, which='both')
+    plt.tight_layout()
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.clf()
 
-def plot_two_accuracies(accuracies1: list[float], accuracies2: list[float], a1n: str, a2n: str, fn: str) -> None:
+def plot_two_accuracies(title: str, accuracies1: list[float], accuracies2: list[float], a1n: str, a2n: str, fn: str) -> None:
+    plt.figure(figsize=(16, 9))
     plt.plot(accuracies1, label=a1n)
     plt.plot(accuracies2, label=a2n)
+    plt.xlabel("Iteration")
+    plt.ylabel("Performance")
+    plt.title(title)
     plt.legend()
+    plt.grid(True, which='both')
+    plt.tight_layout()
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.clf()
 
@@ -376,18 +388,16 @@ def main():
 
     # load and plot the losses
     tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies = load_losses(f"{config.eval_dir}/training_eval.pkl")
-    plot_losses(tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies, "training_eval")
+    plot_losses("Model Performance on Ground Truth of States Seen During Training",
+                tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies, "training_gt_eval")
     rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies = load_losses(f"{config.eval_dir}/random_eval.pkl")
-    plot_losses(rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies, "random_eval")
+    plot_losses("Model Performance on Ground Truth of Random States",
+                rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies, "random_gt_eval")
     telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies = load_losses(f"{config.eval_dir}/training_e_eval.pkl")
-    plot_losses(telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies, "training_e_eval")
-    plot_two_accuracies(tvalue_accuracies, rvalue_accuracies, "Training Accuracy", "Random Accuracy", "training_vs_random_accuracy")
-
-    # load the training data dataset
-    training_datasets = load_dataset_list(f"{config.eval_dir}/training_datasets.pkl")
-    evaluate_all_models_progressive(models, training_datasets, "training_perf")
-    losses, value_losses, policy_losses, value_accuracies, policy_accuracies = load_losses(f"{config.eval_dir}/training_perf.pkl")
-    plot_losses(losses, value_losses, policy_losses, value_accuracies, policy_accuracies, "training_perf")
+    plot_losses("Model Performance on Experience Outcomes of States Seen During Training",
+                telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies, "training_e_eval")
+    plot_two_accuracies("Model Performance on Ground Truth of States",
+                         tvalue_accuracies, rvalue_accuracies, "Training Accuracy", "Random Accuracy", "training_vs_random_accuracy")
 
     logger.info("Dataset evaluation completed.")
 

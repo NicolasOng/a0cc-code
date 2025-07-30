@@ -244,7 +244,7 @@ def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int,
             epoch_data.batch_data[-1].model_no = epoch + 1
         dataset_data.epoch_data.append(epoch_data)
         if plot:
-            save_epoch_data(epoch + 1, epoch_data)
+            save_epoch_data(f"{config.training_dir}/epoch_{epoch + 1}_data.pkl", epoch_data)
             temp_dd = DatasetData()
             temp_dd.epoch_data.append(epoch_data)
             plot_model_performance(f"epoch_{epoch + 1}", [temp_dd])
@@ -319,7 +319,7 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     dataset_boundaries = dataset_boundaries[:-1]
 
     # start plotting
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(16, 9))
 
     # Add vertical lines for epoch boundaries
     for _, boundary in enumerate(epoch_boundaries):
@@ -354,7 +354,7 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     plt.ylabel("Performance")
     plt.title("Model Performance over Batches")
     plt.legend()
-    plt.grid(True)
+    plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/model_performance_{fn}.png")
     plt.clf()
@@ -371,7 +371,7 @@ def plot_single_metric(x_train: list[int], metric_train: list[float],
                        dataset_boundaries: list[int], epoch_boundaries: list[int],
                        label: str, fn: str):
     # set figure size
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(16, 9))
 
     # Add vertical lines for epoch boundaries
     for _, boundary in enumerate(epoch_boundaries):
@@ -396,31 +396,60 @@ def plot_single_metric(x_train: list[int], metric_train: list[float],
     plt.ylabel(label)
     plt.title(f"{label} over Batches")
     plt.legend()
-    plt.grid(True)
+    plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/model_performance_{fn}_{label}.png")
     plt.clf()
 
-def save_epoch_data(epoch_num: int, epoch_data: EpochData):
-    epoch_data_path = f"{config.training_dir}/epoch_{epoch_num}_data.pkl"
+def save_epoch_data(epoch_data_path: str, epoch_data: EpochData):
     with open(epoch_data_path, 'wb') as file:
         pickle.dump(epoch_data, file)
     logger.info(f"Saved epoch data to {epoch_data_path}.")
 
-def save_dataset_data(dataset_num: int, dataset_data: DatasetData):
-    dataset_data_path = f"{config.training_dir}/dataset_{dataset_num}_data.pkl"
+def save_dataset_data(dataset_data_path: str, dataset_data: DatasetData):
     with open(dataset_data_path, 'wb') as file:
         pickle.dump(dataset_data, file)
     logger.info(f"Saved dataset data to {dataset_data_path}.")
 
-def load_dataset_data(dataset_num: int) -> DatasetData:
-    dataset_data_path = f"{config.training_dir}/dataset_{dataset_num}_data.pkl"
+def load_dataset_data(dataset_data_path: str) -> DatasetData:
     if not os.path.exists(dataset_data_path):
         raise FileNotFoundError(f"Dataset data file {dataset_data_path} does not exist.")
     with open(dataset_data_path, 'rb') as file:
         dataset_data: DatasetData = pickle.load(file)
     logger.info(f"Loaded dataset data from {dataset_data_path}.")
     return dataset_data
+
+def stats_from_dataset_data(dataset_data: DatasetData) -> tuple[float, float, float, float, float]:
+    """
+    Extracts the average losses and accuracies from the dataset data.
+    Returns a tuple of (avg_total_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy).
+    """
+    total_loss = 0.0
+    total_value_loss = 0.0
+    total_policy_loss = 0.0
+    total_value_accuracy = 0.0
+    total_policy_accuracy = 0.0
+    num_batches = 0
+
+    for epoch in dataset_data.epoch_data:
+        for batch in epoch.batch_data:
+            total_loss += batch.total_loss
+            total_value_loss += batch.value_loss
+            total_policy_loss += batch.policy_loss
+            total_value_accuracy += batch.value_accuracy
+            total_policy_accuracy += batch.policy_accuracy
+            num_batches += 1
+
+    if num_batches == 0:
+        return 0.0, 0.0, 0.0, 0.0, 0.0
+    
+    avg_total_loss = total_loss / num_batches
+    avg_value_loss = total_value_loss / num_batches
+    avg_policy_loss = total_policy_loss / num_batches
+    avg_value_accuracy = total_value_accuracy / num_batches
+    avg_policy_accuracy = total_policy_accuracy / num_batches
+
+    return avg_total_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy
 
 def train_model_with_generated_training_data(with_policy: bool = True):
     '''
@@ -467,7 +496,7 @@ def train_model_on_given_dataset(dataset: Dataset, num_epochs: int = 1, save_typ
     )
 
     plot_model_performance(f"dataset_{1}", [dataset_data])
-    save_dataset_data(1, dataset_data)
+    save_dataset_data(f"{config.training_dir}/dataset_{1}_data.pkl", dataset_data)
 
     return model, dataset_data
 

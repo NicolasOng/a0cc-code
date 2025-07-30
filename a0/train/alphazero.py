@@ -14,11 +14,12 @@ import optax
 from config import config
 
 from a0.game import play, GameData
-from a0.players.a0 import A0Player, board_to_input
+from a0.players.a0 import A0Player
+from a0.model_utils import board_to_input
 from a0.model import AlphaZeroModel, load_model, save_model
 from cc.core import Game
 from a0.dataset import Dataset, TrainingData
-from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData
+from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data
 from a0.eval.training_data import GameDataStats, game_data_list_stats
 
 from utils.log import get_logger, setup_logging
@@ -182,11 +183,6 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
         # generate and print stats about the game data
         game_data_stats = game_data_list_stats(game_data)
         logger.log(25, f"{game_data_stats.get_line()}")
-
-        # save the training set to a file
-        if config.training_dir:
-            with open(config.training_dir + f"training_set_{i + 1}.pkl", 'wb') as f:
-                pickle.dump(training_set, f)
         
         # save the game data to a file
         if config.training_dir:
@@ -208,10 +204,14 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
         )
         train_datas.append(train_data)
 
-        # plot the model performance
+        # plot, log, and save the model performance metrics in this iteration's training
         plot_model_performance(f"iteration_{i + 1}", [train_data])
-
-        # TODO: log and save performance metrics.
+        save_dataset_data(
+            f"{config.training_dir}/iteration_stats_{i + 1}.pkl",
+            train_data
+        )
+        total, value_loss, policy_loss, value_accuracy, policy_accuracy = stats_from_dataset_data(train_data)
+        logger.log(25, f"Iteration {i + 1} stats: Total Loss: {total}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
         
         # save the model after each iteration
         if config.training_dir:
