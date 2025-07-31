@@ -211,8 +211,8 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
             train_data
         )
         total, value_loss, policy_loss, value_accuracy, policy_accuracy = stats_from_dataset_data(train_data)
-        logger.log(25, f"Iteration {i + 1} stats: Total Loss: {total}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
-        
+        logger.log(25, f"Iteration {i + 1} stats: Total Loss: {total:.4f}, Value Loss: {value_loss:.4f}, Policy Loss: {policy_loss:.4f}, Value Accuracy: {value_accuracy:.2%}, Policy Accuracy: {policy_accuracy:.2%}")
+
         # save the model after each iteration
         if config.training_dir:
             save_model(config.training_dir + f'model_{i + 1}.pkl', model)

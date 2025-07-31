@@ -92,7 +92,7 @@ def do_binning_for_pwc(percent_winning_children_array: npt.NDArray[np.float64], 
 
     return counts, normalized_counts, bin_edges, bin_centers
 
-def percent_winning_childen_per_state(num_ranks: int | None):
+def percent_winning_children_per_state(num_ranks: int | None):
     '''
     Generates an np array with the percent of winning children per state
     from the perspective of the current player.
@@ -351,18 +351,19 @@ def main():
     Main function to run the script.
     Generates the number of children per state and graphs it.
     '''
-    count_children = False
+    num_ranks = 100000
+    count_children = True
     count_percent_winning_children = True
-    count_winning_states = False
+    count_winning_states = True
 
     if count_children:
         # Generate the number of children per state
-        num_children_per_state(num_ranks=None)  # Set to None for all ranks or specify a number
+        num_children_per_state(num_ranks=num_ranks)  # Set to None for all ranks or specify a number
         # Generate the graph of the number of children per state
         graph_num_children()
     if count_percent_winning_children:
         # Generate the percent winning children per state
-        percent_winning_childen_per_state(num_ranks=None)
+        percent_winning_children_per_state(num_ranks=num_ranks)
         # Generate the graph of the percent winning children per state
         # with 10 and 100 bins
         graph_percent_winning_children('percent_winning_children_histogram_100', 100)
@@ -374,7 +375,7 @@ def main():
         count_states_with_all_children_winning()
     if count_winning_states:
         # Count the number of winning states
-        count_num_winning_states()
+        count_num_winning_states(num_ranks=num_ranks)
         
 
 if __name__ == "__main__":
