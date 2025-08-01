@@ -1,11 +1,12 @@
 from a0.train.generate_datasets import generate_ground_truth_dataset, load_ground_truth_dataset
 from a0.train.dataset import train_model_on_given_dataset
-from a0.eval.dataset_evaluation import load_models, evaluate_all_models, load_losses, plot_losses
 
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 from config import config
+
+print(f"board size: {config.board_size}, num pieces: {config.num_pieces}")
 
 setup_logging(
     level=20,
@@ -25,7 +26,7 @@ except FileNotFoundError:
     gt_dataset = load_ground_truth_dataset()
 
 # process the dataset (trim it, create train-test split, etc.)
-#gt_dataset.trim(25000, shuffle=False)
+gt_dataset.trim(100000, shuffle=False)
 gt_dataset_test = gt_dataset.split_off_test(len(gt_dataset) // 10, shuffle=True)
 
 # train the model on the ground truth dataset

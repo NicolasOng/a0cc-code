@@ -406,6 +406,14 @@ def save_epoch_data(epoch_data_path: str, epoch_data: EpochData):
         pickle.dump(epoch_data, file)
     logger.info(f"Saved epoch data to {epoch_data_path}.")
 
+def load_epoch_data(epoch_data_path: str) -> EpochData:
+    if not os.path.exists(epoch_data_path):
+        raise FileNotFoundError(f"Epoch data file {epoch_data_path} does not exist.")
+    with open(epoch_data_path, 'rb') as file:
+        epoch_data: EpochData = pickle.load(file)
+    logger.info(f"Loaded epoch data from {epoch_data_path}.")
+    return epoch_data
+
 def save_dataset_data(dataset_data_path: str, dataset_data: DatasetData):
     with open(dataset_data_path, 'wb') as file:
         pickle.dump(dataset_data, file)
