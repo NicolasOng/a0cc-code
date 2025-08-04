@@ -2,6 +2,7 @@ from a0.players.human import HumanPlayer
 from a0.players.mcts_rollout import MCTSRolloutPlayer
 from a0.players.gt import GroundTruthPlayer
 from a0.players.model import ModelPlayer
+from a0.players.random import RandomPlayer
 
 from a0.model import load_model
 
@@ -13,14 +14,15 @@ from config import config
 
 def main():
     human_player = HumanPlayer()
+    #human_player = RandomPlayer()
 
-    other_player = MCTSRolloutPlayer(board_size=config.board_size, num_pieces=config.num_pieces, no_reverse_moves=False)
+    # other_player = MCTSRolloutPlayer(board_size=config.board_size, num_pieces=config.num_pieces, no_reverse_moves=False)
     
     # other_player = GroundTruthPlayer(print_info=True)
 
-    # model_filename = "..."
-    # model = load_model(model_filename)
-    # other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
+    model_filename = "..."
+    model = load_model(model_filename)
+    other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
 
     results = play(
         Game(config.board_size, config.num_pieces, False, False, False),

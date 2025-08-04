@@ -26,7 +26,7 @@ def generate_n_random_ranks(n: int, fn: str = "ranks.txt"):
     max_rank = r.get_max_rank()
     
     # select n random ranks
-    ranks = [random.randint(0, max_rank) for _ in range(n)]
+    ranks = [random.randint(0, max_rank - 1) for _ in range(n)]
 
     # write the ranks to a text file
     with open(fn, "w") as f:
@@ -51,17 +51,19 @@ def generate_n_done_ranks(n: int, fn: str = "done_ranks.txt"):
 
     # write the ranks to a text file
     num_done = 0
+    num_tried = 0
     with open(fn, "w") as f:
         while num_done < n:
-            rank = random.randint(0, max_rank)
+            num_tried += 1
+            rank = random.randint(0, max_rank - 1)
             r.unrank(rank, s)
             board = s.get_board()
             done = cc.get_done(board)
             if done:
                 f.write(f"{rank}\n")
                 num_done += 1
-    
-    logger.info(f"Generated {num_done} done ranks out of {n} total ranks.")
+
+    logger.info(f"Generated {num_done} done ranks out of {num_tried} tried ranks ({num_done / num_tried:.2%}).")
 
 def read_ranks_from_file(fn: str) -> list[int]:
     '''
@@ -482,22 +484,20 @@ if __name__ == "__main__":
 
     setup_logging(
         level=20,
-        log_dir="logs/",
+        log_dir=config.log_dir,
         process_name="cc_validations"
     )
 
-    logger.info("Starting validations...")
+    logger.info(f"Starting validations for board size {config.board_size} and num pieces {config.num_pieces}.")
 
     dir = config.validation_dir
-    if not os.path.exists(dir):
-        os.makedirs(dir)
     
     # generate and validate small files
     # (generate files with your baseline implementation first)
     n = 1000
     generate_small_validation_files(dir, n)
     validate_small_files(dir)
-
+    
     # generate and validate large files
     generate_large_validation_files(dir)
     validate_large_files(dir)

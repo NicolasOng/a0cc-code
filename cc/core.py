@@ -452,7 +452,8 @@ class Board:
         player_tile = player_to_tile[player]
         for pos in positions:
             x, y = pos.x, pos.y
-            if self.position_on_main_board(x, y) and self.board[x][y] != player_tile:
+            assert self.position_on_main_board(x, y), f"Position {pos} is not on the board."
+            if self.board[x][y] != player_tile:
                 return False
         return True
     
@@ -479,7 +480,7 @@ class Board:
             # check if there are unreachable positions in the goal area
             board_size = len(self.board)
             x_illegal = [Point(0, 1), Point(1, 0), Point(2, 0), Point(0, 2)]
-            o_illegal = [Point(board_size - p.x, board_size - p.y) for p in x_illegal]
+            o_illegal = [Point(board_size - 1 - p.x, board_size - 1 - p.y) for p in x_illegal]
             x_blocking = not self.position_is_blocked(0, 0) and self.positions_are_filled_by_player(x_illegal, Player.PLAYER_X)
             o_blocking = not self.position_is_blocked(board_size - 1, board_size - 1) and self.positions_are_filled_by_player(o_illegal, Player.PLAYER_O)
             if x_blocking or o_blocking:
@@ -588,7 +589,7 @@ class Game:
         # no_illegal_moves -> only set to true for validations
         # if true, player can "jump" off the board during chained jumps
         self.can_jump_out_of_home = True
-        # if true, player can use the four non-main corners during chained jumps
+        # if true, player must use the four non-main corners during chained jumps
         self.use_four_corners_to_jump = False
         # if true, players can't move pieces "backwards" (towards their home area).
         self.no_reverse_moves = False or no_reverse_moves
@@ -819,7 +820,8 @@ class Game:
         Assumes no game history, so no repeated states can be checked for draws.
         '''
         # only check for an illegal state if illegal moves are allowed
-        if not self.no_illegal_moves and board.is_illegal_state(self.board_history[0]): return None
+        if not self.no_illegal_moves and board.is_illegal_state(self.board_history[0]):
+            return self.board.current_player
         player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
         cur_player = board.current_player
         if player_x_winner and cur_player == Player.PLAYER_O:
@@ -835,7 +837,8 @@ class Game:
         Use this method to not re-calculate the winners.
         '''
         # first check for an illegal state
-        if not self.no_illegal_moves and board.is_illegal_state(self.board_history[0]): return True, None
+        if not self.no_illegal_moves and board.is_illegal_state(self.board_history[0]):
+            return True, self.board.current_player
 
         player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
         cur_player = board.current_player
