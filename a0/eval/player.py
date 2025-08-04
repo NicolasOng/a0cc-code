@@ -1,11 +1,16 @@
 from tqdm import tqdm
 import pickle
 import matplotlib.pyplot as plt
+import dill
+import os
+from concurrent.futures import Future, wait, FIRST_COMPLETED
+import concurrent.futures
 
 from a0.game import PlayerClass, play
 from a0.model import load_model
 from a0.players.a0 import A0Player
 from a0.players.random import RandomPlayer
+from a0.players.mcts_rollout import MCTSRolloutPlayer
 from cc.core import Game, Player
 
 from config import config
@@ -13,29 +18,94 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def player_evaluation(player1: PlayerClass, player2: PlayerClass, num_games: int) -> tuple[int, int, int]:
+from enum import Enum
+
+class GameResult(Enum):
+    WIN = 0
+    LOSS = 1
+    DRAW_REPEAT = 2
+    DRAW_TIMEOUT = 3
+
+def single_game(player1: PlayerClass, player2: PlayerClass) -> GameResult:
+    # play a game
+    game_data = play(Game(config.board_size, config.num_pieces, True, False, False), [player1, player2], turn_limit=100)
+    # get the winner of the game
+    if game_data.winner == Player.PLAYER_X:
+        return GameResult.WIN
+    elif game_data.winner == Player.PLAYER_O:
+        return GameResult.LOSS
+    elif game_data.ended:
+        return GameResult.DRAW_REPEAT
+    else:
+        return GameResult.DRAW_TIMEOUT
+
+def _play_single_game(serialized_player1: bytes, serialized_player2: bytes) -> GameResult:
     '''
-    Evaluate two players by playing a series of games between them.
-    Returns the number of wins, losses, and draws for each player.
+    Helper function to play a single game between two serialized players.
+    '''
+    player1 = dill.loads(serialized_player1)
+    player2 = dill.loads(serialized_player2)
+    return single_game(player1, player2)
+
+def player_evaluation(player1: PlayerClass, player2: PlayerClass, num_games: int) -> tuple[int, int, int, int]:
+    '''
+    Evaluate two players by playing a series of games between them in parallel.
+    Returns the number of wins, losses, and draws from the perspective of player1.
+    Output: (wins, losses, draws_repeat, draws_timeout)
     '''
     # Initialize counters for wins, losses, and draws (for player 1)
     wins = 0
     losses = 0
-    draws = 0
-    for game_num in range(num_games):
-        # play a game
-        print(f"Game {game_num + 1}/{num_games}")
-        game_data = play(Game(config.board_size, config.num_pieces, True, False, True), [player1, player2], turn_limit=100)
+    draws_repeat = 0
+    draws_timeout = 0
+    # serialize the players
+    player1_serialized: bytes = dill.dumps(player1)
+    player2_serialized: bytes = dill.dumps(player2)
+    # use a process pool to play the games in parallel
+    num_cores = os.cpu_count() or 4
+    logger.info(f"Using {num_cores} cores for playing games.")
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        # create a list to hold the futures
+        futures: list[Future[GameResult]] = []
 
-        # get the winner of the game
-        if game_data.winner == Player.PLAYER_X:
-            wins += 1
-        elif game_data.winner == Player.PLAYER_O:
-            losses += 1
-        else:
-            draws += 1
-    
-    return wins, losses, draws
+        # create a function to start a game
+        def start_game() -> None:
+            future = executor.submit(
+                _play_single_game,
+                player1_serialized,
+                player2_serialized
+            )
+            futures.append(future)
+        
+        # start all the games
+        for _ in range(num_games):
+            start_game()
+        
+        # process the results as they come in
+        num_done = 0
+        while True:
+            # when a game (or games) finish(es),
+            done, _ = wait(futures, return_when=FIRST_COMPLETED)
+
+            # for each finished game,
+            for future in done:
+                # remove it from the list of futures
+                futures.remove(future)
+                # get the result of the game
+                result = future.result()
+                num_done += 1
+                logger.info(f"Game {num_done}/{num_games} finished: {result}")
+                # update the counters based on the result
+                if result == GameResult.WIN:
+                    wins += 1
+                elif result == GameResult.LOSS:
+                    losses += 1
+                elif result == GameResult.DRAW_REPEAT:
+                    draws_repeat += 1
+                elif result == GameResult.DRAW_TIMEOUT:
+                    draws_timeout += 1
+
+    return wins, losses, draws_repeat, draws_timeout
 
 def get_trained_players_list() -> list[A0Player]:
     '''
@@ -58,7 +128,6 @@ def evaluate_trained_players(num_games: int, player_baseline: PlayerClass, fn: s
     '''
     Evaluate all trained players against a baseline player.
     Saves results to a pickle file.
-    TODO: can make this parallel
     '''
     # load all trained players
     trained_players = get_trained_players_list()
@@ -67,25 +136,28 @@ def evaluate_trained_players(num_games: int, player_baseline: PlayerClass, fn: s
 
     win_list: list[int] = []
     loss_list: list[int] = []
-    draw_list: list[int] = []
+    draw_repeat_list: list[int] = []
+    draw_timeout_list: list[int] = []
 
     # for each trained player,
     for i, player in enumerate(trained_players):
         logger.info(f"Evaluating player {i + 1} against the baseline player.")
 
         # evaluate the player against the baseline player
-        wins, losses, draws = player_evaluation(player, player_baseline, num_games)
+        wins, losses, draws_repeat, draws_timeout = player_evaluation(player, player_baseline, num_games)
         win_list.append(wins)
         loss_list.append(losses)
-        draw_list.append(draws)
+        draw_repeat_list.append(draws_repeat)
+        draw_timeout_list.append(draws_timeout)
 
-        logger.info(f"Player {i + 1} - Wins: {wins}, Losses: {losses}, Draws: {draws}")
-    
+        logger.info(f"Player {i + 1} - Wins: {wins}, Losses: {losses}, Draws (Repeat): {draws_repeat}, Draws (Timeout): {draws_timeout}")
+
     # save the results to a file
     results = {
         "wins": win_list,
         "losses": loss_list,
-        "draws": draw_list
+        "draws_repeat": draw_repeat_list,
+        "draws_timeout": draw_timeout_list
     }
     with open(fn, 'wb') as f:
         pickle.dump(results, f)
@@ -99,12 +171,14 @@ def graph_player_evaluation_results(fn: str) -> None:
     
     wins = results['wins']
     losses = results['losses']
-    draws = results['draws']
+    draws_repeat = results['draws_repeat']
+    draws_timeout = results['draws_timeout']
 
     plt.figure(figsize=(16, 9))
     plt.plot(wins, label='Wins', color='green')
     plt.plot(losses, label='Losses', color='red')
-    plt.plot(draws, label='Draws', color='blue')
+    plt.plot(draws_repeat, label='Draws (Repeat)', color='blue')
+    plt.plot(draws_timeout, label='Draws (Timeout)', color='orange')
     plt.xlabel('Game Number')
     plt.ylabel('Count')
     plt.title('Player Evaluation Results')
@@ -115,8 +189,13 @@ def graph_player_evaluation_results(fn: str) -> None:
 
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='player_evaluation')
-    random_player = RandomPlayer()
-    evaluate_trained_players(100, random_player, f"{config.eval_dir}/player_evaluation_results.pkl")
+    baseline_player = MCTSRolloutPlayer(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        no_reverse_moves=False,
+        mcts_iterations=64
+    )
+    evaluate_trained_players(100, baseline_player, f"{config.eval_dir}/player_evaluation_results.pkl")
     graph_player_evaluation_results(f"{config.eval_dir}/player_evaluation_results.pkl")
 
 if __name__ == "__main__":

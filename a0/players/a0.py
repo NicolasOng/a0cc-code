@@ -86,7 +86,7 @@ class NNMCTSProblem:
         return value
 
 class A0Player:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, use_mcts: bool = True):
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel):
         self.model = model
         self.game = Game(board_size, num_pieces, False, True, False)
         self.temperature = 1.0  # Temperature for exploration in MCTS

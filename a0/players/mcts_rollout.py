@@ -75,9 +75,9 @@ class SearchMoves:
         return 0
 
 class MCTSRolloutPlayer:
-    def __init__(self, board_size: int, num_pieces: int, no_reverse_moves: bool = True):
+    def __init__(self, board_size: int, num_pieces: int, no_reverse_moves: bool = True, mcts_iterations: int = 10000):
         self.game = Game(board_size, num_pieces, False, no_reverse_moves, False)
-        self.mcts_iterations = 10000
+        self.mcts_iterations = mcts_iterations
         self.max_depth = 1000
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
