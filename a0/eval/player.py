@@ -132,6 +132,7 @@ def evaluate_trained_players(num_games: int, player_baseline: PlayerClass, fn: s
     '''
     # load all trained players
     trained_players = get_trained_players_list()
+    #trained_players = [MCTSRolloutPlayer(config.board_size, config.num_pieces, True, 64), MCTSRolloutPlayer(config.board_size, config.num_pieces, True, 128)]
 
     logger.info(f"Evaluating {len(trained_players)} trained players against a random player.")
 
@@ -200,9 +201,11 @@ def main():
     baseline_player = MCTSRolloutPlayer(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
-        no_reverse_moves=False,
+        no_reverse_moves=True,
         mcts_iterations=64
     )
+    #baseline_player = RandomPlayer()
+
     evaluate_trained_players(100, baseline_player, f"{config.eval_dir}/player_evaluation_results.pkl")
     graph_player_evaluation_results(f"{config.eval_dir}/player_evaluation_results.pkl")
 

@@ -114,7 +114,7 @@ class Policy:
     def __init__(self, board_size: int):
         self.board_size = board_size
         self.policy: NDArray[np.float32] = np.zeros((self.board_size ** 4), dtype=np.float32) # (board_size ** 4,)
-        self.mask: NDArray[np.float32] = np.zeros((self.board_size ** 4), dtype=np.float32) # (board_size ** 4,)
+        self.mask: NDArray[np.int8] = np.zeros((self.board_size ** 4), dtype=np.int8) # (board_size ** 4,)
         self.policy_rotation_mapping = create_rotated_policy_mapping(board_size)
     
     def get_policy_list(self) -> list[float]:
@@ -142,13 +142,13 @@ class Policy:
         end_y = end_pos % board_size
         return Move(start_x, start_y, end_x, end_y)
 
-    def rotate_policy_list(self, logits: NDArray[np.float32]) -> NDArray[np.float32]:
+    def rotate_policy_list(self, logits: NDArray[np.generic]) -> NDArray[np.generic]:
         '''
         Rotates the policy logits by 180 degrees using the precomputed mapping.
         This is used to adjust the policy distribution when the board is rotated.
         Assumes the given logits has the correct length.
         '''
-        rotated_logits: NDArray[np.float32] = np.zeros((self.board_size ** 4), dtype=np.float32)
+        rotated_logits: NDArray[np.generic] = np.zeros((self.board_size ** 4), dtype=logits.dtype)
         for index in range(len(logits)):
             rotated_index = self.policy_rotation_mapping[index]
             rotated_logits[rotated_index] = logits[index]
@@ -159,9 +159,9 @@ class Policy:
         Rotates the policy distribution by 180 degrees in-place.
         This is used to adjust the policy distribution when the board is rotated.
         '''
-        self.policy = self.rotate_policy_list(self.policy)
-        self.mask = self.rotate_policy_list(self.mask)
-    
+        self.policy = self.rotate_policy_list(self.policy).astype(np.float32)
+        self.mask = self.rotate_policy_list(self.mask).astype(np.int8)
+
     def set_logits(self, logits: NDArray[np.float32], rotate_180: bool) -> None:
         '''
         Initializes the policy distribution with the given logits
@@ -195,7 +195,7 @@ class Policy:
         Sets the legal moves in the policy object.
         Creates a mask for future use.
         '''
-        self.mask = np.zeros((self.board_size ** 4), dtype=np.float32)
+        self.mask = np.zeros((self.board_size ** 4), dtype=np.int8)
         for move in legal_moves:
             idx = self.move_to_policy_index(move)
             self.mask[idx] = 1
@@ -248,6 +248,38 @@ class Policy:
 
         # Normalize to form a probability distribution
         self.policy = np.array(powered / np.sum(powered), dtype=np.float32)
+    
+    def add_dirichlet_noise(self, alpha: float | None, epsilon: float) -> None:
+        """
+        Applies Dirichlet noise to the policy for exploration, only to legal moves.
+        Legal moves should be set before calling this method,
+        and non-legal moves should be masked before or after.
+        
+        Args:
+            alpha: Dirichlet concentration parameter (lower = more concentrated)
+            epsilon: Mixing ratio (0 = no noise, 1 = all noise)
+        """
+        # find how many legal moves there are
+        num_legal_moves = int(np.sum(self.mask))
+        
+        if num_legal_moves == 0:
+            return  # No legal moves, nothing to do
+        
+        # Generate Dirichlet noise only for legal moves
+        if alpha is None:
+            alpha = float(1 / num_legal_moves)  # Default alpha if not provided
+        noise_values = np.random.dirichlet([alpha] * num_legal_moves)
+        
+        # Create a full noise array with zeros for masked positions
+        noise = np.zeros_like(self.policy)
+        noise[self.mask] = noise_values
+
+        # Mix the original policy with the noise
+        self.policy = np.array(((1 - epsilon) * self.policy) + (epsilon * noise), dtype=np.float32)
+
+        # Renormalize only the legal moves to ensure valid probability distribution
+        if np.sum(self.policy[self.mask]) > 0:
+            self.policy[self.mask] = self.policy[self.mask] / np.sum(self.policy[self.mask])
 
     def get_move_probability(self, move: Move) -> float:
         '''

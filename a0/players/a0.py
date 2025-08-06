@@ -90,7 +90,7 @@ class A0Player:
         self.model = model
         self.game = Game(board_size, num_pieces, False, True, False)
         self.temperature = 1.0  # Temperature for exploration in MCTS
-        self.random_selection_prob = 0.01  # Probability of selecting a random move
+        self.random_selection_prob = 0  # Probability of selecting a random move
         self.mcts_iterations = 64
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
@@ -118,6 +118,12 @@ class A0Player:
         # softmax it to get the policy distribution
         p.apply_power_normalize(self.temperature)
 
+        # get the policy to return later
+        mcts_policy = p.policy.copy()
+
+        # apply dirichlet noise for exploration
+        p.add_dirichlet_noise(alpha=None, epsilon=0.25)
+
         # select a move based on the policy distribution
         # sampling instead of argmax to allow exploration
         # or randomly select a move with a small probability
@@ -127,4 +133,4 @@ class A0Player:
             selected_move = p.sample_move(42)
 
         # return the selected move and the mcts policy distribution
-        return selected_move, p.policy
+        return selected_move, mcts_policy
