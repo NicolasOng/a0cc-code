@@ -5,6 +5,7 @@ import dill
 import os
 from concurrent.futures import Future, wait, FIRST_COMPLETED
 import concurrent.futures
+import multiprocessing
 
 from a0.game import PlayerClass, play
 from a0.model import load_model
@@ -189,6 +190,13 @@ def graph_player_evaluation_results(fn: str) -> None:
 
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='player_evaluation')
+
+    # Set the multiprocessing start method to 'spawn' for compatibility with JAX
+    try:
+        multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass
+
     baseline_player = MCTSRolloutPlayer(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
