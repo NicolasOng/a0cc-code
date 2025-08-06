@@ -84,7 +84,7 @@ def player_evaluation(player1: PlayerClass, player2: PlayerClass, num_games: int
         
         # process the results as they come in
         num_done = 0
-        while True:
+        while futures:
             # when a game (or games) finish(es),
             done, _ = wait(futures, return_when=FIRST_COMPLETED)
 

@@ -92,10 +92,11 @@ class MCTSRolloutPlayer:
             # if no child is found, select a random move
             move = random.choice(moves)
         
-        mcts.print_children()
-        mcts.remove_unvisited_nodes(None)
-        mcts.print_metrics()
-        #mcts.draw_graph()
+        if False:
+            mcts.print_children()
+            mcts.remove_unvisited_nodes(None)
+            mcts.print_metrics()
+            #mcts.draw_graph()
 
         # return the selected move
         return move, None
