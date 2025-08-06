@@ -8,7 +8,8 @@ from tqdm import tqdm
 from cc.core import Board
 from cc.lookups import CCBaselineSolver
 from cc.ranking import CCDefaultRank, CCState
-from a0.dataset import Dataset, TrainingData
+from a0.dataset import Dataset
+from a0.experience_buffer import ExperienceData
 from a0.game import GameData
 from a0.train.alphazero import board_to_input
 from a0.eval.training_data import game_data_generator
@@ -68,7 +69,7 @@ def training_ground_truth_values(n: int | None = None) -> None:
     jnp_states = jnp.stack(states) # (N, board_size, board_size)
     jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
     jnp_policies = jnp.zeros((len(boards), config.board_size ** 4)) # (N, board_size ** 4)
-    gtv_dataset = Dataset(max_size=len(boards), batch_size=256, static=True)
+    gtv_dataset = Dataset(batch_size=256)
     gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
 
     # 5. save the Dataset object to config.data_folder + "training_gtv.pkl"
@@ -116,7 +117,7 @@ def random_ground_truth_values(n: int = 1000) -> None:
     jnp_states = jnp.stack(states) # (N, board_size, board_size, 2)
     jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
     jnp_policies = jnp.zeros((len(boards), config.board_size ** 4)) # (N, board_size ** 4)
-    gtv_dataset = Dataset(max_size=len(boards), batch_size=256, static=True)
+    gtv_dataset = Dataset(batch_size=256)
     gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
 
     # 5. save the Dataset object to config.data_folder + "random_gtv.pkl"
@@ -166,7 +167,7 @@ def training_experienced_values(n: int | None = None) -> None:
     logger.info("Getting unique boards from training data, with their experienced outcome...")
     game_data_lists = game_data_generator()
     total_boards = 0
-    boards_set: set[TrainingData] = set()
+    boards_set: set[ExperienceData] = set()
     for game_data_list in tqdm(game_data_lists):
         for game_data in tqdm(game_data_list):
             game_winner = game_data.winner
@@ -176,10 +177,10 @@ def training_experienced_values(n: int | None = None) -> None:
                 board = turn.board
                 experienced_outcome = 0.0 if game_winner is None else 1.0 if game_winner == board.current_player else -1.0
                 experienced_policy = turn.player_data
-                experienced_target = TrainingData(jnp.array(board_to_input(board)), experienced_outcome, experienced_policy)
+                experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, experienced_policy)
 
                 # add this to a set
-                boards_set.add(experienced_target)
+                boards_set.add(experience)
                 total_boards += 1
     
     num_unique = len(boards_set)
@@ -189,10 +190,11 @@ def training_experienced_values(n: int | None = None) -> None:
     if n is not None: boards = random.sample(boards, n)
     
     # 4. load all this into a Dataset object
-    ev_dataset = Dataset(max_size=len(boards), batch_size=256, static=False)
-    for data in tqdm(boards):
-        ev_dataset.add(data)
-    ev_dataset.convert_to_static()
+    ev_dataset = Dataset(batch_size=256)
+    e_board = jnp.stack([d.board for d in boards]), # (board_size, board_size) -> (N, board_size, board_size)
+    e_value = jnp.array([d.value for d in boards])[:, None], # Add [:, None] to make its shape (N, 1)
+    e_policy = jnp.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
+    ev_dataset.set(e_board, e_value, e_policy)
 
     # 5. save the Dataset object to config.data_folder + "training_ev.pkl"
     output_path = f"{config.eval_dir}/training_ev.pkl"

@@ -71,7 +71,7 @@ def generate_ground_truth_dataset(num_states: int | None = None, prob_dist: bool
     jnp_policies = jnp.stack(policies, 0) # (board_size ** 4) -> (N, board_size ** 4)
     
     # add these to a dataset
-    dataset = Dataset(n, 256, True)
+    dataset = Dataset(256)
     dataset.set(jnp_states, jnp_values, jnp_policies)
 
     # save the dataset
@@ -127,7 +127,7 @@ def generate_random_dataset(num_states: int | None = None):
     jnp_policies = jnp.stack(policies, 0) # (board_size ** 4) -> (N, board_size ** 4)
 
     # add these to a dataset
-    dataset = Dataset(n, 256, True)
+    dataset = Dataset(256)
     dataset.set(jnp_states, jnp_values, jnp_policies)
 
     # save the dataset
