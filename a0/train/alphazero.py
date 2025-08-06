@@ -150,6 +150,8 @@ def self_play(player: A0Player) -> tuple[list[ExperienceData], list[GameData]]:
     return training_set, game_data_list
 
 def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> None:
+    os.makedirs(config.plot_dir + "training_plots", exist_ok=True)
+    
     iterations = config.training_iterations
     # create/load a model
     model = AlphaZeroModel(
@@ -203,7 +205,7 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
         train_datas.append(train_data)
 
         # plot, log, and save the model performance metrics in this iteration's training
-        plot_model_performance(f"iteration_{i + 1}", [train_data])
+        plot_model_performance(f"training_plots/iteration_{i + 1}", [train_data])
         save_dataset_data(
             f"{config.training_dir}/iteration_stats_{i + 1}.pkl",
             train_data
@@ -216,7 +218,7 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
             save_model(config.training_dir + f'model_{i + 1}.pkl', model)
     
     # after all iterations, plot all the training data
-    plot_model_performance("full_a0", train_datas)
+    plot_model_performance("training_plots/full_a0", train_datas)
 
 if __name__ == "__main__":
     setup_logging(

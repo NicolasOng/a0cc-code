@@ -247,7 +247,7 @@ def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int,
             save_epoch_data(f"{config.training_dir}/epoch_{epoch + 1}_data.pkl", epoch_data)
             temp_dd = DatasetData()
             temp_dd.epoch_data.append(epoch_data)
-            plot_model_performance(f"epoch_{epoch + 1}", [temp_dd])
+            plot_model_performance(f"model_performance_epoch_{epoch + 1}", [temp_dd])
     return model, dataset_data
 
 def train_model_datasets(model: AlphaZeroModel, datasets: list[Dataset], num_epochs: int, save: str = "None") -> tuple[AlphaZeroModel, list[DatasetData]]:
@@ -356,7 +356,7 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     plt.legend()
     plt.grid(True, which='both')
     plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/model_performance_{fn}.png")
+    plt.savefig(f"{config.plot_dir}/{fn}.png")
     plt.clf()
 
     # plot each metric separately
@@ -398,7 +398,7 @@ def plot_single_metric(x_train: list[int], metric_train: list[float],
     plt.legend()
     plt.grid(True, which='both')
     plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/model_performance_{fn}_{label}.png")
+    plt.savefig(f"{config.plot_dir}/{fn}_{label.replace(' ', '_').lower()}.png")
     plt.clf()
 
 def save_epoch_data(epoch_data_path: str, epoch_data: EpochData):
@@ -503,7 +503,7 @@ def train_model_on_given_dataset(dataset: Dataset, num_epochs: int = 1, save_typ
         test_dataset=test_dataset
     )
 
-    plot_model_performance(f"dataset_{1}", [dataset_data])
+    plot_model_performance(f"model_performance_dataset_{1}", [dataset_data])
     save_dataset_data(f"{config.training_dir}/dataset_{1}_data.pkl", dataset_data)
 
     return model, dataset_data
