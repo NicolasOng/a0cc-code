@@ -114,7 +114,7 @@ class Policy:
     def __init__(self, board_size: int):
         self.board_size = board_size
         self.policy: NDArray[np.float32] = np.zeros((self.board_size ** 4), dtype=np.float32) # (board_size ** 4,)
-        self.mask: NDArray[np.int8] = np.zeros((self.board_size ** 4), dtype=np.int8) # (board_size ** 4,)
+        self.mask: NDArray[np.bool] = np.full((self.board_size ** 4), False, dtype=np.bool) # (board_size ** 4,)
         self.policy_rotation_mapping = create_rotated_policy_mapping(board_size)
     
     def get_policy_list(self) -> list[float]:
@@ -160,7 +160,7 @@ class Policy:
         This is used to adjust the policy distribution when the board is rotated.
         '''
         self.policy = self.rotate_policy_list(self.policy).astype(np.float32)
-        self.mask = self.rotate_policy_list(self.mask).astype(np.int8)
+        self.mask = self.rotate_policy_list(self.mask).astype(np.bool)
 
     def set_logits(self, logits: NDArray[np.float32], rotate_180: bool) -> None:
         '''
@@ -195,7 +195,7 @@ class Policy:
         Sets the legal moves in the policy object.
         Creates a mask for future use.
         '''
-        self.mask = np.zeros((self.board_size ** 4), dtype=np.int8)
+        self.mask = np.full((self.board_size ** 4), False, dtype=np.bool)
         for move in legal_moves:
             idx = self.move_to_policy_index(move)
             self.mask[idx] = 1
@@ -260,7 +260,7 @@ class Policy:
             epsilon: Mixing ratio (0 = no noise, 1 = all noise)
         """
         # find how many legal moves there are
-        num_legal_moves = int(np.sum(self.mask))
+        num_legal_moves = np.count_nonzero(self.mask)
         
         if num_legal_moves == 0:
             return  # No legal moves, nothing to do

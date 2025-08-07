@@ -202,7 +202,7 @@ def main():
         board_size=config.board_size,
         num_pieces=config.num_pieces,
         no_reverse_moves=True,
-        mcts_iterations=32
+        mcts_iterations=256
     )
     #baseline_player = RandomPlayer()
 
