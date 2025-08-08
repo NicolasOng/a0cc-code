@@ -49,7 +49,7 @@ def training_ground_truth_values(n: int | None = None) -> None:
     boards: list[Board] = list(boards_set)
     
     num_unique = len(boards_set)
-    logger.info(f"Found {num_unique} unique boards in the game data, out of {total_boards} total boards ({(num_unique/total_boards)*100:.2f}%).")
+    logger.log(25, f"Found {num_unique} unique boards in the game data, out of {total_boards} total boards ({num_unique/total_boards:.2%}).")
     if n is not None: boards = random.sample(boards, n)
 
     # 3. for each board, get the value from the solve data file, and convert it to a model input
@@ -69,6 +69,7 @@ def training_ground_truth_values(n: int | None = None) -> None:
     jnp_states = jnp.stack(states) # (N, board_size, board_size)
     jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
     jnp_policies = jnp.zeros((len(boards), config.board_size ** 4)) # (N, board_size ** 4)
+    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
     gtv_dataset = Dataset(batch_size=256)
     gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
 
@@ -117,6 +118,7 @@ def random_ground_truth_values(n: int = 1000) -> None:
     jnp_states = jnp.stack(states) # (N, board_size, board_size, 2)
     jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
     jnp_policies = jnp.zeros((len(boards), config.board_size ** 4)) # (N, board_size ** 4)
+    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
     gtv_dataset = Dataset(batch_size=256)
     gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
 
@@ -191,9 +193,10 @@ def training_experienced_values(n: int | None = None) -> None:
     
     # 4. load all this into a Dataset object
     ev_dataset = Dataset(batch_size=256)
-    e_board = jnp.stack([d.board for d in boards]), # (board_size, board_size) -> (N, board_size, board_size)
-    e_value = jnp.array([d.value for d in boards])[:, None], # Add [:, None] to make its shape (N, 1)
+    e_board = jnp.stack([d.board for d in boards]) # (board_size, board_size) -> (N, board_size, board_size)
+    e_value = jnp.array([d.value for d in boards])[:, None] # Add [:, None] to make its shape (N, 1)
     e_policy = jnp.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
+    logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
     ev_dataset.set(e_board, e_value, e_policy)
 
     # 5. save the Dataset object to config.data_folder + "training_ev.pkl"

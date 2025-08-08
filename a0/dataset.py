@@ -6,6 +6,10 @@ import jax.numpy as jnp
 import jax.random as jrandom
 
 class Dataset:
+    states: jnp.ndarray
+    values: jnp.ndarray
+    policies: jnp.ndarray
+
     def __init__(self, batch_size: int) -> None:
         self.batch_size = batch_size
     
