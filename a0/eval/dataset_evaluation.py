@@ -325,9 +325,6 @@ def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float]
 
 def plot_losses(title: str, losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float], policy_accuracies: list[float], fn: str) -> None:
     plt.figure(figsize=(16, 9))
-    plt.plot(losses, label='Loss')
-    plt.plot(value_losses, label='Value Loss')
-    plt.plot(policy_losses, label='Policy Loss')
     plt.plot(value_accuracies, label='Value Accuracy')
     plt.plot(policy_accuracies, label='Policy Accuracy')
     plt.xlabel("Iteration")
@@ -337,6 +334,11 @@ def plot_losses(title: str, losses: list[float], value_losses: list[float], poli
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}{fn}.png")
+    # and another with the losses
+    plt.plot(losses, label='Loss')
+    plt.plot(value_losses, label='Value Loss')
+    plt.plot(policy_losses, label='Policy Loss')
+    plt.savefig(f"{config.plot_dir}/eval_losses/{fn}_losses.png")
     plt.clf()
 
 def plot_two_accuracies(title: str, accuracies1: list[float], accuracies2: list[float], a1n: str, a2n: str, fn: str) -> None:
@@ -351,6 +353,23 @@ def plot_two_accuracies(title: str, accuracies1: list[float], accuracies2: list[
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.clf()
+
+def plot_four_accuracies(title: str,
+                         accuracies1: list[float], accuracies2: list[float], accuracies3: list[float], accuracies4: list[float],
+                         a1n: str, a2n: str, a3n: str, a4n: str,
+                         fn: str) -> None:
+    plt.figure(figsize=(16, 9))
+    plt.plot(accuracies1, label=a1n)
+    plt.plot(accuracies2, label=a2n)
+    plt.plot(accuracies3, label=a3n)
+    plt.plot(accuracies4, label=a4n)
+    plt.xlabel("Iteration")
+    plt.ylabel("Performance")
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, which='both')
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}{fn}.png")
 
 def trim_dataset(dataset: Dataset, n: int) -> Dataset:
     '''
@@ -375,29 +394,63 @@ def main():
     training_dataset = load_dataset(f"{config.eval_dir}/training_gtv.pkl")
     random_dataset = load_dataset(f"{config.eval_dir}/random_gtv.pkl")
     training_e_dataset = load_dataset(f"{config.eval_dir}/training_ev.pkl")
-    
+    neighbor_datasets: list[Dataset] = []
+    for i in range(2):
+        neighbor_dataset = load_dataset(f"{config.eval_dir}/neighbor_{i+1}_gtv.pkl")
+        neighbor_datasets.append(neighbor_dataset)
+
     # trim down the training dataset to a smaller size for faster evaluation
     n = 1000
     training_dataset = trim_dataset(training_dataset, n)
     training_e_dataset = trim_dataset(training_e_dataset, n)
-    
+    for i in range(2):
+        neighbor_datasets[i] = trim_dataset(neighbor_datasets[i], n)
+
     # Evaluate all models
-    evaluate_all_models(models, training_dataset, "training_eval")
-    evaluate_all_models(models, random_dataset, "random_eval")
-    evaluate_all_models(models, training_e_dataset, "training_e_eval")
+    evaluate_all_models(models, training_dataset, "training_gtv_eval")
+    evaluate_all_models(models, random_dataset, "random_gtv_eval")
+    evaluate_all_models(models, training_e_dataset, "training_ev_eval")
+    for i in range(2):
+        evaluate_all_models(models, neighbor_datasets[i], f"neighbor_{i+1}_gtv_eval")
 
     # load and plot the losses
-    tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies = load_losses(f"{config.eval_dir}/training_eval.pkl")
+    tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies = load_losses(f"{config.eval_dir}/training_gtv_eval.pkl")
     plot_losses("Model Performance on Ground Truth of States Seen During Training",
-                tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies, "training_gt_eval")
-    rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies = load_losses(f"{config.eval_dir}/random_eval.pkl")
+                tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies, "training_gtv_eval")
+    
+    rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies = load_losses(f"{config.eval_dir}/random_gtv_eval.pkl")
     plot_losses("Model Performance on Ground Truth of Random States",
-                rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies, "random_gt_eval")
-    telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies = load_losses(f"{config.eval_dir}/training_e_eval.pkl")
-    plot_losses("Model Performance on Experience Outcomes of States Seen During Training",
-                telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies, "training_e_eval")
+                rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies, "random_gtv_eval")
+    
+    telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies = load_losses(f"{config.eval_dir}/training_ev_eval.pkl")
+    plot_losses("Model Performance on Experienced Outcomes of States Seen During Training",
+                telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies, "training_ev_eval")
+    
+    nlosses: list[list[float]] = []
+    nvalue_losses: list[list[float]] = []
+    npolicy_losses: list[list[float]] = []
+    nvalue_accuracies: list[list[float]] = []
+    npolicy_accuracies: list[list[float]] = []
+    for i in range(2):
+        nlosses_i, nvalue_losses_i, npolicy_losses_i, nvalue_accuracies_i, npolicy_accuracies_i = load_losses(f"{config.eval_dir}/neighbor_{i+1}_gtv_eval.pkl")
+        nlosses.append(nlosses_i)
+        nvalue_losses.append(nvalue_losses_i)
+        npolicy_losses.append(npolicy_losses_i)
+        nvalue_accuracies.append(nvalue_accuracies_i)
+        npolicy_accuracies.append(npolicy_accuracies_i)
+        plot_losses(
+            f"Model Performance on Ground Truth of Neighboring States {i + 1}",
+            nlosses_i, nvalue_losses_i, npolicy_losses_i,
+            nvalue_accuracies_i, npolicy_accuracies_i,
+            f"neighbor_{i+1}_gtv_eval"
+        )
+    
     plot_two_accuracies("Model Performance on Ground Truth of States",
-                         tvalue_accuracies, rvalue_accuracies, "Training Accuracy", "Random Accuracy", "training_vs_random_accuracy")
+                         tvalue_accuracies, rvalue_accuracies, "Seen Accuracy", "Random Accuracy", "training_vs_random_accuracy")
+    plot_four_accuracies("Model Performance on Ground Truth of States",
+                         tvalue_accuracies, rvalue_accuracies, nvalue_accuracies[0], nvalue_accuracies[1],
+                         "Seen Accuracy", "Random Accuracy", "Neighbor 1 Accuracy", "Neighbor 2 Accuracy",
+                         "neighbor_accuracy")
 
     logger.info("Dataset evaluation completed.")
 

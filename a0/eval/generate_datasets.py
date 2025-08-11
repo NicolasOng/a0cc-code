@@ -5,9 +5,10 @@ import copy
 import jax.numpy as jnp
 from tqdm import tqdm
 
-from cc.core import Board
+from cc.core import Board, Game
 from cc.lookups import CCBaselineSolver
 from cc.ranking import CCDefaultRank, CCState
+from cc.ground_truth import GroundTruth
 from a0.dataset import Dataset
 from a0.experience_buffer import ExperienceData
 from a0.game import GameData
@@ -89,45 +90,19 @@ def random_ground_truth_values(n: int = 1000) -> None:
 
     # 1. generate a list of random boards
     logger.info("Generating random boards...")
-    r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-    s = CCState(config.num_spots, config.num_pieces, config.num_players)
-    max_rank = r.get_max_rank()
+    gt = GroundTruth()
+    max_rank = gt.get_max_rank()
     board_set: set[Board] = set()
     while len(board_set) < n:
-        r.unrank(random.randint(0, max_rank), s)
-        b = s.get_board()
+        b = gt.unrank(random.randint(0, max_rank - 1))
         board_set.add(b)
     boards: list[Board] = list(board_set)
         
     logger.info(f"Generated {len(boards)} boards.")
 
-    # 3. for each board, get the value from the solve data file, and convert it to a model input
-    # then add these to a jnp array
-    # values = jnp.zeros((len(boards), 1))
-    # policies = jnp.zeros((len(boards), config.board_size ** 4))
-    logger.info("Get ground truth values for each board (current player perspective)...")
-    states: list[jnp.ndarray] = []
-    values: list[float] = []
-    solver = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
-    for board in tqdm(boards):
-        values.append(solver.get_outcome(board))
-        states.append(jnp.array(board_to_input(board)))
-    
-    # 4. load all this into a static Dataset object
-    logger.info("Creating Dataset object with ground truth values...")
-    jnp_states = jnp.stack(states) # (N, board_size, board_size, 2)
-    jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
-    jnp_policies = jnp.zeros((len(boards), config.board_size ** 4)) # (N, board_size ** 4)
-    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
-    gtv_dataset = Dataset(batch_size=256)
-    gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
-
-    # 5. save the Dataset object to config.data_folder + "random_gtv.pkl"
-    logger.info("Saving ground truth values to file...")
-    output_path = f"{config.eval_dir}/random_gtv.pkl"
-    with open(output_path, 'wb') as file:
-        pickle.dump(gtv_dataset, file)
-    logger.info(f"Ground truth values saved to {output_path}.")
+    # create and save a gtv dataset based on the generated boards
+    rgtv_dataset = create_gtv_dataset_from_board_list(boards)
+    save_dataset("random_gtv", rgtv_dataset)
 
 def get_unique_boards_from_training_data() -> set[Board]:
     '''
@@ -153,7 +128,7 @@ def get_unique_boards_from_training_data() -> set[Board]:
                 total_boards += 1
     
     num_unique = len(boards_set)
-    logger.info(f"Found {num_unique} unique boards in the game data, out of {total_boards} total boards ({(num_unique/total_boards)*100:.2f}%).")
+    logger.log(25, f"Found {num_unique} unique boards in the game data, out of {total_boards} total boards ({num_unique/total_boards:.2%}).")
     return boards_set
 
 def training_experienced_values(n: int | None = None) -> None:
@@ -205,6 +180,96 @@ def training_experienced_values(n: int | None = None) -> None:
         pickle.dump(ev_dataset, file)
     logger.info(f"Experienced values saved to {output_path}.")
 
+def create_gtv_dataset_from_board_list(boards: list[Board]):
+    '''
+    Creates a ground truth value dataset from a list of boards.
+    '''
+    # for each board, get the value and policy from the solve data and convert it to a model input,
+    # then add these to a jnp array
+    # values = jnp.zeros((len(boards), 1))
+    # policies = jnp.zeros((len(boards), config.board_size ** 4))
+    logger.info("Get ground truth values for each board (current player perspective)...")
+    states: list[jnp.ndarray] = []
+    values: list[float] = []
+    policies: list[jnp.ndarray] = []
+    gt = GroundTruth()
+    for board in tqdm(boards):
+        states.append(jnp.array(board_to_input(board)))
+        values.append(gt.get_outcome(board))
+        policies.append(jnp.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True)))
+    
+    # load all this into a Dataset object
+    logger.info("Creating Dataset object with ground truth values...")
+    jnp_states = jnp.stack(states) # (N, board_size, board_size)
+    jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
+    jnp_policies = jnp.stack(policies) # (N, board_size ** 4)
+    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
+    gtv_dataset = Dataset(batch_size=256)
+    gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
+    return gtv_dataset
+
+def save_dataset(fn: str, dataset: Dataset) -> None:
+    output_path = f"{config.eval_dir}/{fn}.pkl"
+    with open(output_path, 'wb') as file:
+        pickle.dump(dataset, file)
+    logger.info(f"Dataset saved to {output_path}.")
+
+def get_neighbor_boards(boards: list[Board], boards_set: set[Board], dataset_size: int | None = None) -> list[Board]:
+    '''
+    Gets all neighboring (child) boards of the given boards.
+    Returns a list of unique neighboring boards.
+    If dataset_size is specified, returns a random sample of the neighbors.
+    Modifies boards_set in-place.
+    '''
+    cc = Game(config.board_size, config.num_pieces, False, False, False)
+    
+    neighbor_boards: list[Board] = []
+    for board in tqdm(boards):
+        # get all possible moves for the current board
+        moves = cc.generate_moves_for_given_board(board)
+        for move in moves:
+            # create a copy of the board and apply the move
+            new_board = copy.deepcopy(board)
+            new_board.apply_move(move)
+            if new_board not in boards_set:
+                boards_set.add(new_board)
+                neighbor_boards.append(new_board)
+    
+    if dataset_size is not None:
+        neighbor_boards = random.sample(neighbor_boards, dataset_size)
+    
+    return neighbor_boards
+
+def training_neighbors_gtv(dataset_size: int | None = None, num_neighbors: int=2):
+    '''
+    Generates a set of datasets.
+    1. boards seen during training and their ground-truth value values and policies
+    2. boards that are children of the seen boards and their GTVs
+    3. repeat step 2 for 2-neighbors, 3-neighbors, and so on.
+    '''
+    # get unique boards seen during training
+    boards_set = get_unique_boards_from_training_data()
+
+    # create the list of training boards. trim if necessary.
+    training_boards = list(boards_set)
+    if dataset_size is not None: training_boards = random.sample(training_boards, dataset_size)
+
+    # create and save a Dataset with the GTV for the training boards
+    training_gtv_dataset = create_gtv_dataset_from_board_list(training_boards)
+    save_dataset("training_gtv", training_gtv_dataset)
+
+    # for each neighbor level,
+    neighbor_boards = training_boards
+    for i in range(num_neighbors):
+        logger.info(f"Generating {i+1}-neighbor dataset...")
+        # get all the neighboring (children) boards of the previous neighbors,
+        # starting with training_boards
+        neighbor_boards = get_neighbor_boards(neighbor_boards, boards_set, dataset_size)
+        # create and save a gtv dataset based on the generated boards
+        neighbor_gtv_dataset = create_gtv_dataset_from_board_list(neighbor_boards)
+        save_dataset(f"neighbor_{i+1}_gtv", neighbor_gtv_dataset)
+
+
 def main():
     setup_logging(
         level=20,
@@ -213,11 +278,13 @@ def main():
     )
     logger.info("Generating datasets...")
 
-    training_ground_truth_values()
+    #training_ground_truth_values()
 
     random_ground_truth_values()
 
     training_experienced_values()
+
+    training_neighbors_gtv(10000, 2)
 
     logger.info("Finished generating datasets.")
 

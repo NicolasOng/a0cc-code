@@ -86,12 +86,13 @@ class NNMCTSProblem:
         return value
 
 class A0Player:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel):
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False):
         self.model = model
         self.game = Game(board_size, num_pieces, False, True, False)
         self.temperature = 1.0  # Temperature for exploration in MCTS
         self.random_selection_prob = 0  # Probability of selecting a random move
         self.mcts_iterations = 64
+        self.exploit = exploit
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         '''
@@ -120,6 +121,12 @@ class A0Player:
 
         # get the policy to return later
         mcts_policy = p.policy.copy()
+
+        # if exploiting (eg for testing/use),
+        # don't add noise and select the best move
+        if self.exploit:
+            selected_move = p.get_best_move(random_ties=True, rng_seed=42)
+            return selected_move, mcts_policy
 
         # apply dirichlet noise for exploration
         p.add_dirichlet_noise(alpha=None, epsilon=0.25)
