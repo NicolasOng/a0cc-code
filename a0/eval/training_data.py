@@ -296,9 +296,6 @@ def plot_training_performance_metrics():
 
     # plot the performance metrics
     plt.figure(figsize=(16, 9))
-    plt.plot(losses, label='Loss')
-    plt.plot(value_losses, label='Value Loss')
-    plt.plot(policy_losses, label='Policy Loss')
     plt.plot(value_accuracies, label='Value Accuracy')
     plt.plot(policy_accuracies, label='Policy Accuracy')
     plt.xlabel("Iteration")
@@ -308,6 +305,10 @@ def plot_training_performance_metrics():
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/training_metrics.png")
+    plt.plot(losses, label='Loss')
+    plt.plot(value_losses, label='Value Loss')
+    plt.plot(policy_losses, label='Policy Loss')
+    plt.savefig(f"{config.plot_dir}/training_metrics_w_losses.png")
     plt.clf()
 
 def main():

@@ -1,4 +1,5 @@
 import sys
+import os
 
 from jax import numpy as jnp
 import jax
@@ -324,6 +325,7 @@ def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float]
         sys.exit()
 
 def plot_losses(title: str, losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float], policy_accuracies: list[float], fn: str) -> None:
+    os.makedirs(f"{config.plot_dir}/eval_losses/", exist_ok=True)
     plt.figure(figsize=(16, 9))
     plt.plot(value_accuracies, label='Value Accuracy')
     plt.plot(policy_accuracies, label='Policy Accuracy')
