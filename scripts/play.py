@@ -3,6 +3,7 @@ from a0.players.mcts_rollout import MCTSRolloutPlayer
 from a0.players.gt import GroundTruthPlayer
 from a0.players.model import ModelPlayer
 from a0.players.random import RandomPlayer
+from a0.players.a0 import A0Player
 
 from a0.model import load_model
 
@@ -22,10 +23,11 @@ def main():
 
     model_filename = "..."
     model = load_model(model_filename)
-    other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
+    #other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
+    other_player = A0Player(board_size=config.board_size, num_pieces=config.num_pieces, model=model, exploit=True)
 
     results = play(
-        Game(config.board_size, config.num_pieces, False, False, False),
+        Game(config.board_size, config.num_pieces, True, False, True),
         players=[
             other_player,
             human_player
