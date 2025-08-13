@@ -27,7 +27,7 @@ def main():
     other_player = A0Player(board_size=config.board_size, num_pieces=config.num_pieces, model=model, exploit=True)
 
     results = play(
-        Game(config.board_size, config.num_pieces, True, False, True),
+        Game(config.board_size, config.num_pieces, True, False, False),
         players=[
             other_player,
             human_player
