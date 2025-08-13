@@ -1,6 +1,8 @@
 import sys
 import os
 
+from typing import Generator
+
 from jax import numpy as jnp
 import jax
 import optax
@@ -16,6 +18,17 @@ from a0.dataset import Dataset
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
+
+class Series:
+    x: list[int]
+    ys: dict[str, list[float]]
+
+    def __init__(self, ys: list[str] | None = None):
+        self.x = []
+        self.ys = {}
+        if ys is not None:
+            for y in ys:
+                self.ys[y] = []
 
 def value_loss_function(pred_outcome: NDArray[np.float32], label_outcome: NDArray[np.float32]) -> float:
     '''
@@ -105,7 +118,7 @@ def policy_accuracy_batch(pred_policy: NDArray[np.float32], label_policy: NDArra
     mean_accuracy = np.mean(accuracies)
     return float(mean_accuracy)
 
-def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no: int) -> tuple[float, float, float, float, float]:
+def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[float, float, float, float, float]:
     '''
     Evaluates the model on the given evaluation dataset.
     The evaluation dataset is a Dataset object containing
@@ -187,39 +200,29 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset, model_no:
     )
     return avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy
 
-def evaluate_all_models(models: list[AlphaZeroModel], evaluation_dataset: Dataset, fn: str) -> None:
+def evaluate_all_models(models: list[tuple[int, AlphaZeroModel]], evaluation_dataset: Dataset, fn: str) -> None:
     '''
     Evaluates all models in the training directory.
     The training directory is defined in the config.
     They are all evaluated on the same evaluation dataset.
     '''
-    logger.info(f"Evaluating all models in the training directory ({fn})...")
+    logger.info(f"Evaluating all models in the training directory (eval_type={fn})...")
 
     # Iterate through all model files in the training directory
-    losses: list[float] = []
-    value_losses: list[float] = []
-    policy_losses: list[float] = []
-    value_accuracies: list[float] = []
-    policy_accuracies: list[float] = []
-    for i, model in tqdm(enumerate(models)):
+    metrics = Series(["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"])
+    for i, model in tqdm(models):
         logger.info(f"Evaluating model {i + 1}")
-        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, evaluation_dataset, i + 1)
-        losses.append(loss)
-        value_losses.append(value_loss)
-        policy_losses.append(policy_loss)
-        value_accuracies.append(value_accuracy)
-        policy_accuracies.append(policy_accuracy)
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, evaluation_dataset)
+        metrics.x.append(i)
+        metrics.ys["loss"].append(loss)
+        metrics.ys["value_loss"].append(value_loss)
+        metrics.ys["policy_loss"].append(policy_loss)
+        metrics.ys["value_accuracy"].append(value_accuracy)
+        metrics.ys["policy_accuracy"].append(policy_accuracy)
     
-    # save the losses to a file
-    losses_path = f"{config.eval_dir}/{fn}.pkl"
-    with open(losses_path, 'wb') as f:
-        pickle.dump({
-            'losses': losses,
-            'value_losses': value_losses,
-            'policy_losses': policy_losses,
-            'value_accuracies': value_accuracies,
-            'policy_accuracies': policy_accuracies
-        }, f)
+    # save the metrics to a file
+    metrics_path = f"{config.eval_dir}/{fn}.pkl"
+    save_series(metrics, metrics_path)
 
 def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list[Dataset], fn: str) -> None:
     '''
@@ -237,7 +240,7 @@ def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list
     policy_accuracies: list[float] = []
     for i, (model, dataset) in tqdm(enumerate(zip(models, datasets))):
         logger.info(f"Evaluating model {i + 1}")
-        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, dataset, i + 1)
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, dataset)
         losses.append(loss)
         value_losses.append(value_loss)
         policy_losses.append(policy_loss)
@@ -287,102 +290,65 @@ def load_dataset_list(datasets_path: str) -> list[Dataset]:
         sys.exit()
     return datasets
 
-def load_models(dir: str, n: int) -> list[AlphaZeroModel]:
+def models_generator_function(dir: str, n: int) -> Generator[tuple[int, AlphaZeroModel], None, None]:
     '''
-    Loads n models from the given directory.
-    Returns a list of AlphaZeroModel instances.
+    Attempts to load [0 to n] AlphaZeroModels from the given directory.
+    If one doesn't exist, it just skips it.
     File names are expected to be in the format "model_{i}.pkl" where i is the model number.
-    Loads models from 0 to n (inclusive).
     '''
-    logger.info(f"Loading {n} models from {dir}...")
-    models: list[AlphaZeroModel] = []
     for i in range(n + 1):
         model_path = f"{dir}/model_{i}.pkl"
         try:
             model = load_model(model_path)
-            models.append(model)
+            yield i, model
         except Exception as e:
-            logger.error(f"Failed to load model {i + 1} at {model_path}: {e}")
-    return models
+            logger.error(f"Failed to load model {i} at {model_path}: {e}")
 
-def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float], list[float], list[float]]:
+def load_models(dir: str, n: int) -> list[tuple[int, AlphaZeroModel]]:
     '''
-    Loads losses from the given path.
-    Returns a tuple of lists: (losses, value_losses, policy_losses, value_accuracies, policy_accuracies).
-    If the file does not exist, it will log an error and exit.
+    Returns a list of tuples (model_id, AlphaZeroModel).
+    Attempts to load models from 0 to n (inclusive) - skips missing models.
     '''
+    logger.info(f"Loading {n} models from {dir}...")
+    return list(models_generator_function(dir, n))
+
+def save_series(series: Series, series_path: str) -> None:
+    '''
+    Saves a Series object to the given path.
+    '''
+    logger.info(f"Saving series to {series_path}...")
+    with open(series_path, 'wb') as f:
+        pickle.dump(series, f)
+
+def load_series(series_path: str) -> Series:
+    '''
+    loads a series object from a given path
+    '''
+    logger.info(f"Loading series from {series_path}...")
     try:
-        with open(losses_path, 'rb') as f:
-            losses_data = pickle.load(f)
-        logger.info(f"Loaded evaluation losses from {losses_path}.")
-        return (losses_data['losses'], losses_data['value_losses'], 
-                losses_data['policy_losses'], losses_data['value_accuracies'], losses_data['policy_accuracies'])
+        with open(series_path, 'rb') as f:
+            series: Series = pickle.load(f)
+        logger.info(f"Loaded series from {series_path}.")
     except FileNotFoundError:
-        logger.error(f"Losses file not found at {losses_path}. Please generate the losses first.")
+        logger.error(f"Series file not found at {series_path}. Please generate the series first.")
         sys.exit()
     except Exception as e:
-        logger.error(f"Error loading losses: {e}")
+        logger.error(f"Error loading series: {e}")
         sys.exit()
+    return series
 
-def plot_losses(title: str, losses: list[float], value_losses: list[float], policy_losses: list[float], value_accuracies: list[float], policy_accuracies: list[float], fn: str) -> None:
-    os.makedirs(f"{config.plot_dir}/eval_losses/", exist_ok=True)
+def plot_given(title: str, series: list[tuple[str, list[int], list[float]]], x_label: str, y_label: str, fn: str) -> None:
     plt.figure(figsize=(16, 9))
-    plt.plot(value_accuracies, label='Value Accuracy')
-    plt.plot(policy_accuracies, label='Policy Accuracy')
-    plt.xlabel("Iteration")
-    plt.ylabel("Performance")
-    plt.title(title)
-    plt.legend()
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}{fn}.png")
-    # and another with the losses
-    plt.plot(losses, label='Loss')
-    plt.plot(value_losses, label='Value Loss')
-    plt.plot(policy_losses, label='Policy Loss')
-    plt.savefig(f"{config.plot_dir}/eval_losses/{fn}_losses.png")
-    plt.clf()
-
-def plot_two_accuracies(title: str, accuracies1: list[float], accuracies2: list[float], a1n: str, a2n: str, fn: str) -> None:
-    plt.figure(figsize=(16, 9))
-    plt.plot(accuracies1, label=a1n)
-    plt.plot(accuracies2, label=a2n)
-    plt.xlabel("Iteration")
-    plt.ylabel("Performance")
+    for label, x_values, y_values in series:
+        plt.plot(x_values, y_values, label=label)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
     plt.title(title)
     plt.legend()
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.clf()
-
-def plot_four_accuracies(title: str,
-                         accuracies1: list[float], accuracies2: list[float], accuracies3: list[float], accuracies4: list[float],
-                         a1n: str, a2n: str, a3n: str, a4n: str,
-                         fn: str) -> None:
-    plt.figure(figsize=(16, 9))
-    plt.plot(accuracies1, label=a1n)
-    plt.plot(accuracies2, label=a2n)
-    plt.plot(accuracies3, label=a3n)
-    plt.plot(accuracies4, label=a4n)
-    plt.xlabel("Iteration")
-    plt.ylabel("Performance")
-    plt.title(title)
-    plt.legend()
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}{fn}.png")
-
-def trim_dataset(dataset: Dataset, n: int) -> Dataset:
-    '''
-    Trims the dataset to the first n elements.
-    Returns a new Dataset object with the trimmed data.
-    '''
-    logger.info(f"Trimming dataset to {n} elements...")
-    dataset.states = dataset.states[:n]
-    dataset.values = dataset.values[:n]
-    dataset.policies = dataset.policies[:n]
-    return dataset
 
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='dataset_evaluation')
@@ -390,7 +356,7 @@ def main():
     logger.info("Starting dataset evaluation...")
 
     # load the models
-    models = load_models(config.training_dir, config.training_iterations + 1)
+    models = load_models(config.training_dir, config.training_iterations)
 
     # Load the datasets
     training_dataset = load_dataset(f"{config.eval_dir}/training_gtv.pkl")
@@ -403,10 +369,10 @@ def main():
 
     # trim down the training dataset to a smaller size for faster evaluation
     n = 1000
-    training_dataset = trim_dataset(training_dataset, n)
-    training_e_dataset = trim_dataset(training_e_dataset, n)
+    training_dataset.trim(n, shuffle=False)
+    training_e_dataset.trim(n, shuffle=False)
     for i in range(2):
-        neighbor_datasets[i] = trim_dataset(neighbor_datasets[i], n)
+        neighbor_datasets[i].trim(n, shuffle=False)
 
     # Evaluate all models
     evaluate_all_models(models, training_dataset, "training_gtv_eval")
@@ -415,44 +381,52 @@ def main():
     for i in range(2):
         evaluate_all_models(models, neighbor_datasets[i], f"neighbor_{i+1}_gtv_eval")
 
-    # load and plot the losses
-    tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies = load_losses(f"{config.eval_dir}/training_gtv_eval.pkl")
-    plot_losses("Model Performance on Ground Truth of States Seen During Training",
-                tlosses, tvalue_losses, tpolicy_losses, tvalue_accuracies, tpolicy_accuracies, "training_gtv_eval")
+    # load and plot the metrics
+    train_gt_series = load_series(f"{config.eval_dir}/training_gtv_eval.pkl")
+    plot_given("Model Performance on Ground Truth of States Seen During Training",
+               [
+                   ("Value Accuracy", train_gt_series.x, train_gt_series.ys["value_accuracy"]),
+                   ("Policy Accuracy", train_gt_series.x, train_gt_series.ys["policy_accuracy"])
+                ],
+               "Iteration", "Accuracy", "training_gtv_eval")
     
-    rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies = load_losses(f"{config.eval_dir}/random_gtv_eval.pkl")
-    plot_losses("Model Performance on Ground Truth of Random States",
-                rlosses, rvalue_losses, rpolicy_losses, rvalue_accuracies, rpolicy_accuracies, "random_gtv_eval")
-    
-    telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies = load_losses(f"{config.eval_dir}/training_ev_eval.pkl")
-    plot_losses("Model Performance on Experienced Outcomes of States Seen During Training",
-                telosses, tevalue_losses, tepolicy_losses, tevalue_accuracies, tepolicy_accuracies, "training_ev_eval")
-    
-    nlosses: list[list[float]] = []
-    nvalue_losses: list[list[float]] = []
-    npolicy_losses: list[list[float]] = []
-    nvalue_accuracies: list[list[float]] = []
-    npolicy_accuracies: list[list[float]] = []
+    random_gt_series = load_series(f"{config.eval_dir}/random_gtv_eval.pkl")
+    plot_given("Model Performance on Ground Truth of Random States",
+               [
+                   ("Value Accuracy", random_gt_series.x, random_gt_series.ys["value_accuracy"]),
+                   ("Policy Accuracy", random_gt_series.x, random_gt_series.ys["policy_accuracy"])
+               ],
+               "Iteration", "Accuracy", "random_gtv_eval")
+
+    train_ev_series = load_series(f"{config.eval_dir}/training_ev_eval.pkl")
+    plot_given("Model Performance on Experienced Outcomes of States Seen During Training",
+               [
+                   ("Value Accuracy", train_ev_series.x, train_ev_series.ys["value_accuracy"]),
+                   ("Policy Accuracy", train_ev_series.x, train_ev_series.ys["policy_accuracy"])
+               ],
+               "Iteration", "Accuracy", "training_ev_eval")
+
+    n_neighbor_gt_series: list[Series] = []
     for i in range(2):
-        nlosses_i, nvalue_losses_i, npolicy_losses_i, nvalue_accuracies_i, npolicy_accuracies_i = load_losses(f"{config.eval_dir}/neighbor_{i+1}_gtv_eval.pkl")
-        nlosses.append(nlosses_i)
-        nvalue_losses.append(nvalue_losses_i)
-        npolicy_losses.append(npolicy_losses_i)
-        nvalue_accuracies.append(nvalue_accuracies_i)
-        npolicy_accuracies.append(npolicy_accuracies_i)
-        plot_losses(
+        neighbor_gt_series = load_series(f"{config.eval_dir}/neighbor_{i+1}_gtv_eval.pkl")
+        n_neighbor_gt_series.append(neighbor_gt_series)
+        plot_given(
             f"Model Performance on Ground Truth of Neighboring States {i + 1}",
-            nlosses_i, nvalue_losses_i, npolicy_losses_i,
-            nvalue_accuracies_i, npolicy_accuracies_i,
-            f"neighbor_{i+1}_gtv_eval"
+            [
+                ("Value Accuracy", neighbor_gt_series.x, neighbor_gt_series.ys["value_accuracy"]),
+                ("Policy Accuracy", neighbor_gt_series.x, neighbor_gt_series.ys["policy_accuracy"])
+            ],
+            "Iteration", "Accuracy", f"neighbor_{i+1}_gtv_eval"
         )
-    
-    plot_two_accuracies("Model Performance on Ground Truth of States",
-                         tvalue_accuracies, rvalue_accuracies, "Seen Accuracy", "Random Accuracy", "training_vs_random_accuracy")
-    plot_four_accuracies("Model Performance on Ground Truth of States",
-                         tvalue_accuracies, rvalue_accuracies, nvalue_accuracies[0], nvalue_accuracies[1],
-                         "Seen Accuracy", "Random Accuracy", "Neighbor 1 Accuracy", "Neighbor 2 Accuracy",
-                         "neighbor_accuracy")
+
+    plot_given("Model Performance on Ground Truth of States",
+               [
+                   ("Seen Accuracy", train_gt_series.x, train_gt_series.ys["value_accuracy"]),
+                   ("Neighbor 1 Accuracy", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["value_accuracy"]),
+                   ("Neighbor 2 Accuracy", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["value_accuracy"]),
+                   ("Random Accuracy", random_gt_series.x, random_gt_series.ys["value_accuracy"])
+               ],
+               "Iteration", "Accuracy", "neighbor_accuracy")
 
     logger.info("Dataset evaluation completed.")
 

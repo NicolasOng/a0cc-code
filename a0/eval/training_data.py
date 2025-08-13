@@ -22,16 +22,11 @@ def game_data_generator() -> Generator[list[GameData], None, None]:
     Returns a list of lists of game data.
     Each list corresponds to a single training iteration.
     '''
-    # load all the game data objects from config.training_dir
-    #game_data_lists: list[list[GameData]] = []
     for i in tqdm(range(config.training_iterations)):
         file_path = f"{config.training_dir}/gamedata_{i + 1}.pkl"
         with open(file_path, 'rb') as file:
             data: list[GameData] = pickle.load(file)
-            #game_data_lists.append(data)
             yield data
-    #logger.info(f"Loaded {len(game_data_lists)} gamedata lists from {config.training_dir}.")
-    #return game_data_lists
 
 def dataset_data_generator() -> Generator[DatasetData, None, None]:
     '''
