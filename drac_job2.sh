@@ -2,7 +2,7 @@
 #SBATCH --account=def-nathanst-ab
 #SBATCH --time=30:00:00
 #SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=1G
+#SBATCH --mem-per-cpu=4G
 
 module load python/3.10
 virtualenv --no-download $SLURM_TMPDIR/env
