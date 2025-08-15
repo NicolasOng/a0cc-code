@@ -3,6 +3,8 @@ import sys
 import json
 
 class Config:
+    path: str
+
     board_size: int
     num_players: int
     num_pieces: int
@@ -35,6 +37,8 @@ class Config:
         - replay_buffer_size: int, size of the replay buffer
         - training_batch_size: int, batch size for training
         '''
+        self.path = config_fn
+
         # Load the default configuration first
         with open(default_config_fn) as f:
             cf = json.load(f)

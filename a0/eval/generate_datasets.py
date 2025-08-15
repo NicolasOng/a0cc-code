@@ -177,22 +177,25 @@ def get_neighbor_boards(boards: list[Board], boards_set: set[Board], dataset_siz
     
     return neighbor_boards
 
-def training_neighbors_gtv(dataset_size: int | None = None, num_neighbors: int=2):
+def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = None, num_neighbors: int=2):
     '''
     Generates a set of datasets.
     1. boards seen during training and their ground-truth value values and policies
     2. boards that are children of the seen boards and their GTVs
     3. repeat step 2 for 2-neighbors, 3-neighbors, and so on.
+    To prevent running out of memory, the number of states to generate neighbors from is capped.
+    Then the final dataset's size is further reduced.
     '''
     # get unique boards seen during training
     boards_set = get_unique_boards_from_training_data()
 
     # create the list of training boards. trim if necessary.
     training_boards = list(boards_set)
-    if dataset_size is not None: training_boards = random.sample(training_boards, dataset_size)
+    if temporary_size is not None: training_boards = random.sample(training_boards, temporary_size)
 
-    # create and save a Dataset with the GTV for the training boards
+    # create, trim, and save a Dataset with the GTV for the training boards
     training_gtv_dataset = create_gtv_dataset_from_board_list(training_boards)
+    if final_size is not None: training_gtv_dataset.trim(new_size=final_size, shuffle=True)
     save_dataset("training_gtv", training_gtv_dataset)
 
     # for each neighbor level,
@@ -201,9 +204,10 @@ def training_neighbors_gtv(dataset_size: int | None = None, num_neighbors: int=2
         logger.info(f"Generating {i+1}-neighbor dataset...")
         # get all the neighboring (children) boards of the previous neighbors,
         # starting with training_boards
-        neighbor_boards = get_neighbor_boards(neighbor_boards, boards_set, dataset_size)
-        # create and save a gtv dataset based on the generated boards
+        neighbor_boards = get_neighbor_boards(neighbor_boards, boards_set, temporary_size)
+        # create, trim, and save a gtv dataset based on the generated boards
         neighbor_gtv_dataset = create_gtv_dataset_from_board_list(neighbor_boards)
+        if final_size is not None: neighbor_gtv_dataset.trim(new_size=final_size, shuffle=True)
         save_dataset(f"neighbor_{i+1}_gtv", neighbor_gtv_dataset)
 
 
@@ -215,11 +219,11 @@ def main():
     )
     logger.info("Generating datasets...")
 
-    random_ground_truth_values()
+    random_ground_truth_values(n=1000)
 
-    training_experienced_values()
+    training_experienced_values(n=1000)
 
-    training_neighbors_gtv(10000, 2)
+    training_neighbors_gtv(10000, 1000, 2)
 
     logger.info("Finished generating datasets.")
 

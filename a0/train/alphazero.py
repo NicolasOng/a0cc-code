@@ -215,7 +215,7 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
         training_set, game_data = self_play(player)
 
         # generate and print stats about the game data
-        game_data_stats = game_data_list_stats(game_data)
+        game_data_stats = game_data_list_stats(i, game_data)
         logger.log(25, f"{game_data_stats.get_line()}")
         
         # save the game data to a file
@@ -260,6 +260,8 @@ if __name__ == "__main__":
         log_dir=config.log_dir,
         process_name="training_alphazero"
     )
+
+    logger.info(f"config: {config.path}")
 
     # Set the multiprocessing start method to 'spawn' for compatibility with JAX
     try:

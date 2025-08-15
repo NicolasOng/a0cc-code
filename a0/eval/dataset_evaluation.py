@@ -14,21 +14,11 @@ from numpy.typing import NDArray
 
 from a0.model import AlphaZeroModel, load_model
 from a0.dataset import Dataset
+from a0.eval.plotting import Series, save_series
 
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
-
-class Series:
-    x: list[int]
-    ys: dict[str, list[float]]
-
-    def __init__(self, ys: list[str] | None = None):
-        self.x = []
-        self.ys = {}
-        if ys is not None:
-            for y in ys:
-                self.ys[y] = []
 
 def value_loss_function(pred_outcome: NDArray[np.float32], label_outcome: NDArray[np.float32]) -> float:
     '''
@@ -312,44 +302,6 @@ def load_models(dir: str, n: int) -> list[tuple[int, AlphaZeroModel]]:
     logger.info(f"Loading {n} models from {dir}...")
     return list(models_generator_function(dir, n))
 
-def save_series(series: Series, series_path: str) -> None:
-    '''
-    Saves a Series object to the given path.
-    '''
-    logger.info(f"Saving series to {series_path}...")
-    with open(series_path, 'wb') as f:
-        pickle.dump(series, f)
-
-def load_series(series_path: str) -> Series:
-    '''
-    loads a series object from a given path
-    '''
-    logger.info(f"Loading series from {series_path}...")
-    try:
-        with open(series_path, 'rb') as f:
-            series: Series = pickle.load(f)
-        logger.info(f"Loaded series from {series_path}.")
-    except FileNotFoundError:
-        logger.error(f"Series file not found at {series_path}. Please generate the series first.")
-        sys.exit()
-    except Exception as e:
-        logger.error(f"Error loading series: {e}")
-        sys.exit()
-    return series
-
-def plot_given(title: str, series: list[tuple[str, list[int], list[float]]], x_label: str, y_label: str, fn: str) -> None:
-    plt.figure(figsize=(16, 9))
-    for label, x_values, y_values in series:
-        plt.plot(x_values, y_values, label=label)
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
-    plt.title(title)
-    plt.legend()
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}{fn}.png")
-    plt.clf()
-
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='dataset_evaluation')
 
@@ -380,53 +332,6 @@ def main():
     evaluate_all_models(models, training_e_dataset, "training_ev_eval")
     for i in range(2):
         evaluate_all_models(models, neighbor_datasets[i], f"neighbor_{i+1}_gtv_eval")
-
-    # load and plot the metrics
-    train_gt_series = load_series(f"{config.eval_dir}/training_gtv_eval.pkl")
-    plot_given("Model Performance on Ground Truth of States Seen During Training",
-               [
-                   ("Value Accuracy", train_gt_series.x, train_gt_series.ys["value_accuracy"]),
-                   ("Policy Accuracy", train_gt_series.x, train_gt_series.ys["policy_accuracy"])
-                ],
-               "Iteration", "Accuracy", "training_gtv_eval")
-    
-    random_gt_series = load_series(f"{config.eval_dir}/random_gtv_eval.pkl")
-    plot_given("Model Performance on Ground Truth of Random States",
-               [
-                   ("Value Accuracy", random_gt_series.x, random_gt_series.ys["value_accuracy"]),
-                   ("Policy Accuracy", random_gt_series.x, random_gt_series.ys["policy_accuracy"])
-               ],
-               "Iteration", "Accuracy", "random_gtv_eval")
-
-    train_ev_series = load_series(f"{config.eval_dir}/training_ev_eval.pkl")
-    plot_given("Model Performance on Experienced Outcomes of States Seen During Training",
-               [
-                   ("Value Accuracy", train_ev_series.x, train_ev_series.ys["value_accuracy"]),
-                   ("Policy Accuracy", train_ev_series.x, train_ev_series.ys["policy_accuracy"])
-               ],
-               "Iteration", "Accuracy", "training_ev_eval")
-
-    n_neighbor_gt_series: list[Series] = []
-    for i in range(2):
-        neighbor_gt_series = load_series(f"{config.eval_dir}/neighbor_{i+1}_gtv_eval.pkl")
-        n_neighbor_gt_series.append(neighbor_gt_series)
-        plot_given(
-            f"Model Performance on Ground Truth of Neighboring States {i + 1}",
-            [
-                ("Value Accuracy", neighbor_gt_series.x, neighbor_gt_series.ys["value_accuracy"]),
-                ("Policy Accuracy", neighbor_gt_series.x, neighbor_gt_series.ys["policy_accuracy"])
-            ],
-            "Iteration", "Accuracy", f"neighbor_{i+1}_gtv_eval"
-        )
-
-    plot_given("Model Performance on Ground Truth of States",
-               [
-                   ("Seen Accuracy", train_gt_series.x, train_gt_series.ys["value_accuracy"]),
-                   ("Neighbor 1 Accuracy", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["value_accuracy"]),
-                   ("Neighbor 2 Accuracy", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["value_accuracy"]),
-                   ("Random Accuracy", random_gt_series.x, random_gt_series.ys["value_accuracy"])
-               ],
-               "Iteration", "Accuracy", "neighbor_accuracy")
 
     logger.info("Dataset evaluation completed.")
 

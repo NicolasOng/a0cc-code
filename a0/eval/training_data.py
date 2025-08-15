@@ -9,13 +9,11 @@ from cc.core import Player
 from cc.ground_truth import GroundTruth
 from a0.game import GameData
 from a0.train.dataset import DatasetData, stats_from_dataset_data
-from a0.eval.dataset_evaluation import Series, plot_given, save_series
+from a0.eval.dataset_evaluation import Series, save_series
 
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
-
-training_data_path = config.training_dir
 
 def game_data_generator(dir: str, n: int) -> Generator[tuple[int, list[GameData]], None, None]:
     '''
@@ -97,15 +95,6 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
         gd_accuracy_series.ys["EB Value Accuracy"].append(eb_acc)
     
     save_series(gd_accuracy_series, f"{config.eval_dir}/gamedata_acc.pkl")
-    plot_given("Training Data Accuracy by Iteration",
-               [
-                   ("Iteration", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"]),
-                   ("Experience Buffer", gd_accuracy_series.x, gd_accuracy_series.ys["EB Value Accuracy"])
-               ], "Iterations", "Accuracy", "training_data_accuracy")
-    plot_given("Training Data Accuracy by Iteration",
-               [
-                   ("Training Data", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"])
-               ], "Iterations", "Accuracy", "training_data_accuracy1")
 
 class GameDataStats:
     '''
@@ -170,7 +159,7 @@ def game_data_list_stats(iteration: int, game_data_list: list[GameData]) -> Game
     # add the stats for this iteration to the list
     return stats
 
-def game_data_stats() -> None:
+def get_stats_of_each_iterations_game_data() -> None:
     '''
     Print statistics about the game data.
     This includes the number of games, turns, and players.
@@ -202,107 +191,22 @@ def game_data_stats() -> None:
     # creating series for the game data stats
     logger.info("Creating series for game data statistics...")
 
-    # make plots for the statistics
-    logger.info("Plotting game data statistics...")
+    gamedata_series = Series(["Total Games", "Player X Wins", "Player O Wins", "Draws (Repeat)", "Draws (Timeout)", "Avg Game Length", "Avg Game Time", "Std Game Length", "Std Game Time"])
+    gamedata_series.x = [stats.iteration for stats in iteration_stats]
+    gamedata_series.ys["Total Games"] = [stats.total_games for stats in iteration_stats]
+    gamedata_series.ys["Player X Wins"] = [sum(stats.player_x_wins) for stats in iteration_stats]
+    gamedata_series.ys["Player O Wins"] = [sum(stats.player_o_wins) for stats in iteration_stats]
+    gamedata_series.ys["Draws (Repeat)"] = [sum(stats.draws_repeat) for stats in iteration_stats]
+    gamedata_series.ys["Draws (Timeout)"] = [sum(stats.draws_timeout) for stats in iteration_stats]
+    gamedata_series.ys["Avg Game Length"] = [float(np.mean(stats.game_lengths)) if stats.game_lengths else 0 for stats in iteration_stats]
+    gamedata_series.ys["Avg Game Time"] = [float(np.mean(stats.game_times)) if stats.game_times else 0 for stats in iteration_stats]
+    gamedata_series.ys["Std Game Length"] = [float(np.std(stats.game_lengths)) if stats.game_lengths else 0 for stats in iteration_stats]
+    gamedata_series.ys["Std Game Time"] = [float(np.std(stats.game_times)) if stats.game_times else 0 for stats in iteration_stats]
 
-    # first, plot outcomes
-    # get the number of games won by each player, draws, etc.
-    iterations = list(range(len(iteration_stats)))
-    total_games = [stats.total_games for stats in iteration_stats]
-    player_x_wins = [sum(stats.player_x_wins) for stats in iteration_stats]
-    player_o_wins = [sum(stats.player_o_wins) for stats in iteration_stats]
-    draws_repeat = [sum(stats.draws_repeat) for stats in iteration_stats]
-    draws_timeout = [sum(stats.draws_timeout) for stats in iteration_stats]
+    # save the series
+    save_series(gamedata_series, f"{config.eval_dir}/gamedata_stats.pkl")
 
-    # plot the total number of games played in each iteration
-    logger.info("Plotting total games played...")
-    plt.clf()
-    plt.figure(figsize=(16, 9))
-    plt.plot(iterations, total_games, marker='o')
-    plt.title('Total Games Played by Training Iteration')
-    plt.xlabel('Training Iteration')
-    plt.ylabel('Total Games')
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/gamedata_total_games.png")
-    plt.clf()
-
-    # plot them in a stacked plot
-    logger.info("Plotting game outcomes (stacked)...")
-    plt.figure(figsize=(16, 9))
-    plt.stackplot(iterations, player_x_wins, player_o_wins, draws_repeat, draws_timeout,
-        labels=['Player X Wins', 'Player O Wins', 'Draws (Repeat)', 'Draws (Timeout)'],
-    )
-    plt.title('Game Outcomes by Training Iteration')
-    plt.xlabel('Training Iteration')
-    plt.ylabel('Number of Games')
-    plt.legend()
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/gamedata_outcomes_stacked.png")
-    plt.clf()
-
-    # plot them in a stacked proportional plot
-    logger.info("Plotting game outcomes (stacked, proportional)...")
-    plt.figure(figsize=(16, 9))
-    plt.stackplot(
-        np.array(iterations),
-        np.array(player_x_wins) / np.array(total_games),
-        np.array(player_o_wins) / np.array(total_games),
-        np.array(draws_repeat) / np.array(total_games),
-        np.array(draws_timeout) / np.array(total_games),
-        labels=['Player X Wins', 'Player O Wins', 'Draws (Repeat)', 'Draws (Timeout)'],
-    )
-    plt.title('Game Outcomes by Training Iteration')
-    plt.xlabel('Training Iteration')
-    plt.ylabel('Proportion of Games')
-    plt.legend()
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/gamedata_outcomes_stacked_proportional.png")
-    plt.clf()
-
-    # plot them in a line plot
-    logger.info("Plotting game outcomes (line)...")
-    plt.figure(figsize=(16, 9))
-    plt.plot(iterations, player_x_wins, label='Player X Wins')
-    plt.plot(iterations, player_o_wins, label='Player O Wins')
-    plt.plot(iterations, draws_repeat, label='Draws (Repeat)')
-    plt.plot(iterations, draws_timeout, label='Draws (Timeout)')
-    
-    plt.title('Game Outcomes by Training Iteration')
-    plt.xlabel('Training Iteration')
-    plt.ylabel('Number of Games')
-    plt.legend()
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/gamedata_outcomes_lines.png")
-    plt.clf()
-
-    # then, plot game lengths (both turns and time)
-    logger.info("Plotting game lengths...")
-    # turns
-    avg_game_lengths = [float(np.mean(stats.game_lengths)) for stats in iteration_stats]
-    std_game_lengths = [float(np.std(stats.game_lengths)) for stats in iteration_stats]
-    plot_game_lengths(iterations, avg_game_lengths, std_game_lengths, "Turns")
-    # time
-    avg_game_times = [float(np.mean(stats.game_times)) for stats in iteration_stats]
-    std_game_times = [float(np.std(stats.game_times)) for stats in iteration_stats]
-    plot_game_lengths(iterations, avg_game_times, std_game_times, "Time (seconds)")
-
-def plot_game_lengths(iterations: list[int], avg_lengths: list[float], std_length: list[float], l_type: str):
-    plt.figure(figsize=(16, 9))
-    plt.errorbar(iterations, avg_lengths, yerr=std_length, 
-                 marker='o', capsize=5, capthick=1, linewidth=1)
-    plt.title(f'Average Game Length ({l_type}) by Training Iteration')
-    plt.xlabel('Training Iteration')
-    plt.ylabel(f'Length ({l_type})')
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/game_lengths_{l_type.lower()}.png")
-    plt.clf()
-
-def plot_training_performance_metrics():
+def get_training_performance_metrics():
     '''
     Plot the training performance metrics from the training data.
     This includes the losses, accuracies, and other metrics.
@@ -310,39 +214,22 @@ def plot_training_performance_metrics():
     logger.info("Plotting training performance metrics...")
     
     # load the dataset data from the training data path
-    dataset_data_gen = dataset_data_generator()
+    dataset_data_gen = dataset_data_generator(config.training_dir, config.training_iterations)
     
     # collect the losses and accuracies
-    losses: list[float] = []
-    value_losses: list[float] = []
-    policy_losses: list[float] = []
-    value_accuracies: list[float] = []
-    policy_accuracies: list[float] = []
+    training_metrics = Series(["Loss", "Value Loss", "Policy Loss", "Value Accuracy", "Policy Accuracy"])
 
-    for dataset_data in dataset_data_gen:
+    for i, dataset_data in dataset_data_gen:
         loss, value_loss, policy_loss, value_accuracy, policy_accuracy = stats_from_dataset_data(dataset_data)
-        losses.append(loss)
-        value_losses.append(value_loss)
-        policy_losses.append(policy_loss)
-        value_accuracies.append(value_accuracy)
-        policy_accuracies.append(policy_accuracy)
-
-    # plot the performance metrics
-    plt.figure(figsize=(16, 9))
-    plt.plot(value_accuracies, label='Value Accuracy')
-    plt.plot(policy_accuracies, label='Policy Accuracy')
-    plt.xlabel("Iteration")
-    plt.ylabel("Performance")
-    plt.title("Training Performance Metrics")
-    plt.legend()
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/training_metrics.png")
-    plt.plot(losses, label='Loss')
-    plt.plot(value_losses, label='Value Loss')
-    plt.plot(policy_losses, label='Policy Loss')
-    plt.savefig(f"{config.plot_dir}/training_metrics_w_losses.png")
-    plt.clf()
+        training_metrics.x.append(i)
+        training_metrics.ys["Loss"].append(loss)
+        training_metrics.ys["Value Loss"].append(value_loss)
+        training_metrics.ys["Policy Loss"].append(policy_loss)
+        training_metrics.ys["Value Accuracy"].append(value_accuracy)
+        training_metrics.ys["Policy Accuracy"].append(policy_accuracy)
+    
+    # save the series
+    save_series(training_metrics, f"{config.eval_dir}/training_metrics.pkl")
 
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='training_data_evals')
@@ -350,8 +237,8 @@ def main():
     logger.info("Starting training data evaluations...")
 
     check_game_data_accuracy(list(game_data_generator(config.training_dir, config.training_iterations)))
-    game_data_stats()
-    plot_training_performance_metrics()
+    get_stats_of_each_iterations_game_data()
+    get_training_performance_metrics()
 
     logger.info("Training data evaluations completed.")
 
