@@ -6,9 +6,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from cc.core import Player
-from cc.lookups import CCBaselineSolver
+from cc.ground_truth import GroundTruth
 from a0.game import GameData
-from a0.train.dataset import DatasetData, load_dataset_data, stats_from_dataset_data
+from a0.train.dataset import DatasetData, stats_from_dataset_data
+from a0.eval.dataset_evaluation import Series, plot_given, save_series
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -16,68 +17,102 @@ logger = get_logger(__name__)
 
 training_data_path = config.training_dir
 
-def game_data_generator() -> Generator[list[GameData], None, None]:
+def game_data_generator(dir: str, n: int) -> Generator[tuple[int, list[GameData]], None, None]:
     '''
-    Load game data from the training data path.
-    Returns a list of lists of game data.
+    Load game data from the given path, from 1 to n inclusive
+    Returns a list of lists of game data, assuming each is named gamedata_<iteration>.pkl
     Each list corresponds to a single training iteration.
+    If a file doesn't exist, it skips it.
     '''
-    for i in tqdm(range(config.training_iterations)):
-        file_path = f"{config.training_dir}/gamedata_{i + 1}.pkl"
-        with open(file_path, 'rb') as file:
-            data: list[GameData] = pickle.load(file)
-            yield data
+    for i in range(n):
+        file_path = f"{dir}/gamedata_{i + 1}.pkl"
+        try:
+            with open(file_path, 'rb') as file:
+                data: list[GameData] = pickle.load(file)
+                yield i + 1, data
+        except Exception as e:
+            logger.error(f"Failed to load game data {i} at {file_path}: {e}")
 
-def dataset_data_generator() -> Generator[DatasetData, None, None]:
+def dataset_data_generator(dir: str, n: int) -> Generator[tuple[int, DatasetData], None, None]:
     '''
-    Load dataset data from the training data path.
+    Load dataset data from the given path.
+    Each dataset data object contains the training data for each iteration.
+    Attempts to load each iteration's dataset data (iteration_stats_{i + 1}.pkl) from 1 to n inclusive
     Returns a list of dataset data.
     '''
-    for i in tqdm(range(config.training_iterations)):
-        file_path = f"{config.training_dir}/iteration_stats_{i + 1}.pkl"
-        with open(file_path, 'rb') as file:
-            data: DatasetData = pickle.load(file)
-            yield data
+    for i in range(n):
+        file_path = f"{dir}/iteration_stats_{i + 1}.pkl"
+        try:
+            with open(file_path, 'rb') as file:
+                data: DatasetData = pickle.load(file)
+                yield i + 1, data
+        except Exception as e:
+            logger.error(f"Failed to load dataset data {i} at {file_path}: {e}")
 
-def check_game_data_accuracy(game_data_lists: list[list[GameData]] | Generator[list[GameData], None, None]) -> None:
-    solver = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
+def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) -> None:
+    '''
+    Checks the accuracy of game data by comparing the outcomes from the solver
+    with the ground truth outcomes.
+    '''
+    last_n_iterations = config.replay_buffer_size // config.training_samples
+    gd_accuracy_series = Series(["Iteration Value Accuracy", "EB Value Accuracy"])
+    gt = GroundTruth()
     iteration_accuracies: list[float] = []
-    for i, game_data_list in enumerate(game_data_lists):
+    # for each game data list/iteration,
+    for i, game_data_list in game_data_lists:
         iteration_num_correct = 0
         iteration_total = 0
-        for j, game_data in enumerate(game_data_list):
+        # go through each game,
+        for _, game_data in enumerate(game_data_list):
             winner = game_data.winner
-            for k, game_state in enumerate(game_data.turn_data):
+            # go through each turn
+            for _, game_state in enumerate(game_data.turn_data):
+                # and check if the experienced outcome matches the ground truth
+                # TODO: policy?
                 board = game_state.board
-                sd_outcome = solver.get_outcome(board)
+                sd_outcome = gt.get_outcome(board)
                 gd_outcome = 0 if winner is None else 1 if winner == board.current_player else -1
                 if sd_outcome == gd_outcome:
                     iteration_num_correct += 1
                 iteration_total += 1
         iteration_accuracy = iteration_num_correct / iteration_total if iteration_total > 0 else 0
         iteration_accuracies.append(iteration_accuracy)
+        # log the iteration's accuracy
         logger.info(f"Iteration {i} accuracy: {iteration_accuracy:.2%} ({iteration_num_correct}/{iteration_total})")
+        # add this info to a series object
+        gd_accuracy_series.x.append(i)
+        gd_accuracy_series.ys["Iteration Value Accuracy"].append(iteration_accuracy)
+        # also calculate the estimated experience buffer accuracy
+        # basically the average accuracy over the last n iterations
+        total_eb_acc = 0
+        total_eb_its = 0
+        for j in range(len(gd_accuracy_series.x) - 1, 0 - 1, -1):
+            cur_iteration = gd_accuracy_series.x[j]
+            cur_acc = gd_accuracy_series.ys["Iteration Value Accuracy"][j]
+            if cur_iteration < i - last_n_iterations:
+                break
+            total_eb_acc += cur_acc
+            total_eb_its += 1
+        eb_acc = total_eb_acc / total_eb_its if total_eb_its > 0 else 0
+        gd_accuracy_series.ys["EB Value Accuracy"].append(eb_acc)
     
-    output_path = f"{config.eval_dir}/gamedata_acc.pkl"
-    with open(output_path, 'wb') as file:
-        pickle.dump(iteration_accuracies, file)
-    logger.info(f"Game data accuracies saved to {output_path}.")
-
-    plt.figure(figsize=(16, 9))
-    plt.plot(iteration_accuracies)
-    plt.title("Training Data Accuracy by Iteration")
-    plt.xlabel("Iteration")
-    plt.ylabel("Accuracy")
-    plt.grid(True, which='both')
-    plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}/training_data_accuracy.png")
-    plt.clf()
+    save_series(gd_accuracy_series, f"{config.eval_dir}/gamedata_acc.pkl")
+    plot_given("Training Data Accuracy by Iteration",
+               [
+                   ("Iteration", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"]),
+                   ("Experience Buffer", gd_accuracy_series.x, gd_accuracy_series.ys["EB Value Accuracy"])
+               ], "Iterations", "Accuracy", "training_data_accuracy")
+    plot_given("Training Data Accuracy by Iteration",
+               [
+                   ("Training Data", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"])
+               ], "Iterations", "Accuracy", "training_data_accuracy1")
 
 class GameDataStats:
     '''
     Class to hold statistics about game data for a single self-play iteration.
     '''
-    def __init__(self):
+    def __init__(self, iteration: int):
+        self.iteration = iteration
         self.total_games = 0
         self.player_x_wins: list[int] = []
         self.player_o_wins: list[int] = []
@@ -110,13 +145,13 @@ class GameDataStats:
                 "Avg Game Length, Std Game Length, "
                 "Avg Game Time, Std Game Time")
 
-def game_data_list_stats(game_data_list: list[GameData]) -> GameDataStats:
+def game_data_list_stats(iteration: int, game_data_list: list[GameData]) -> GameDataStats:
     '''
     Collects stats about a list of GameData objects.
     This includes the number of games, turns, and players.
     '''
     logger.info(f"Processing {len(game_data_list)} games to get their stats.")
-    stats = GameDataStats()
+    stats = GameDataStats(iteration)
     for game_data in game_data_list:
         stats.total_games += 1
         # get the game length and time,
@@ -143,11 +178,11 @@ def game_data_stats() -> None:
     logger.info("Calculating game data statistics...")
     iteration_stats: list[GameDataStats] = []
     # for each iteration,
-    gd_gen = game_data_generator()
-    for game_data_list in gd_gen:
+    gd_gen = game_data_generator(config.training_dir, config.training_iterations)
+    for i, game_data_list in gd_gen:
         # get the stats for the game data generated in that iteration
         # wins/losses/draws, types of draws, num turns (mean, etc), avg length in time, who won
-        stats = game_data_list_stats(game_data_list)
+        stats = game_data_list_stats(i, game_data_list)
         # add the stats for this iteration to the list
         iteration_stats.append(stats)
     
@@ -161,9 +196,12 @@ def game_data_stats() -> None:
     # log the statistics
     logger.info("Game Data Statistics:")
     logger.info(GameDataStats.get_header())
-    for i, stats in enumerate(iteration_stats):
-        logger.info(f"Iteration {i}: {stats.get_line()}")
+    for stats in iteration_stats:
+        logger.info(f"Iteration {stats.iteration}: {stats.get_line()}")
     
+    # creating series for the game data stats
+    logger.info("Creating series for game data statistics...")
+
     # make plots for the statistics
     logger.info("Plotting game data statistics...")
 
@@ -311,7 +349,7 @@ def main():
     
     logger.info("Starting training data evaluations...")
 
-    check_game_data_accuracy(game_data_generator())
+    check_game_data_accuracy(list(game_data_generator(config.training_dir, config.training_iterations)))
     game_data_stats()
     plot_training_performance_metrics()
 

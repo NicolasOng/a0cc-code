@@ -6,12 +6,9 @@ import jax.numpy as jnp
 from tqdm import tqdm
 
 from cc.core import Board, Game
-from cc.lookups import CCBaselineSolver
-from cc.ranking import CCDefaultRank, CCState
 from cc.ground_truth import GroundTruth
 from a0.dataset import Dataset
 from a0.experience_buffer import ExperienceData
-from a0.game import GameData
 from a0.train.alphazero import board_to_input
 from a0.eval.training_data import game_data_generator
 
@@ -54,14 +51,14 @@ def get_unique_boards_from_training_data() -> set[Board]:
     # these are all list[GameData] objects, where each GameData list
     # contains games generated in a single training iteration
     logger.info("Generating game data lists from training data...")
-    game_data_lists = game_data_generator()
-    
+    game_data_lists = game_data_generator(config.training_dir, config.training_iterations)
+
     # 2. put all of the boards into a single set (to avoid duplicates)
     logger.info("Extracting unique boards from game data...")
     total_boards = 0
     boards_set: set[Board] = set()
-    for game_data_list in tqdm(game_data_lists):
-        for game_data in tqdm(game_data_list):
+    for _, game_data_list in tqdm(game_data_lists):
+        for game_data in game_data_list:
             turn_data = game_data.turn_data
             for turn in turn_data:
                 boards_set.add(turn.board)
@@ -82,11 +79,11 @@ def training_experienced_values(n: int | None = None) -> None:
 
     # 1. get the unique boards (with their outcome/policy) from the training data
     logger.info("Getting unique boards from training data, with their experienced outcome...")
-    game_data_lists = game_data_generator()
+    game_data_lists = game_data_generator(config.training_dir, config.training_iterations)
     total_boards = 0
     boards_set: set[ExperienceData] = set()
-    for game_data_list in tqdm(game_data_lists):
-        for game_data in tqdm(game_data_list):
+    for _, game_data_list in tqdm(game_data_lists):
+        for game_data in game_data_list:
             game_winner = game_data.winner
             turn_data = game_data.turn_data
             for turn in turn_data:
@@ -115,7 +112,7 @@ def training_experienced_values(n: int | None = None) -> None:
     ev_dataset.set(e_board, e_value, e_policy)
 
     # 5. save the Dataset object to config.data_folder + "training_ev.pkl"
-    output_path = f"{config.eval_dir}/training_ev.pkl"
+    output_path = f"{config.dataset_dir}/training_ev.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(ev_dataset, file)
     logger.info(f"Experienced values saved to {output_path}.")
@@ -149,7 +146,7 @@ def create_gtv_dataset_from_board_list(boards: list[Board]):
     return gtv_dataset
 
 def save_dataset(fn: str, dataset: Dataset) -> None:
-    output_path = f"{config.eval_dir}/{fn}.pkl"
+    output_path = f"{config.dataset_dir}/{fn}.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(dataset, file)
     logger.info(f"Dataset saved to {output_path}.")
