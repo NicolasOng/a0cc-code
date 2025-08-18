@@ -67,8 +67,8 @@ class Config:
         os.makedirs(self.validation_dir, exist_ok=True)
         self.stats_dir = self.output_dir + "stats/"
         os.makedirs(self.stats_dir, exist_ok=True)
-        self.dataset_dir = self.output_dir + "datasets/"
-        os.makedirs(self.dataset_dir, exist_ok=True)
+        self.dataset_out_dir = self.output_dir + "datasets/"
+        os.makedirs(self.dataset_out_dir, exist_ok=True)
 
         os.makedirs(self.input_dir, exist_ok=True)
         self.dataset_dir = self.input_dir + "datasets/"

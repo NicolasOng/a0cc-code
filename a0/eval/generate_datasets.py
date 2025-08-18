@@ -112,7 +112,7 @@ def training_experienced_values(n: int | None = None) -> None:
     ev_dataset.set(e_board, e_value, e_policy)
 
     # 5. save the Dataset object to config.data_folder + "training_ev.pkl"
-    output_path = f"{config.dataset_dir}/training_ev.pkl"
+    output_path = f"{config.dataset_out_dir}/training_ev.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(ev_dataset, file)
     logger.info(f"Experienced values saved to {output_path}.")
@@ -146,7 +146,7 @@ def create_gtv_dataset_from_board_list(boards: list[Board]):
     return gtv_dataset
 
 def save_dataset(fn: str, dataset: Dataset) -> None:
-    output_path = f"{config.dataset_dir}/{fn}.pkl"
+    output_path = f"{config.dataset_out_dir}/{fn}.pkl"
     with open(output_path, 'wb') as file:
         pickle.dump(dataset, file)
     logger.info(f"Dataset saved to {output_path}.")

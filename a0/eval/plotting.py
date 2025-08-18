@@ -1,16 +1,8 @@
 import sys
-import os
 
-from typing import Generator
-
-from jax import numpy as jnp
-import jax
-import optax
 import pickle
-from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy.typing import NDArray
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -102,6 +94,21 @@ def plot_std_error(title: str, x: list[int], avg: list[float], std: list[float],
     plt.title(title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
+    plt.grid(True, which='both')
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}/{fn}.png")
+    plt.clf()
+
+def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[float], list[float]]], x_label: str, y_label: str, fn: str):
+    plt.figure(figsize=(16, 9))
+    for line_label, fill_label, x_values, y_values, fill_values in series:
+        plt.plot(x_values, y_values, label=line_label)
+        plt.fill_between(x_values, np.array(y_values) - np.array(fill_values), np.array(y_values) + np.array(fill_values), 
+                        alpha=0.3, label=fill_label)
+    plt.title(title)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.legend()
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}.png")
