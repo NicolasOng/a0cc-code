@@ -311,12 +311,12 @@ def main():
     models = load_models(config.training_dir, config.training_iterations)
 
     # Load the datasets
-    training_dataset = load_dataset(f"{config.eval_dir}/training_gtv.pkl")
-    random_dataset = load_dataset(f"{config.eval_dir}/random_gtv.pkl")
-    training_e_dataset = load_dataset(f"{config.eval_dir}/training_ev.pkl")
+    training_dataset = load_dataset(f"{config.dataset_dir}/training_gtv.pkl")
+    random_dataset = load_dataset(f"{config.dataset_dir}/random_gtv.pkl")
+    training_e_dataset = load_dataset(f"{config.dataset_dir}/training_ev.pkl")
     neighbor_datasets: list[Dataset] = []
     for i in range(2):
-        neighbor_dataset = load_dataset(f"{config.eval_dir}/neighbor_{i+1}_gtv.pkl")
+        neighbor_dataset = load_dataset(f"{config.dataset_dir}/neighbor_{i+1}_gtv.pkl")
         neighbor_datasets.append(neighbor_dataset)
 
     # trim down the training dataset to a smaller size for faster evaluation
