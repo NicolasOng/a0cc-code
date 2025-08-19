@@ -1,11 +1,12 @@
 import pickle
 from tqdm import tqdm
 from typing import Generator
+from collections import defaultdict
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-from cc.core import Player
+from cc.core import Player, Board
 from cc.ground_truth import GroundTruth
 from a0.game import GameData
 from a0.train.dataset import DatasetData, stats_from_dataset_data
@@ -95,6 +96,87 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
         gd_accuracy_series.ys["EB Value Accuracy"].append(eb_acc)
     
     save_series(gd_accuracy_series, f"{config.eval_dir}/gamedata_acc.pkl")
+
+def get_all_games_generated_during_training() -> list[GameData]:
+    '''
+    Retrieves all game data generated during training.
+    '''
+    logger.info("Retrieving all games generated during training...")
+    all_games: list[GameData] = []
+    gd_gen = game_data_generator(config.training_dir, config.training_iterations)
+    for _, game_data_list in gd_gen:
+        all_games.extend(game_data_list)
+    logger.info(f"Retrieved {len(all_games)} games.")
+    return all_games
+
+def duplicate_states_analysis(game_data_list: list[GameData]) -> None:
+    # create a dict of all boards and their accuracies.
+    logger.info("Analyzing duplicate game states...")
+    gt = GroundTruth()
+    state_accuracy: dict[Board, list[bool]] = dict()
+    total_states_seen = 0
+    for _, game_data in enumerate(game_data_list):
+        winner = game_data.winner
+        # go through each turn
+        for _, game_state in enumerate(game_data.turn_data):
+            total_states_seen += 1
+            board = game_state.board
+            if board not in state_accuracy:
+                state_accuracy[board] = []
+            # check if the experienced outcome matches the ground truth
+            sd_outcome = gt.get_outcome(board)
+            gd_outcome = 0 if winner is None else 1 if winner == board.current_player else -1
+            state_accuracy[board].append(sd_outcome == gd_outcome)
+    
+    # now we can run analysis on this info.
+    percent_unique = len(state_accuracy) / total_states_seen if total_states_seen > 0 else 0
+    logger.info(f"Found {len(state_accuracy)} unique game states.")
+    logger.info(f"Percentage of unique game states: {percent_unique:.2%} ({len(state_accuracy)}/{total_states_seen})")
+
+    # state_seen_count: dict[how many times state was seen] = number of states seen that many times
+    state_seen_count: defaultdict[int, int] = defaultdict(int)
+    # for each unique state,
+    for accuracies in state_accuracy.values():
+        # count how many times it was seen,
+        # and add 1 to the number of states seen that many times.
+        state_seen_count[len(accuracies)] += 1
+
+    # log the state seen count
+    i = 0
+    for seen_count, num_states in sorted(state_seen_count.items()):
+        logger.info(f"States seen {seen_count} times: {num_states}")
+        i += 1
+        if i >= 10: break
+
+    seen_counts = sorted(state_seen_count.keys())
+    num_states_counts = [state_seen_count[count] for count in seen_counts]
+    plt.figure(figsize=(12, 6))
+    #plt.yscale('log')
+    plt.bar(seen_counts, num_states_counts, width=1.0)
+    plt.xlabel('Number of Times State Was Seen')
+    plt.ylabel('Number of States')
+    plt.title('Distribution of State Repetition Frequency')
+    plt.grid(axis='y', alpha=0.3)
+    plt.show()
+    plt.clf()
+
+    counts_list = sorted([len(accuracies) for accuracies in state_accuracy.values()], reverse=True)
+    i = 0
+    for count in counts_list:
+        logger.info(f"State seen {count} times.")
+        i += 1
+        if i >= 10: break
+    
+    plt.figure(figsize=(12, 6))
+    plt.yscale('log')
+    plt.bar(list(range(len(counts_list))), counts_list, width=1.0)
+    plt.ylabel('Number of Times State Was Seen (LOG SCALE)')
+    plt.xlabel('States from Most to Least Seen')
+    plt.title('Distribution of State Repetition Frequency')
+    plt.grid(axis='y', alpha=0.3)
+    plt.show()
+    plt.clf()
+
 
 class GameDataStats:
     '''
@@ -235,6 +317,9 @@ def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='training_data_evals')
     
     logger.info("Starting training data evaluations...")
+
+    duplicate_states_analysis(get_all_games_generated_during_training())
+    exit()
 
     check_game_data_accuracy(list(game_data_generator(config.training_dir, config.training_iterations)))
     get_stats_of_each_iterations_game_data()
