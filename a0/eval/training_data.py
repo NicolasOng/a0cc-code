@@ -133,50 +133,125 @@ def duplicate_states_analysis(game_data_list: list[GameData]) -> None:
     logger.info(f"Found {len(state_accuracy)} unique game states.")
     logger.info(f"Percentage of unique game states: {percent_unique:.2%} ({len(state_accuracy)}/{total_states_seen})")
 
-    # state_seen_count: dict[how many times state was seen] = number of states seen that many times
-    state_seen_count: defaultdict[int, int] = defaultdict(int)
-    # for each unique state,
-    for accuracies in state_accuracy.values():
-        # count how many times it was seen,
-        # and add 1 to the number of states seen that many times.
-        state_seen_count[len(accuracies)] += 1
+    graph_state_seen_counts = False
+    if graph_state_seen_counts:
+        # state_seen_count: dict[how many times state was seen] = number of states seen that many times
+        state_seen_count: defaultdict[int, int] = defaultdict(int)
+        # for each unique state,
+        for accuracies in state_accuracy.values():
+            # count how many times it was seen,
+            # and add 1 to the number of states seen that many times.
+            state_seen_count[len(accuracies)] += 1
 
-    # log the state seen count
-    i = 0
-    for seen_count, num_states in sorted(state_seen_count.items()):
-        logger.info(f"States seen {seen_count} times: {num_states}")
-        i += 1
-        if i >= 10: break
+        # log the state seen count
+        i = 0
+        for seen_count, num_states in sorted(state_seen_count.items()):
+            logger.info(f"States seen {seen_count} times: {num_states}")
+            i += 1
+            if i >= 10: break
 
-    seen_counts = sorted(state_seen_count.keys())
-    num_states_counts = [state_seen_count[count] for count in seen_counts]
-    plt.figure(figsize=(12, 6))
-    #plt.yscale('log')
-    plt.bar(seen_counts, num_states_counts, width=1.0)
-    plt.xlabel('Number of Times State Was Seen')
-    plt.ylabel('Number of States')
-    plt.title('Distribution of State Repetition Frequency')
-    plt.grid(axis='y', alpha=0.3)
-    plt.show()
-    plt.clf()
+        seen_counts = sorted(state_seen_count.keys())
+        num_states_counts = [state_seen_count[count] for count in seen_counts]
+        plt.figure(figsize=(12, 6))
+        #plt.yscale('log')
+        plt.bar(seen_counts, num_states_counts, width=1.0)
+        plt.xlabel('Number of Times State Was Seen')
+        plt.ylabel('Number of States')
+        plt.title('Distribution of State Repetition Frequency')
+        plt.grid(axis='y', alpha=0.3)
+        plt.show()
+        plt.clf()
 
-    counts_list = sorted([len(accuracies) for accuracies in state_accuracy.values()], reverse=True)
-    i = 0
-    for count in counts_list:
-        logger.info(f"State seen {count} times.")
-        i += 1
-        if i >= 10: break
+    graph_unique_seen_counts_descending = False
+    if graph_unique_seen_counts_descending:
+        # counts list: number of times each unique state was seen, descending order
+        counts_list = sorted([len(accuracies) for accuracies in state_accuracy.values()], reverse=True)
+        i = 0
+        for count in counts_list:
+            logger.info(f"State seen {count} times.")
+            i += 1
+            if i >= 10: break
+        
+        plt.figure(figsize=(12, 6))
+        plt.yscale('log')
+        plt.bar(list(range(len(counts_list))), counts_list, width=1.0)
+        plt.ylabel('Number of Times State Was Seen (LOG SCALE)')
+        plt.xlabel('States from Most to Least Seen')
+        plt.title('Distribution of State Repetition Frequency')
+        plt.grid(axis='y', alpha=0.3)
+        plt.show()
+        plt.clf()
     
-    plt.figure(figsize=(12, 6))
-    plt.yscale('log')
-    plt.bar(list(range(len(counts_list))), counts_list, width=1.0)
-    plt.ylabel('Number of Times State Was Seen (LOG SCALE)')
-    plt.xlabel('States from Most to Least Seen')
-    plt.title('Distribution of State Repetition Frequency')
-    plt.grid(axis='y', alpha=0.3)
-    plt.show()
-    plt.clf()
+    graph_binned_counts_vars_accs = True
+    if graph_binned_counts_vars_accs:
+        # bin counts, accuracies, and variance.
+        acc_var_dict: dict[int, tuple[int, float, float]] = defaultdict(lambda: (0, 0.0, 0.0))
+        thresholds = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
 
+        for state in state_accuracy:
+            accuracies = state_accuracy[state]
+            times_seen = len(accuracies)
+            acc = float(np.mean(accuracies))
+            variance = 4 * (acc * (1 - acc))
+            new_tuple = (1, acc, variance)
+
+            key = None
+            for threshold in thresholds:
+                if times_seen <= threshold:
+                    key = threshold
+                    break
+            if key is None:
+                assert False, f"Unbinned state with {times_seen} seen"
+
+            old_tuple = acc_var_dict[key]
+            acc_var_dict[key] = (new_tuple[0] + old_tuple[0], new_tuple[1] + old_tuple[1], new_tuple[2] + old_tuple[2])
+        
+        # average the accuracies and variances
+        for key in acc_var_dict:
+            count, total_acc, total_var = acc_var_dict[key]
+            acc_var_dict[key] = (count, total_acc / count if count > 0 else 0, total_var / count if count > 0 else 0)
+        
+        # graph this
+        x_labels = []
+        y_means = []
+        y_vars = []
+        y_counts = []
+        prev_key = 0
+        for key in thresholds:
+            count, mean_acc, mean_var = acc_var_dict[key]
+            x_labels.append(f"{prev_key + 1}-{key}")
+            y_means.append(mean_acc)
+            y_vars.append(mean_var)
+            y_counts.append(count)
+            prev_key = key
+
+        plt.figure(figsize=(12, 6))
+        plt.bar(x_labels, y_counts, alpha=0.5, label='Number of States')
+        plt.xlabel('Number of Times State Was Seen Bins')
+        plt.ylabel('Number of States')
+        plt.title('Number of States by State Seen Count')
+        plt.legend()
+        plt.grid(axis='y', alpha=0.3)
+        plt.show()
+
+        plt.figure(figsize=(12, 6))
+        plt.bar(x_labels, y_means, alpha=0.5, label='Mean Accuracy')
+        plt.xlabel('Number of Times State Was Seen Bins')
+        plt.ylabel('Accuracy')
+        plt.title('Mean Accuracy by State Seen Count')
+        plt.legend()
+        plt.grid(axis='y', alpha=0.3)
+        plt.show()
+        plt.clf()
+
+        plt.figure(figsize=(12, 6))
+        plt.bar(x_labels, y_vars, alpha=0.5, label='Mean Variance')
+        plt.xlabel('Number of Times State Was Seen Bins')
+        plt.ylabel('Variance')
+        plt.title('Mean Variance by State Seen Count')
+        plt.legend()
+        plt.grid(axis='y', alpha=0.3)
+        plt.show()
 
 class GameDataStats:
     '''
