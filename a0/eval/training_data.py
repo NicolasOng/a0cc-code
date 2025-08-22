@@ -2,6 +2,7 @@ import pickle
 from tqdm import tqdm
 from typing import Generator
 from collections import defaultdict
+import random
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -109,9 +110,13 @@ def get_all_games_generated_during_training() -> list[GameData]:
     logger.info(f"Retrieved {len(all_games)} games.")
     return all_games
 
-def duplicate_states_analysis(game_data_list: list[GameData]) -> None:
-    # create a dict of all boards and their accuracies.
-    logger.info("Analyzing duplicate game states...")
+def get_state_accuracy_dict(game_data_list: list[GameData]) -> dict[Board, list[bool]]:
+    '''
+    Given a list of GameData, returns a dict in the form of:
+    dict[Board] = list[bool],
+    where the list represents the accuracy of the training data for that state,
+    each time it is seen.
+    '''
     gt = GroundTruth()
     state_accuracy: dict[Board, list[bool]] = dict()
     total_states_seen = 0
@@ -130,15 +135,57 @@ def duplicate_states_analysis(game_data_list: list[GameData]) -> None:
     
     # now we can run analysis on this info.
     percent_unique = len(state_accuracy) / total_states_seen if total_states_seen > 0 else 0
-    logger.info(f"Found {len(state_accuracy)} unique game states.")
+    logger.info(f"Found {len(state_accuracy)} unique game states in the given game data list.")
     logger.info(f"Percentage of unique game states: {percent_unique:.2%} ({len(state_accuracy)}/{total_states_seen})")
 
-    graph_state_seen_counts = False
+    return state_accuracy
+
+def get_state_accuracy_dicts(game_data_lists: list[tuple[int, list[GameData]]]) -> list[dict[Board, list[bool]]]:
+    '''
+    Given a list of lists of GameData objects,
+    generates a state accuracy dict for each list.
+    '''
+    return [get_state_accuracy_dict(game_data_list) for _, game_data_list in game_data_lists]
+
+def split_by_visited_seen_bins(state_accuracy: dict[Board, list[bool]], thresholds: list[int]) -> list[dict[Board, list[bool]]]:
+    '''
+    Splits the state accuracy data into bins based on thresholds for visits.
+    '''
+    # create a list to hold the binned data
+    binned_data: list[dict[Board, list[bool]]] = []
+    threshold_2_idx = {threshold: i for i, threshold in enumerate(thresholds)}
+    for threshold in thresholds:
+        binned_data.append(dict())
+    # for each state in the state_acc dict,
+    for state in state_accuracy:
+        # get how many times it was seen
+        accuracies = state_accuracy[state]
+        times_seen = len(accuracies)
+
+        # determine which bin to put it into
+        bin = None
+        for threshold in thresholds:
+            if times_seen <= threshold:
+                bin = threshold
+                break
+        if bin is None:
+            assert False, f"Unbinned state with {times_seen} seen"
+
+        # add it to the bin
+        binned_data[threshold_2_idx[bin]][state] = accuracies
+
+    return binned_data
+
+def duplicate_states_analysis(state_acc_dicts: list[dict[Board, list[bool]]], thresholds: list[int] | None = None) -> None:
+    # create a dict of all boards and their accuracies.
+    logger.info("Analyzing duplicate game states...")
+
+    graph_state_seen_counts = len(state_acc_dicts) == 1
     if graph_state_seen_counts:
         # state_seen_count: dict[how many times state was seen] = number of states seen that many times
         state_seen_count: defaultdict[int, int] = defaultdict(int)
         # for each unique state,
-        for accuracies in state_accuracy.values():
+        for accuracies in state_acc_dicts[0].values():
             # count how many times it was seen,
             # and add 1 to the number of states seen that many times.
             state_seen_count[len(accuracies)] += 1
@@ -162,10 +209,10 @@ def duplicate_states_analysis(game_data_list: list[GameData]) -> None:
         plt.show()
         plt.clf()
 
-    graph_unique_seen_counts_descending = False
+    graph_unique_seen_counts_descending = len(state_acc_dicts) == 1
     if graph_unique_seen_counts_descending:
         # counts list: number of times each unique state was seen, descending order
-        counts_list = sorted([len(accuracies) for accuracies in state_accuracy.values()], reverse=True)
+        counts_list = sorted([len(accuracies) for accuracies in state_acc_dicts[0].values()], reverse=True)
         i = 0
         for count in counts_list:
             logger.info(f"State seen {count} times.")
@@ -185,73 +232,119 @@ def duplicate_states_analysis(game_data_list: list[GameData]) -> None:
     graph_binned_counts_vars_accs = True
     if graph_binned_counts_vars_accs:
         # bin counts, accuracies, and variance.
-        acc_var_dict: dict[int, tuple[int, float, float]] = defaultdict(lambda: (0, 0.0, 0.0))
-        thresholds = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]
+        acc_var_dict: dict[int, tuple[int, int, float, float, float]] = defaultdict(lambda: (0, 0, 0.0, 0.0, 0.0))
 
-        for state in state_accuracy:
-            accuracies = state_accuracy[state]
-            times_seen = len(accuracies)
-            acc = float(np.mean(accuracies))
-            variance = 4 * (acc * (1 - acc))
-            new_tuple = (1, acc, variance)
+        for key, state_accuracy in enumerate(state_acc_dicts):
+            for state in state_accuracy:
+                accuracies = state_accuracy[state]
+                times_seen = len(accuracies)
 
-            key = None
-            for threshold in thresholds:
-                if times_seen <= threshold:
-                    key = threshold
-                    break
-            if key is None:
-                assert False, f"Unbinned state with {times_seen} seen"
+                #accuracies = [1 if random.random() < 0.5 else 0 for _ in range(times_seen)]
 
-            old_tuple = acc_var_dict[key]
-            acc_var_dict[key] = (new_tuple[0] + old_tuple[0], new_tuple[1] + old_tuple[1], new_tuple[2] + old_tuple[2])
-        
+                acc = float(np.mean(accuracies))
+                variance = 4 * (acc * (1 - acc))
+                consensus_acc = 0.5 if acc == 0.5 else 1 if acc > 0.5 else 0
+                new_tuple = (1, times_seen, acc * times_seen, variance, consensus_acc)
+
+                old_tuple = acc_var_dict[key]
+                acc_var_dict[key] = (
+                    new_tuple[0] + old_tuple[0],
+                    new_tuple[1] + old_tuple[1],
+                    new_tuple[2] + old_tuple[2],
+                    new_tuple[3] + old_tuple[3],
+                    new_tuple[4] + old_tuple[4]
+                )
+
         # average the accuracies and variances
+        # overall_acc = 0
+        # overall_var = 0
+        # overall_consensus = 0
+        # total_unique_count = 0
+        # total_total_count = 0
         for key in acc_var_dict:
-            count, total_acc, total_var = acc_var_dict[key]
-            acc_var_dict[key] = (count, total_acc / count if count > 0 else 0, total_var / count if count > 0 else 0)
-        
+            unique_count, total_count, total_acc, total_var, total_consensus = acc_var_dict[key]
+            # overall_acc += total_acc
+            # overall_var += total_var
+            # overall_consensus += total_consensus
+            # total_unique_count += unique_count
+            # total_total_count += total_count
+            acc_var_dict[key] = (unique_count, total_count, total_acc / total_count if total_count > 0 else 0, total_var / unique_count if unique_count > 0 else 0, total_consensus / unique_count if unique_count > 0 else 0)
+        # average the accuracies and variances
+        # overall_acc = overall_acc / total_total_count if total_total_count > 0 else 0
+        # overall_var = overall_var / total_unique_count if total_unique_count > 0 else 0
+        # overall_consensus = overall_consensus / total_unique_count if total_unique_count > 0 else 0
+        # overall_unique = total_unique_count / total_total_count if total_total_count > 0 else 0
+
         # graph this
         x_labels = []
         y_means = []
         y_vars = []
-        y_counts = []
+        y_tcounts = []
+        y_ucounts = []
+        y_consensus = []
         prev_key = 0
-        for key in thresholds:
-            count, mean_acc, mean_var = acc_var_dict[key]
-            x_labels.append(f"{prev_key + 1}-{key}")
+        for key in sorted(acc_var_dict.keys()):
+            unique_count, total_count, mean_acc, mean_var, mean_consensus = acc_var_dict[key]
+            xl = f"{key}"
+            if thresholds is not None:
+                cur_key = thresholds[key]
+                xl = f"{prev_key + 1}-{cur_key}"
+            x_labels.append(xl)
             y_means.append(mean_acc)
             y_vars.append(mean_var)
-            y_counts.append(count)
+            y_ucounts.append(unique_count)
+            y_tcounts.append(total_count - unique_count)
+            y_consensus.append(mean_consensus)
             prev_key = key
+        
+        x_label = 'Iteration'
+        by = "Iteration"
+        if thresholds is not None:
+            x_label = 'Number of Times State Was Seen Bins' 
+            by = "State Seen Count" 
 
         plt.figure(figsize=(12, 6))
-        plt.bar(x_labels, y_counts, alpha=0.5, label='Number of States')
-        plt.xlabel('Number of Times State Was Seen Bins')
-        plt.ylabel('Number of States')
-        plt.title('Number of States by State Seen Count')
+        plt.bar(x_labels, y_ucounts, label='Unique States')
+        plt.bar(x_labels, y_tcounts, bottom=y_ucounts, label='Duplicate States')
+        plt.xlabel(x_label)
+        plt.ylabel('Number of Unique States')
+        plt.title(f'Number of Unique States by {by}')
         plt.legend()
         plt.grid(axis='y', alpha=0.3)
         plt.show()
 
         plt.figure(figsize=(12, 6))
         plt.bar(x_labels, y_means, alpha=0.5, label='Mean Accuracy')
-        plt.xlabel('Number of Times State Was Seen Bins')
+        plt.xlabel(x_label)
         plt.ylabel('Accuracy')
-        plt.title('Mean Accuracy by State Seen Count')
+        plt.title(f'Mean Accuracy by {by}')
         plt.legend()
         plt.grid(axis='y', alpha=0.3)
+        plt.ylim(0, 1)  # Set y-axis from 0 to 1
         plt.show()
         plt.clf()
 
         plt.figure(figsize=(12, 6))
         plt.bar(x_labels, y_vars, alpha=0.5, label='Mean Variance')
-        plt.xlabel('Number of Times State Was Seen Bins')
+        plt.xlabel(x_label)
         plt.ylabel('Variance')
-        plt.title('Mean Variance by State Seen Count')
+        plt.title(f'Mean Variance by {by}')
         plt.legend()
         plt.grid(axis='y', alpha=0.3)
+        plt.ylim(0, 1)  # Set y-axis from 0 to 1
         plt.show()
+        plt.clf()
+
+        plt.figure(figsize=(12, 6))
+        plt.bar(x_labels, y_consensus, alpha=0.5, label='Mean Consensus')
+        plt.xlabel(x_label)
+        plt.ylabel('Consensus')
+        plt.title(f'Mean Consensus by {by}')
+        plt.legend()
+        plt.grid(axis='y', alpha=0.3)
+        plt.ylim(0, 1)  # Set y-axis from 0 to 1
+        plt.show()
+    
 
 class GameDataStats:
     '''
@@ -393,7 +486,16 @@ def main():
     
     logger.info("Starting training data evaluations...")
 
-    duplicate_states_analysis(get_all_games_generated_during_training())
+    # by iteration
+    # state_acc_dicts = get_state_accuracy_dicts(list(game_data_generator(config.training_dir, config.training_iterations)))
+    # duplicate_states_analysis(state_acc_dicts)
+    # by seen bins
+    #thresholds = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+    #state_acc_dicts = split_by_visited_seen_bins(get_state_accuracy_dict(get_all_games_generated_during_training()), thresholds)
+    #duplicate_states_analysis(state_acc_dicts, thresholds)
+    # overall
+    state_acc_dicts = [get_state_accuracy_dict(get_all_games_generated_during_training())]
+    duplicate_states_analysis(state_acc_dicts)
     exit()
 
     check_game_data_accuracy(list(game_data_generator(config.training_dir, config.training_iterations)))
