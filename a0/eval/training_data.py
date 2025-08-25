@@ -229,7 +229,7 @@ def duplicate_states_analysis(state_acc_dicts: list[dict[Board, list[bool]]], th
         plt.show()
         plt.clf()
     
-    graph_binned_counts_vars_accs = True
+    graph_binned_counts_vars_accs = False
     if graph_binned_counts_vars_accs:
         # bin counts, accuracies, and variance.
         acc_var_dict: dict[int, tuple[int, int, float, float, float]] = defaultdict(lambda: (0, 0, 0.0, 0.0, 0.0))
@@ -345,6 +345,83 @@ def duplicate_states_analysis(state_acc_dicts: list[dict[Board, list[bool]]], th
         plt.ylim(0, 1)  # Set y-axis from 0 to 1
         plt.show()
     
+    acc_states_over_time = True
+    if acc_states_over_time:
+        # board: list[tuple(iteration, num seen, cum num seen, acc, cum acc)]
+        board_stats_dict: dict[Board, list[tuple[int, int, int, float, float]]] = defaultdict(list)
+        # generate the dict
+        for iteration, state_accuracy in enumerate(state_acc_dicts):
+            for state in state_accuracy:
+                accuracies = state_accuracy[state]
+
+                times_seen = len(accuracies)
+                cum_times_seen = sum([t[1] for t in board_stats_dict[state]]) + times_seen
+
+                acc = float(np.mean(accuracies))
+                cum_acc = (sum([t[1] * t[3] for t in board_stats_dict[state]]) + (times_seen * acc)) / cum_times_seen
+
+                board_stats_dict[state].append((iteration, times_seen, cum_times_seen, acc, cum_acc))
+
+        # make the iterations all start at 0
+        for state in board_stats_dict.keys():
+            start_idx = board_stats_dict[state][0][0]
+            board_stats_dict[state] = [(stats[0] - start_idx, stats[1], stats[2], stats[3], stats[4]) for stats in board_stats_dict[state]]
+        
+        # get an average for each measure at all iterations.
+        average_stats: dict[str, list[float]] = defaultdict(list)
+        its: list[int] = []
+        for iteration, _ in enumerate(state_acc_dicts):
+            total_seen = 0
+            total_cum_seen = 0
+            total_acc = 0
+            total_cum_acc = 0
+            total = 0
+            for _, stats in board_stats_dict.items():
+                for t in stats:
+                    if t[0] == iteration:
+                        total_seen += t[1]
+                        total_cum_seen += t[2]
+                        total_acc += t[3]
+                        total_cum_acc += t[4]
+                        total += 1
+            average_stats["Times Seen"].append(total_seen / total)
+            average_stats["Cumulative Times Seen"].append(total_cum_seen / total)
+            average_stats["Accuracy"].append(total_acc / total)
+            average_stats["Cumulative Accuracy"].append(total_cum_acc / total)
+            its.append(iteration)
+
+        # plot all the graphs
+        plot_state_stats(board_stats_dict, 'Times Seen', its, average_stats["Times Seen"])
+        plot_state_stats(board_stats_dict, 'Cumulative Times Seen', its, average_stats["Cumulative Times Seen"])
+        plot_state_stats(board_stats_dict, 'Accuracy', its, average_stats["Accuracy"])
+        plot_state_stats(board_stats_dict, 'Cumulative Accuracy', its, average_stats["Cumulative Accuracy"])
+
+def plot_state_stats(board_stats_dict: dict[Board, list[tuple[int, int, int, float, float]]], mode: str, its: list[int], avg: list[float]):
+    plt.figure(figsize=(12, 6))
+    #plt.yscale('log')
+    for _, stats in board_stats_dict.items():
+        iterations = [s[0] for s in stats]
+        times_seen = [s[1] for s in stats]
+        cum_times_seen = [s[2] for s in stats]
+        acc = [s[3] for s in stats]
+        cum_acc = [s[4] for s in stats]
+        if mode == 'Times Seen':
+            plt.plot(iterations, times_seen, label='Times Seen', color='black', alpha=0.1)
+        elif mode == 'Cumulative Times Seen':
+            plt.plot(iterations, cum_times_seen, label='Cumulative Times Seen', color='black', alpha=0.1)
+        elif mode == 'Accuracy':
+            plt.plot(iterations, acc, label='Accuracy', color='black', alpha=0.1)
+        elif mode == 'Cumulative Accuracy':
+            plt.plot(iterations, cum_acc, label='Cumulative Accuracy', color='black', alpha=0.1)
+    plt.plot(its, avg, label='Average', color='red')
+    plt.xlabel('T+ Iteration')
+    plt.ylabel(mode)
+    plt.title(f"State {mode} over T+ Iterations")
+    plt.grid()
+    plt.tight_layout()
+    plt.show()
+    plt.clf()
+
 
 class GameDataStats:
     '''
@@ -487,15 +564,15 @@ def main():
     logger.info("Starting training data evaluations...")
 
     # by iteration
-    # state_acc_dicts = get_state_accuracy_dicts(list(game_data_generator(config.training_dir, config.training_iterations)))
-    # duplicate_states_analysis(state_acc_dicts)
+    state_acc_dicts = get_state_accuracy_dicts(list(game_data_generator(config.training_dir, config.training_iterations)))
+    duplicate_states_analysis(state_acc_dicts)
     # by seen bins
     #thresholds = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
     #state_acc_dicts = split_by_visited_seen_bins(get_state_accuracy_dict(get_all_games_generated_during_training()), thresholds)
     #duplicate_states_analysis(state_acc_dicts, thresholds)
     # overall
-    state_acc_dicts = [get_state_accuracy_dict(get_all_games_generated_during_training())]
-    duplicate_states_analysis(state_acc_dicts)
+    # state_acc_dicts = [get_state_accuracy_dict(get_all_games_generated_during_training())]
+    # duplicate_states_analysis(state_acc_dicts)
     exit()
 
     check_game_data_accuracy(list(game_data_generator(config.training_dir, config.training_iterations)))
