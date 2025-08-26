@@ -18,16 +18,16 @@ def main():
     #human_player = RandomPlayer()
 
     # other_player = MCTSRolloutPlayer(board_size=config.board_size, num_pieces=config.num_pieces, no_reverse_moves=False)
-    
-    # other_player = GroundTruthPlayer(print_info=True)
+
+    # other_player = GroundTruthPlayer(mistake_rate=0.1, print_info=True)
 
     model_filename = "..."
     model = load_model(model_filename)
-    #other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
-    other_player = A0Player(board_size=config.board_size, num_pieces=config.num_pieces, model=model, exploit=True)
+    other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
+    #other_player = A0Player(board_size=config.board_size, num_pieces=config.num_pieces, model=model, exploit=True)
 
     results = play(
-        Game(config.board_size, config.num_pieces, True, False, False),
+        Game(config.board_size, config.num_pieces, True, False, True),
         players=[
             other_player,
             human_player

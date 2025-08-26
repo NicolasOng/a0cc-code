@@ -44,6 +44,7 @@ def _play_single_game(serialized_player1: bytes, serialized_player2: bytes) -> G
     '''
     Helper function to play a single game between two serialized players.
     '''
+    setup_logging(level=20, log_dir=config.log_dir, process_name='player_evaluation')
     player1 = dill.loads(serialized_player1)
     player2 = dill.loads(serialized_player2)
     return single_game(player1, player2)

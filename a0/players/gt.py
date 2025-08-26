@@ -1,4 +1,5 @@
 from __future__ import annotations
+import random
 from typing import Any
 
 from cc.core import Board, Move
@@ -6,9 +7,10 @@ from cc.ground_truth import GroundTruth
 from a0.model_utils import Policy
 
 class GroundTruthPlayer:
-    def __init__(self, print_info: bool = False):
+    def __init__(self, mistake_rate: float = 0.0, print_info: bool = False):
         # data from solve data file and game details in config
         self.gt = GroundTruth()
+        self.mistake_rate = mistake_rate
         self.print_info = print_info
 
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
@@ -40,6 +42,10 @@ class GroundTruthPlayer:
                 f"\nLosses: {count_losses} ({count_losses / total_moves if total_moves > 0 else 0:.2%}),"
                 f"\nDraws: {count_draws} ({count_draws / total_moves if total_moves > 0 else 0:.2%})")
 
+        if self.mistake_rate > 0:
+            # introduce some randomness in the move selection
+            if random.random() < self.mistake_rate:
+                print("Choosing random move.")
+                selected_move = random.choice(moves)
 
-        # return the selected move and the mcts policy distribution
         return selected_move, None
