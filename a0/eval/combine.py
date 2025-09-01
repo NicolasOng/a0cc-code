@@ -157,10 +157,10 @@ def main():
     
     plot_shaded_error("Policy Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
-                          ("Seen Accuracy", "±95% CI", train_gt_series.x, train_gt_series.ys["value_accuracy"], train_gt_series.ys["policy_accuracy_ci"]),
-                          ("Neighbor 1 Accuracy", "±95% CI", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["value_accuracy"], n_neighbor_gt_series[0].ys["policy_accuracy_ci"]),
-                          ("Neighbor 2 Accuracy", "±95% CI", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["value_accuracy"], n_neighbor_gt_series[1].ys["policy_accuracy_ci"]),
-                          ("Random Accuracy", "±95% CI", random_gt_series.x, random_gt_series.ys["value_accuracy"], random_gt_series.ys["policy_accuracy_ci"]),
+                          ("Seen Accuracy", "±95% CI", train_gt_series.x, train_gt_series.ys["policy_accuracy"], train_gt_series.ys["policy_accuracy_ci"]),
+                          ("Neighbor 1 Accuracy", "±95% CI", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["policy_accuracy"], n_neighbor_gt_series[0].ys["policy_accuracy_ci"]),
+                          ("Neighbor 2 Accuracy", "±95% CI", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["policy_accuracy"], n_neighbor_gt_series[1].ys["policy_accuracy_ci"]),
+                          ("Random Accuracy", "±95% CI", random_gt_series.x, random_gt_series.ys["policy_accuracy"], random_gt_series.ys["policy_accuracy_ci"]),
                           #("Training Data Accuracy", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"], gd_accuracy_series.ys["Iteration Value Accuracy_ci"]),
                       ], "Iterations", "Accuracy", "merged_full_accuracy_policy_ci")
 
