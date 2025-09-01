@@ -204,7 +204,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
 
         if test_dataset is not None and ts % batches_per_save == 0:
             # evaluate the model on the test dataset every ... batches
-            avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy = evaluate_model(model, test_dataset, cur_model_no)
+            avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy = evaluate_model(model, test_dataset)
             test_data = TestData()
             test_data.value_loss = avg_value_loss
             test_data.policy_loss = avg_policy_loss

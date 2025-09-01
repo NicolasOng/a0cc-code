@@ -113,7 +113,7 @@ def main():
         train_dataset = get_generated_gamedata_dataset(50000, simulated=True, sim_value_acc=0.5377, sim_policy_acc=0.4239)
     else:
         train_dataset = get_generated_gamedata_dataset(50000)
-    
+    train_dataset.shuffle()
 
     # try to load the ground truth dataset, if it exists
     # if not, generate it
