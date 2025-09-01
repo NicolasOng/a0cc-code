@@ -98,6 +98,8 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
     
     save_series(gd_accuracy_series, f"{config.eval_dir}/gamedata_acc.pkl")
 
+    # TODO: Calculate and log the overall accuracy
+
 def get_all_games_generated_during_training() -> list[GameData]:
     '''
     Retrieves all game data generated during training.
