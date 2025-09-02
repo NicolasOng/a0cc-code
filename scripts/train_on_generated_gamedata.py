@@ -130,7 +130,7 @@ def main():
     gt_dataset.trim(100000, shuffle=False)
     gt_dataset_test = gt_dataset.split_off_test(len(gt_dataset) // 10, shuffle=True)
 
-    train_model_on_given_dataset(train_dataset, num_epochs=5, save_type='none', test_dataset=gt_dataset_test)
+    train_model_on_given_dataset(train_dataset, num_epochs=1, save_type='batch', test_dataset=gt_dataset_test)
 
 if __name__ == "__main__":
     main()

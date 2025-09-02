@@ -566,8 +566,8 @@ def main():
     logger.info("Starting training data evaluations...")
 
     # by iteration
-    state_acc_dicts = get_state_accuracy_dicts(list(game_data_generator(config.training_dir, config.training_iterations)))
-    duplicate_states_analysis(state_acc_dicts)
+    #state_acc_dicts = get_state_accuracy_dicts(list(game_data_generator(config.training_dir, config.training_iterations)))
+    #duplicate_states_analysis(state_acc_dicts)
     # by seen bins
     #thresholds = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
     #state_acc_dicts = split_by_visited_seen_bins(get_state_accuracy_dict(get_all_games_generated_during_training()), thresholds)
@@ -575,7 +575,7 @@ def main():
     # overall
     # state_acc_dicts = [get_state_accuracy_dict(get_all_games_generated_during_training())]
     # duplicate_states_analysis(state_acc_dicts)
-    exit()
+    #exit()
 
     check_game_data_accuracy(list(game_data_generator(config.training_dir, config.training_iterations)))
     get_stats_of_each_iterations_game_data()
