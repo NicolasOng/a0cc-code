@@ -66,7 +66,7 @@ def get_generated_gamedata_dataset(n: int | None = None, simulated: bool = False
                 if simulated:
                     experience = ExperienceData(jnp.array(board_to_input(board)), simulated_outcome, jnp.zeros_like(experienced_policy))
                 else:
-                    experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, experienced_policy)
+                    experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, jnp.zeros_like(experienced_policy))
 
                 # add this to a set
                 boards_set.add(experience)
