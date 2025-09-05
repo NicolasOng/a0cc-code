@@ -133,6 +133,7 @@ def main():
     
     gamedata_series = load_series(f"{config.eval_dir}/gamedata_stats.pkl")
     gd_accuracy_series = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
+    gd_overall_accuracy_series = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
     training_metrics = load_series(f"{config.eval_dir}/training_metrics.pkl")
 
     # plot all the series
@@ -168,46 +169,40 @@ def main():
             ],
             "Iteration", "Accuracy", f"neighbor_{i+1}_gtv_eval"
         )
-
-    plot_given("Model Performance on Ground Truth of States",
-               [
-                   ("Seen Accuracy", train_gt_series.x, train_gt_series.ys["value_accuracy"]),
-                   ("Neighbor 1 Accuracy", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["value_accuracy"]),
-                   ("Neighbor 2 Accuracy", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["value_accuracy"]),
-                   ("Random Accuracy", random_gt_series.x, random_gt_series.ys["value_accuracy"])
-               ],
-               "Iteration", "Accuracy", "neighbor_accuracy")
     
     plot_given("Value Head Model Performance on Ground Truth of States and Training Data Accuracy",
                [
-                   ("Seen Accuracy", train_gt_series.x, train_gt_series.ys["value_accuracy"]),
-                   ("Neighbor 1 Accuracy", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["value_accuracy"]),
-                   ("Neighbor 2 Accuracy", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["value_accuracy"]),
-                   ("Random Accuracy", random_gt_series.x, random_gt_series.ys["value_accuracy"]),
-                   ("Training Data Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"])
+                    ("Seen Accuracy", train_gt_series.x, train_gt_series.ys["value_accuracy"]),
+                    ("Neighbor 1 Accuracy", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["value_accuracy"]),
+                    ("Neighbor 2 Accuracy", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["value_accuracy"]),
+                    ("Random Accuracy", random_gt_series.x, random_gt_series.ys["value_accuracy"]),
+                    ("Training Data Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"]),
+                    ("Overall Training Data Accuracy", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Value Accuracy"])
                ],
                "Iteration", "Accuracy", "full_accuracy_value")
 
     plot_given("Policy Head Model Performance on Ground Truth of States and Training Data Accuracy",
                [
-                   ("Seen Accuracy", train_gt_series.x, train_gt_series.ys["policy_accuracy"]),
-                   ("Neighbor 1 Accuracy", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["policy_accuracy"]),
-                   ("Neighbor 2 Accuracy", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["policy_accuracy"]),
-                   ("Random Accuracy", random_gt_series.x, random_gt_series.ys["policy_accuracy"]),
-                   #("Training Data Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy"])
+                    ("Seen Accuracy", train_gt_series.x, train_gt_series.ys["policy_accuracy"]),
+                    ("Neighbor 1 Accuracy", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["policy_accuracy"]),
+                    ("Neighbor 2 Accuracy", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["policy_accuracy"]),
+                    ("Random Accuracy", random_gt_series.x, random_gt_series.ys["policy_accuracy"]),
+                    ("Training Data Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy"]),
+                    ("Training Data PM", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy PM"]),
+                    ("Overall Training Data Accuracy", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy Accuracy"]),
+                    ("Overall Training Data PM", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy PM"])
                ],
                "Iteration", "Accuracy", "full_accuracy_policy")
     
     plot_given("Training Data Accuracy by Iteration",
                [
-                   ("Iteration", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"]),
-                   ("Experience Buffer", gd_accuracy_series.x, gd_accuracy_series.ys["EB Value Accuracy"])
-               ], "Iterations", "Accuracy", "training_data_accuracy_eb")
-    
-    plot_given("Training Data Accuracy by Iteration",
-               [
-                   ("Training Data", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"])
-               ], "Iterations", "Accuracy", "training_data_accuracy_i")
+                    ("Iteration Value Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"]),
+                    ("Experience Buffer", gd_accuracy_series.x, gd_accuracy_series.ys["EB Value Accuracy"]),
+                    ("Iteration Policy Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy"]),
+                    ("Experience Buffer Policy Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["EB Policy Accuracy"]),
+                    ("Iteration Policy PM", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy PM"]),
+                    ("Experience Buffer Policy PM", gd_accuracy_series.x, gd_accuracy_series.ys["EB Policy PM"])
+               ], "Iterations", "Accuracy", "training_data_accuracy")
 
     plot_given("Training Performance Metrics",
                [

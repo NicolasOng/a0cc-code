@@ -5,13 +5,14 @@ from collections import defaultdict
 import random
 
 import numpy as np
+from numpy.typing import NDArray
 import matplotlib.pyplot as plt
 
 from cc.core import Player, Board
 from cc.ground_truth import GroundTruth
 from a0.game import GameData
 from a0.train.dataset import DatasetData, stats_from_dataset_data
-from a0.eval.dataset_evaluation import Series, save_series
+from a0.eval.dataset_evaluation import Series, save_series, policy_accuracy_function, policy_probability_mass_function
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -55,12 +56,18 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
     with the ground truth outcomes.
     '''
     last_n_iterations = config.replay_buffer_size // config.training_samples
-    gd_accuracy_series = Series(["Iteration Value Accuracy", "EB Value Accuracy"])
+    gd_accuracy_series = Series(["Iteration Value Accuracy", "EB Value Accuracy", "Iteration Policy Accuracy", "Iteration Policy PM", "EB Policy Accuracy", "EB Policy PM"])
+    gd_overall_accuracy_series = Series(["Overall Value Accuracy", "Overall Policy Accuracy", "Overall Policy PM"])
     gt = GroundTruth()
-    iteration_accuracies: list[float] = []
+    total_num_correct_value = 0
+    total_num_correct_policy = 0
+    total_pm_policy = 0
+    total = 0
     # for each game data list/iteration,
     for i, game_data_list in game_data_lists:
-        iteration_num_correct = 0
+        iteration_num_correct_value = 0
+        iteration_num_correct_policy = 0
+        iteration_pm_policy = 0
         iteration_total = 0
         # go through each game,
         for _, game_data in enumerate(game_data_list):
@@ -68,37 +75,85 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
             # go through each turn
             for _, game_state in enumerate(game_data.turn_data):
                 # and check if the experienced outcome matches the ground truth
-                # TODO: policy?
                 board = game_state.board
+                # check the value accuracy
                 sd_outcome = gt.get_outcome(board)
                 gd_outcome = 0 if winner is None else 1 if winner == board.current_player else -1
                 if sd_outcome == gd_outcome:
-                    iteration_num_correct += 1
+                    iteration_num_correct_value += 1
+                    total_num_correct_value += 1
+                # check the policy accuracy
+                sd_policy = np.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))
+                gd_policy: NDArray[np.float32] = game_state.player_data
+                pm_policy = policy_probability_mass_function(gd_policy, sd_policy)
+                iteration_pm_policy += pm_policy
+                total_pm_policy += pm_policy
+                if policy_accuracy_function(gd_policy, sd_policy):
+                    iteration_num_correct_policy += 1
+                    total_num_correct_policy += 1
                 iteration_total += 1
-        iteration_accuracy = iteration_num_correct / iteration_total if iteration_total > 0 else 0
-        iteration_accuracies.append(iteration_accuracy)
+                total += 1
+        iteration_value_accuracy = iteration_num_correct_value / iteration_total if iteration_total > 0 else 0
+        iteration_policy_accuracy = iteration_num_correct_policy / iteration_total if iteration_total > 0 else 0
+        iteration_policy_pm = iteration_pm_policy / iteration_total if iteration_total > 0 else 0
         # log the iteration's accuracy
-        logger.info(f"Iteration {i} accuracy: {iteration_accuracy:.2%} ({iteration_num_correct}/{iteration_total})")
-        # add this info to a series object
+        logger.info(f"Iteration {i} value accuracy: {iteration_value_accuracy:.2%} ({iteration_num_correct_value}/{iteration_total})")
+        logger.info(f"Iteration {i} policy accuracy: {iteration_policy_accuracy:.2%} ({iteration_num_correct_policy}/{iteration_total})")
+        logger.info(f"Iteration {i} policy PM: {iteration_policy_pm:.2%}")
+        # add this info to the series object
         gd_accuracy_series.x.append(i)
-        gd_accuracy_series.ys["Iteration Value Accuracy"].append(iteration_accuracy)
+        gd_accuracy_series.ys["Iteration Value Accuracy"].append(iteration_value_accuracy)
+        gd_accuracy_series.ys["Iteration Policy Accuracy"].append(iteration_policy_accuracy)
+        gd_accuracy_series.ys["Iteration Policy PM"].append(iteration_policy_pm)
         # also calculate the estimated experience buffer accuracy
         # basically the average accuracy over the last n iterations
-        total_eb_acc = 0
+        total_eb_value_acc = 0
+        total_eb_policy_acc = 0
+        total_eb_policy_pm = 0
         total_eb_its = 0
+        # start at the most recent iteration's idx and go backwards
         for j in range(len(gd_accuracy_series.x) - 1, 0 - 1, -1):
+            # get the current iteration number and accuracies
             cur_iteration = gd_accuracy_series.x[j]
-            cur_acc = gd_accuracy_series.ys["Iteration Value Accuracy"][j]
+            cur_value_acc = gd_accuracy_series.ys["Iteration Value Accuracy"][j]
+            cur_policy_acc = gd_accuracy_series.ys["Iteration Policy Accuracy"][j]
+            cur_policy_pm = gd_accuracy_series.ys["Iteration Policy PM"][j]
+            # break if we've gone back more than last_n_iterations
             if cur_iteration < i - last_n_iterations:
                 break
-            total_eb_acc += cur_acc
+            total_eb_value_acc += cur_value_acc
+            total_eb_policy_acc += cur_policy_acc
+            total_eb_policy_pm += cur_policy_pm
             total_eb_its += 1
-        eb_acc = total_eb_acc / total_eb_its if total_eb_its > 0 else 0
-        gd_accuracy_series.ys["EB Value Accuracy"].append(eb_acc)
-    
+        # calulate the averages and add to the series
+        # assumes that each iteration has roughly the same amount of data
+        eb_value_acc = total_eb_value_acc / total_eb_its if total_eb_its > 0 else 0
+        eb_policy_acc = total_eb_policy_acc / total_eb_its if total_eb_its > 0 else 0
+        eb_policy_pm = total_eb_policy_pm / total_eb_its if total_eb_its > 0 else 0
+        gd_accuracy_series.ys["EB Value Accuracy"].append(eb_value_acc)
+        gd_accuracy_series.ys["EB Policy Accuracy"].append(eb_policy_acc)
+        gd_accuracy_series.ys["EB Policy PM"].append(eb_policy_pm)
+
+    # save all the accuracy data to a file
     save_series(gd_accuracy_series, f"{config.eval_dir}/gamedata_acc.pkl")
 
-    # TODO: Calculate and log the overall accuracy
+    # Calculate, log, and save the overall accuracy
+    total_value_accuracy = total_num_correct_value / total if total > 0 else 0
+    total_policy_accuracy = total_num_correct_policy / total if total > 0 else 0
+    total_policy_pm = total_pm_policy / total if total > 0 else 0
+    logger.info(f"Overall Value Accuracy: {total_value_accuracy:.2%} ({total_num_correct_value}/{total})")
+    logger.info(f"Overall Policy Accuracy: {total_policy_accuracy:.2%} ({total_num_correct_policy}/{total})")
+    logger.info(f"Overall Policy PM: {total_policy_pm:.2%}")
+    # saving the first and last iteration for easy plotting
+    gd_overall_accuracy_series.x.append(gd_accuracy_series.x[0])
+    gd_overall_accuracy_series.ys["Overall Value Accuracy"].append(total_value_accuracy)
+    gd_overall_accuracy_series.ys["Overall Policy Accuracy"].append(total_policy_accuracy)
+    gd_overall_accuracy_series.ys["Overall Policy PM"].append(total_policy_pm)
+    gd_overall_accuracy_series.x.append(gd_accuracy_series.x[-1])
+    gd_overall_accuracy_series.ys["Overall Value Accuracy"].append(total_value_accuracy)
+    gd_overall_accuracy_series.ys["Overall Policy Accuracy"].append(total_policy_accuracy)
+    gd_overall_accuracy_series.ys["Overall Policy PM"].append(total_policy_pm)
+    save_series(gd_overall_accuracy_series, f"{config.eval_dir}/gamedata_overall_acc.pkl")
 
 def get_all_games_generated_during_training() -> list[GameData]:
     '''
@@ -540,7 +595,7 @@ def get_training_performance_metrics():
     Plot the training performance metrics from the training data.
     This includes the losses, accuracies, and other metrics.
     '''
-    logger.info("Plotting training performance metrics...")
+    logger.info("Saving training performance metrics...")
     
     # load the dataset data from the training data path
     dataset_data_gen = dataset_data_generator(config.training_dir, config.training_iterations)

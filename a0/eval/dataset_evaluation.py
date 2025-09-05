@@ -108,6 +108,35 @@ def policy_accuracy_batch(pred_policy: NDArray[np.float32], label_policy: NDArra
     mean_accuracy = np.mean(accuracies)
     return float(mean_accuracy)
 
+def policy_probability_mass_function(pred_policy: NDArray[np.float32], label_policy: NDArray[np.float32]) -> float:
+    '''
+    Function for policy probability mass on optimal moves.
+    It calculates how much probability mass the prediction assigns to moves 
+    that are tied for the highest value in the ground truth.
+    Both pred_policy and label_policy are expected to be 1D arrays of shape (board_size ** 4,).
+    pred_policy should be a probability distribution (NOT LOGITS).
+    label_policy should be a probability distribution.
+    '''
+    # Find the maximum value in the ground truth
+    label_max = np.max(label_policy)
+    
+    # Create a mask for all moves tied for the best in ground truth
+    optimal_moves_mask = (label_policy == label_max)
+    
+    # Sum the probability mass assigned to optimal moves
+    prob_mass_on_optimal = np.sum(pred_policy * optimal_moves_mask)
+    
+    return float(prob_mass_on_optimal)
+
+def policy_probability_mass_batch(pred_policy: NDArray[np.float32], label_policy: NDArray[np.float32]) -> float:
+    '''
+    Function for calculating the average probability mass on optimal moves over a batch.
+    pred_policy and label_policy are expected to be 2D arrays of shape (batch_size, board_size ** 4).
+    '''
+    prob_masses = [policy_probability_mass_function(p, l) for p, l in zip(pred_policy, label_policy)]
+    mean_prob_mass = np.mean(prob_masses)
+    return float(mean_prob_mass)
+
 def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[float, float, float, float, float]:
     '''
     Evaluates the model on the given evaluation dataset.

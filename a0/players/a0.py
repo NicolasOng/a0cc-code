@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Any
+import copy
 import random
 import numpy as np
 from numpy.typing import NDArray
@@ -120,7 +121,12 @@ class A0Player:
         p.apply_power_normalize(self.temperature)
 
         # get the policy to return later
-        mcts_policy = p.policy.copy()
+        mcts_p = copy.deepcopy(p)
+        # we rotate the policy if the current player is O,
+        # since this is for training the model
+        if state.current_player == Player.PLAYER_O:
+            mcts_p.rotate_policy()
+        mcts_policy = mcts_p.policy
 
         # if exploiting (eg for testing/use),
         # don't add noise and select the best move

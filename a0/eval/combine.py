@@ -120,6 +120,7 @@ def main():
 
     load_and_merge_series(outputs, "gamedata_stats.pkl", confidence)
     load_and_merge_series(outputs, "gamedata_acc.pkl", confidence)
+    load_and_merge_series(outputs, "gamedata_overall_acc.pkl", confidence)
     load_and_merge_series(outputs, "training_metrics.pkl", confidence)
 
     # load the merged series from disk
