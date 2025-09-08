@@ -135,6 +135,7 @@ def main():
 
     gamedata_series = load_series(f"{config.eval_dir}/merged_gamedata_stats.pkl")
     gd_accuracy_series = load_series(f"{config.eval_dir}/merged_gamedata_acc.pkl")
+    gd_overall_acc_series = load_series(f"{config.eval_dir}/merged_gamedata_overall_acc.pkl")
     training_metrics = load_series(f"{config.eval_dir}/merged_training_metrics.pkl")
 
     # try plotting
@@ -145,6 +146,7 @@ def main():
                           ("Neighbor 2 Accuracy", "±1σ", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["value_accuracy"], n_neighbor_gt_series[1].ys["value_accuracy_std"]),
                           ("Random Accuracy", "±1σ", random_gt_series.x, random_gt_series.ys["value_accuracy"], random_gt_series.ys["value_accuracy_std"]),
                           ("Training Data Accuracy", "±1σ", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"], gd_accuracy_series.ys["Iteration Value Accuracy_std"]),
+                          ("Training Data Overall Accuracy", "±1σ", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Value Accuracy"], gd_overall_acc_series.ys["Overall Value Accuracy_std"]),
                       ], "Iterations", "Accuracy", "merged_full_accuracy_value_std")
 
     plot_shaded_error("Value Head Model Performance on Ground Truth of States and Training Data Accuracy",
@@ -154,6 +156,7 @@ def main():
                           ("Neighbor 2 Accuracy", "±95% CI", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["value_accuracy"], n_neighbor_gt_series[1].ys["value_accuracy_ci"]),
                           ("Random Accuracy", "±95% CI", random_gt_series.x, random_gt_series.ys["value_accuracy"], random_gt_series.ys["value_accuracy_ci"]),
                           ("Training Data Accuracy", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"], gd_accuracy_series.ys["Iteration Value Accuracy_ci"]),
+                          ("Training Data Overall Accuracy", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Value Accuracy"], gd_overall_acc_series.ys["Overall Value Accuracy_ci"]),
                       ], "Iterations", "Accuracy", "merged_full_accuracy_value_ci")
     
     plot_shaded_error("Policy Head Model Performance on Ground Truth of States and Training Data Accuracy",
@@ -162,7 +165,10 @@ def main():
                           ("Neighbor 1 Accuracy", "±95% CI", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["policy_accuracy"], n_neighbor_gt_series[0].ys["policy_accuracy_ci"]),
                           ("Neighbor 2 Accuracy", "±95% CI", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["policy_accuracy"], n_neighbor_gt_series[1].ys["policy_accuracy_ci"]),
                           ("Random Accuracy", "±95% CI", random_gt_series.x, random_gt_series.ys["policy_accuracy"], random_gt_series.ys["policy_accuracy_ci"]),
-                          #("Training Data Accuracy", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"], gd_accuracy_series.ys["Iteration Value Accuracy_ci"]),
+                          ("Training Data Accuracy", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy"], gd_accuracy_series.ys["Iteration Policy Accuracy_ci"]),
+                          ("Training Data Overall Accuracy", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Policy Accuracy"], gd_overall_acc_series.ys["Overall Policy Accuracy_ci"]),
+                          ("Training Data PM", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy PM"], gd_accuracy_series.ys["Iteration Policy PM_ci"]),
+                          ("Training Data Overall PM", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Policy PM"], gd_overall_acc_series.ys["Overall Policy PM_ci"])
                       ], "Iterations", "Accuracy", "merged_full_accuracy_policy_ci")
 
 if __name__ == "__main__":

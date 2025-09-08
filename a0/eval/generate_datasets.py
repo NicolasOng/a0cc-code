@@ -30,12 +30,18 @@ def random_ground_truth_values(n: int = 1000) -> None:
     gt = GroundTruth()
     max_rank = gt.get_max_rank()
     board_set: set[Board] = set()
+    total = 0
+    total_non_trivial = 0
     while len(board_set) < n:
         b = gt.unrank(random.randint(0, max_rank - 1))
-        board_set.add(b)
+        if not gt.is_trivial(b):
+            board_set.add(b)
+            total_non_trivial += 1
+        total += 1
     boards: list[Board] = list(board_set)
         
     logger.info(f"Generated {len(boards)} boards.")
+    logger.info(f"Total boards generated: {total}, Non-trivial boards: {total_non_trivial} ({(total_non_trivial/total)*100:.2f}%).")
 
     # create and save a gtv dataset based on the generated boards
     rgtv_dataset = create_gtv_dataset_from_board_list(boards)
@@ -66,6 +72,12 @@ def get_unique_boards_from_training_data() -> set[Board]:
     
     num_unique = len(boards_set)
     logger.log(25, f"Found {num_unique} unique boards in the game data, out of {total_boards} total boards ({num_unique/total_boards:.2%}).")
+
+    gt = GroundTruth()
+    boards_list = [board for board in boards_set if not gt.is_trivial(board)]
+    boards_set = set(boards_list)
+    logger.log(25, f"Filtered out trivial boards, {len(boards_set)} non-trivial unique boards remain ({len(boards_set)/num_unique:.2%}).")
+
     return boards_set
 
 def training_experienced_values(n: int | None = None) -> None:
@@ -78,9 +90,11 @@ def training_experienced_values(n: int | None = None) -> None:
     logger.info("Generating experienced values from training data...")
 
     # 1. get the unique boards (with their outcome/policy) from the training data
+    gt = GroundTruth()
     logger.info("Getting unique boards from training data, with their experienced outcome...")
     game_data_lists = game_data_generator(config.training_dir, config.training_iterations)
     total_boards = 0
+    total_non_trivial = 0
     boards_set: set[ExperienceData] = set()
     for _, game_data_list in tqdm(game_data_lists):
         for game_data in game_data_list:
@@ -94,12 +108,15 @@ def training_experienced_values(n: int | None = None) -> None:
                 experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, experienced_policy)
 
                 # add this to a set
-                boards_set.add(experience)
+                if not gt.is_trivial(board):
+                    boards_set.add(experience)
+                    total_non_trivial += 1
                 total_boards += 1
     
     num_unique = len(boards_set)
-    logger.info(f"Found {num_unique} unique boards+value+policy triplets in the game data, out of {total_boards} total boards ({(num_unique/total_boards)*100:.2f}%).")
-    
+    logger.info(f"Found {total_boards} total boards in the game data, with {total_non_trivial} non-trivial boards ({(total_non_trivial/total_boards)*100:.2f}%).")
+    logger.info(f"Found {num_unique} unique and non-trivial boards+value+policy triplets in the game data, out of {total_non_trivial} total boards ({(num_unique/total_non_trivial)*100:.2f}%).")
+
     boards = list(boards_set)
     if n is not None: boards = random.sample(boards, n)
     
@@ -172,8 +189,17 @@ def get_neighbor_boards(boards: list[Board], boards_set: set[Board], dataset_siz
                 boards_set.add(new_board)
                 neighbor_boards.append(new_board)
     
+    num_input = len(boards)
+    num_neighbors = len(neighbor_boards)
+    logger.info(f"Found {num_neighbors} unique neighbor boards from {num_input} input boards.")
+
+    gt = GroundTruth()
+    neighbor_boards = [board for board in neighbor_boards if not gt.is_trivial(board)]
+    logger.info(f"Filtered out trivial boards, {len(neighbor_boards)} non-trivial neighbor boards remain ({len(neighbor_boards)/num_neighbors:.2%}).")
+
     if dataset_size is not None:
-        neighbor_boards = random.sample(neighbor_boards, dataset_size)
+        neighbor_boards = random.sample(neighbor_boards, min(dataset_size, len(neighbor_boards)))
+        logger.info(f"Trimmed neighbor boards to {len(neighbor_boards)} boards.")
     
     return neighbor_boards
 
@@ -191,7 +217,7 @@ def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = 
 
     # create the list of training boards. trim if necessary.
     training_boards = list(boards_set)
-    if temporary_size is not None: training_boards = random.sample(training_boards, temporary_size)
+    if temporary_size is not None: training_boards = random.sample(training_boards, min(temporary_size, len(training_boards)))
 
     # create, trim, and save a Dataset with the GTV for the training boards
     training_gtv_dataset = create_gtv_dataset_from_board_list(training_boards)

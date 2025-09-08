@@ -166,3 +166,13 @@ class GroundTruth:
             p.rotate_policy()
         # return the policy as a list
         return p.get_policy_list()
+    
+    def is_trivial(self, board: Board) -> bool:
+        '''
+        Checks if the given board is trivial.
+        A trivial board is one where all the moves lead to the same outcome.
+        '''
+        # get the moves and outcomes for the board
+        _, move_outcomes = self.get_1ply_policy_moves(board)
+        # check if all outcomes are the same
+        return all(x == move_outcomes[0] for x in move_outcomes)
