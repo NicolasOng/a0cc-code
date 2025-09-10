@@ -135,6 +135,8 @@ def main():
     gd_accuracy_series = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
     gd_overall_accuracy_series = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
     training_metrics = load_series(f"{config.eval_dir}/training_metrics.pkl")
+    gd_bias_series = load_series(f"{config.eval_dir}/gamedata_bias.pkl")
+    gd_overall_bias_series = load_series(f"{config.eval_dir}/gamedata_overall_bias.pkl")
 
     # plot all the series
     plot_given("Model Performance on Ground Truth of States Seen During Training",
@@ -256,6 +258,16 @@ def main():
     plot_std_error("Average Game Length (Time) by Training Iteration",
                    gamedata_series.x, gamedata_series.ys["Avg Game Time"], gamedata_series.ys["Std Game Time"],
                    "Training Iteration", "Length (Time)", "game_length_time")
+
+    plot_given("Training Data Bias by Iteration",
+               [
+                   ("Win Percentage", gd_bias_series.x, gd_bias_series.ys["Iteration Win Percent"]),
+                   ("Loss Percentage", gd_bias_series.x, gd_bias_series.ys["Iteration Loss Percent"]),
+                   ("Draw Percentage", gd_bias_series.x, gd_bias_series.ys["Iteration Draw Percent"]),
+                   ("Overall Win Percentage", gd_overall_bias_series.x, gd_overall_bias_series.ys["Overall Win Percent"]),
+                   ("Overall Loss Percentage", gd_overall_bias_series.x, gd_overall_bias_series.ys["Overall Loss Percent"]),
+                   ("Overall Draw Percentage", gd_overall_bias_series.x, gd_overall_bias_series.ys["Overall Draw Percent"])
+               ], "Training Iteration", "Percentage", "gamedata_bias")
 
 if __name__ == "__main__":
     main()

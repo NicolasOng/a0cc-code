@@ -331,6 +331,24 @@ def load_models(dir: str, n: int) -> list[tuple[int, AlphaZeroModel]]:
     logger.info(f"Loading {n} models from {dir}...")
     return list(models_generator_function(dir, n))
 
+def calculate_dataset_bias(dataset: Dataset) -> tuple[float, float, float]:
+    '''
+    Calculates the bias of the dataset.
+    The bias is defined as the percentage of wins, losses, and draws in the dataset.
+    Returns a tuple of (win_percent, loss_percent, draw_percent).
+    '''
+    total = len(dataset)
+    if total == 0:
+        return 0.0, 0.0, 0.0
+    wins = sum(1 for value in dataset.values if value > 0)
+    losses = sum(1 for value in dataset.values if value < 0)
+    draws = sum(1 for value in dataset.values if value == 0)
+    win_percent = wins / total
+    loss_percent = losses / total
+    draw_percent = draws / total
+    logger.info(f"Dataset bias - Wins: {win_percent:.2%}, Losses: {loss_percent:.2%}, Draws: {draw_percent:.2%}")
+    return win_percent, loss_percent, draw_percent
+
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='dataset_evaluation')
 
@@ -354,13 +372,19 @@ def main():
     training_e_dataset.trim(n, shuffle=False)
     for i in range(2):
         neighbor_datasets[i].trim(n, shuffle=False)
+    
+    if False:
+        # Evaluate all models
+        evaluate_all_models(models, training_dataset, "training_gtv_eval")
+        evaluate_all_models(models, random_dataset, "random_gtv_eval")
+        evaluate_all_models(models, training_e_dataset, "training_ev_eval")
+        for i in range(2):
+            evaluate_all_models(models, neighbor_datasets[i], f"neighbor_{i+1}_gtv_eval")
 
-    # Evaluate all models
-    evaluate_all_models(models, training_dataset, "training_gtv_eval")
-    evaluate_all_models(models, random_dataset, "random_gtv_eval")
-    evaluate_all_models(models, training_e_dataset, "training_ev_eval")
-    for i in range(2):
-        evaluate_all_models(models, neighbor_datasets[i], f"neighbor_{i+1}_gtv_eval")
+    datasets_list = [(training_dataset, "training_gtv"), (random_dataset, "random_gtv"), (training_e_dataset, "training_ev")] + [(neighbor_datasets[i], f"neighbor_{i+1}_gtv") for i in range(2)]
+    for dataset, name in datasets_list:
+        win_percent, loss_percent, draw_percent = calculate_dataset_bias(dataset)
+        logger.info(f"Dataset {name} bias - Wins: {win_percent:.2%}, Losses: {loss_percent:.2%}, Draws: {draw_percent:.2%}")
 
     logger.info("Dataset evaluation completed.")
 

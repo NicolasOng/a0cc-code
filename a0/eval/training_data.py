@@ -76,6 +76,9 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
             for _, game_state in enumerate(game_data.turn_data):
                 # and check if the experienced outcome matches the ground truth
                 board = game_state.board
+                # skip if the board is trivial
+                if gt.is_trivial(board):
+                    continue
                 # check the value accuracy
                 sd_outcome = gt.get_outcome(board)
                 gd_outcome = 0 if winner is None else 1 if winner == board.current_player else -1
@@ -154,6 +157,84 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
     gd_overall_accuracy_series.ys["Overall Policy Accuracy"].append(total_policy_accuracy)
     gd_overall_accuracy_series.ys["Overall Policy PM"].append(total_policy_pm)
     save_series(gd_overall_accuracy_series, f"{config.eval_dir}/gamedata_overall_acc.pkl")
+
+def check_game_data_bias(game_data_lists: list[tuple[int, list[GameData]]]) -> None:
+    '''
+    Checks the bias of game data by seeing how many wins/losses/draws there are.
+    '''
+    gd_bias_series = Series(["Iteration Win Percent", "Iteration Loss Percent", "Iteration Draw Percent"])
+    gd_overall_bias_series = Series(["Overall Win Percent", "Overall Loss Percent", "Overall Draw Percent"])
+    total_wins = 0
+    total_losses = 0
+    total_draws = 0
+    total = 0
+    # for each game data list/iteration,
+    for i, game_data_list in game_data_lists:
+        iteration_num_wins = 0
+        iteration_num_losses = 0
+        iteration_num_draws = 0
+        iteration_total = 0
+        # go through each game,
+        for _, game_data in enumerate(game_data_list):
+            winner = game_data.winner
+            # go through each turn
+            for _, game_state in enumerate(game_data.turn_data):
+                # and check what the experienced outcome is
+                board = game_state.board
+                # get the outcome of the game for the current player
+                current_player = board.current_player
+                if winner is None:
+                    # draws and unfinished games
+                    value = 0.0
+                else:
+                    # 1 for win, -1 for loss
+                    # based on the perspective of the current player
+                    value = 1.0 if winner == current_player else -1.0
+                # count wins/losses
+                if value == 1.0:
+                    iteration_num_wins += 1
+                    total_wins += 1
+                elif value == -1.0:
+                    iteration_num_losses += 1
+                    total_losses += 1
+                else:
+                    iteration_num_draws += 1
+                    total_draws += 1
+                iteration_total += 1
+                total += 1
+        iteration_win_percent = iteration_num_wins / iteration_total if iteration_total > 0 else 0
+        iteration_loss_percent = iteration_num_losses / iteration_total if iteration_total > 0 else 0
+        iteration_draw_percent = iteration_num_draws / iteration_total if iteration_total > 0 else 0
+        # log the iteration's bias
+        logger.info(f"Iteration {i} win percent: {iteration_win_percent:.2%} ({iteration_num_wins}/{iteration_total})")
+        logger.info(f"Iteration {i} loss percent: {iteration_loss_percent:.2%} ({iteration_num_losses}/{iteration_total})")
+        logger.info(f"Iteration {i} draw percent: {iteration_draw_percent:.2%} ({iteration_num_draws}/{iteration_total})")
+        # add this info to the series object
+        gd_bias_series.x.append(i)
+        gd_bias_series.ys["Iteration Win Percent"].append(iteration_win_percent)
+        gd_bias_series.ys["Iteration Loss Percent"].append(iteration_loss_percent)
+        gd_bias_series.ys["Iteration Draw Percent"].append(iteration_draw_percent)
+
+    # save all the bias data to a file
+    save_series(gd_bias_series, f"{config.eval_dir}/gamedata_bias.pkl")
+
+    # Calculate, log, and save the overall bias
+    total_win_percent = total_wins / total if total > 0 else 0
+    total_loss_percent = total_losses / total if total > 0 else 0
+    total_draw_percent = total_draws / total if total > 0 else 0
+    logger.info(f"Overall Win Percent: {total_win_percent:.2%} ({total_wins}/{total})")
+    logger.info(f"Overall Loss Percent: {total_loss_percent:.2%} ({total_losses}/{total})")
+    logger.info(f"Overall Draw Percent: {total_draw_percent:.2%} ({total_draws}/{total})")
+    # saving the first and last iteration for easy plotting
+    gd_overall_bias_series.x.append(gd_bias_series.x[0])
+    gd_overall_bias_series.ys["Overall Win Percent"].append(total_win_percent)
+    gd_overall_bias_series.ys["Overall Loss Percent"].append(total_loss_percent)
+    gd_overall_bias_series.ys["Overall Draw Percent"].append(total_draw_percent)
+    gd_overall_bias_series.x.append(gd_bias_series.x[-1])
+    gd_overall_bias_series.ys["Overall Win Percent"].append(total_win_percent)
+    gd_overall_bias_series.ys["Overall Loss Percent"].append(total_loss_percent)
+    gd_overall_bias_series.ys["Overall Draw Percent"].append(total_draw_percent)
+    save_series(gd_overall_bias_series, f"{config.eval_dir}/gamedata_overall_bias.pkl")
 
 def get_all_games_generated_during_training() -> list[GameData]:
     '''
@@ -633,6 +714,7 @@ def main():
     #exit()
 
     check_game_data_accuracy(list(game_data_generator(config.training_dir, config.training_iterations)))
+    check_game_data_bias(list(game_data_generator(config.training_dir, config.training_iterations)))
     get_stats_of_each_iterations_game_data()
     get_training_performance_metrics()
 
