@@ -175,7 +175,10 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
     logger.info(f"Total models: {total_models_evaluated}")
 
     # value: 0.00005
-    optimizer = nnx.Optimizer(model, optax.adamw(0.00005))
+    optimizer = nnx.Optimizer(model, optax.adamw(
+        learning_rate=0.00005,
+        weight_decay=1e-4
+    ))
 
     for ts, batch in enumerate(batches):
         # convert the batch to a dictionary
