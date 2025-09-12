@@ -17,7 +17,7 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def random_ground_truth_values(n: int = 1000) -> None:
+def random_ground_truth_values(n: int = 1000, remove_trivial: bool = True, remove_bias: bool = True) -> None:
     '''
     Generates and saves a dataset of ground truth values for all unique boards
     from a list of randomly generated boards.
@@ -32,9 +32,12 @@ def random_ground_truth_values(n: int = 1000) -> None:
     board_set: set[Board] = set()
     total = 0
     total_non_trivial = 0
-    while len(board_set) < n:
+    to_generate = n * 10 if remove_trivial else n * 2
+    while len(board_set) < to_generate:
         b = gt.unrank(random.randint(0, max_rank - 1))
-        if not gt.is_trivial(b):
+        if not remove_trivial:
+            board_set.add(b)
+        elif not gt.is_trivial(b):
             board_set.add(b)
             total_non_trivial += 1
         total += 1
@@ -45,9 +48,12 @@ def random_ground_truth_values(n: int = 1000) -> None:
 
     # create and save a gtv dataset based on the generated boards
     rgtv_dataset = create_gtv_dataset_from_board_list(boards)
+    if remove_bias:
+        rgtv_dataset.balance_values()
+    rgtv_dataset.trim(new_size=n, shuffle=True)
     save_dataset("random_gtv", rgtv_dataset)
 
-def get_unique_boards_from_training_data() -> set[Board]:
+def get_unique_boards_from_training_data(remove_trivial: bool = True) -> set[Board]:
     '''
     Extracts all unique boards from the training data generated during training/self-play.
     Returns a set of unique Board objects.
@@ -74,13 +80,14 @@ def get_unique_boards_from_training_data() -> set[Board]:
     logger.log(25, f"Found {num_unique} unique boards in the game data, out of {total_boards} total boards ({num_unique/total_boards:.2%}).")
 
     gt = GroundTruth()
-    boards_list = [board for board in boards_set if not gt.is_trivial(board)]
-    boards_set = set(boards_list)
-    logger.log(25, f"Filtered out trivial boards, {len(boards_set)} non-trivial unique boards remain ({len(boards_set)/num_unique:.2%}).")
+    if remove_trivial:
+        boards_list = [board for board in boards_set if not gt.is_trivial(board)]
+        boards_set = set(boards_list)
+        logger.log(25, f"Filtered out trivial boards, {len(boards_set)} non-trivial unique boards remain ({len(boards_set)/num_unique:.2%}).")
 
     return boards_set
 
-def training_experienced_values(n: int | None = None) -> None:
+def training_experienced_values(n: int | None = None, remove_trivial: bool = True, remove_bias: bool = True) -> None:
     '''
     Generates and saves a dataset of experienced values for all unique boards
     from the training data generated during training/self-play.
@@ -108,7 +115,10 @@ def training_experienced_values(n: int | None = None) -> None:
                 experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, experienced_policy)
 
                 # add this to a set
-                if not gt.is_trivial(board):
+                if not remove_trivial:
+                    boards_set.add(experience)
+                    total_non_trivial += 1
+                elif not gt.is_trivial(board):
                     boards_set.add(experience)
                     total_non_trivial += 1
                 total_boards += 1
@@ -118,7 +128,7 @@ def training_experienced_values(n: int | None = None) -> None:
     logger.info(f"Found {num_unique} unique and non-trivial boards+value+policy triplets in the game data, out of {total_non_trivial} total boards ({(num_unique/total_non_trivial)*100:.2f}%).")
 
     boards = list(boards_set)
-    if n is not None: boards = random.sample(boards, n)
+    #if n is not None: boards = random.sample(boards, n)
     
     # 4. load all this into a Dataset object
     ev_dataset = Dataset(batch_size=256)
@@ -127,6 +137,10 @@ def training_experienced_values(n: int | None = None) -> None:
     e_policy = jnp.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
     logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
     ev_dataset.set(e_board, e_value, e_policy)
+    if remove_bias:
+        ev_dataset.balance_values()
+    if n is not None:
+        ev_dataset.trim(new_size=n, shuffle=True)
 
     # 5. save the Dataset object to config.data_folder + "training_ev.pkl"
     output_path = f"{config.dataset_out_dir}/training_ev.pkl"
@@ -168,7 +182,7 @@ def save_dataset(fn: str, dataset: Dataset) -> None:
         pickle.dump(dataset, file)
     logger.info(f"Dataset saved to {output_path}.")
 
-def get_neighbor_boards(boards: list[Board], boards_set: set[Board], dataset_size: int | None = None) -> list[Board]:
+def get_neighbor_boards(boards: list[Board], boards_set: set[Board], dataset_size: int | None = None, remove_trivial: bool = True) -> list[Board]:
     '''
     Gets all neighboring (child) boards of the given boards.
     Returns a list of unique neighboring boards.
@@ -193,9 +207,10 @@ def get_neighbor_boards(boards: list[Board], boards_set: set[Board], dataset_siz
     num_neighbors = len(neighbor_boards)
     logger.info(f"Found {num_neighbors} unique neighbor boards from {num_input} input boards.")
 
-    gt = GroundTruth()
-    neighbor_boards = [board for board in neighbor_boards if not gt.is_trivial(board)]
-    logger.info(f"Filtered out trivial boards, {len(neighbor_boards)} non-trivial neighbor boards remain ({len(neighbor_boards)/num_neighbors:.2%}).")
+    if remove_trivial:
+        gt = GroundTruth()
+        neighbor_boards = [board for board in neighbor_boards if not gt.is_trivial(board)]
+        logger.info(f"Filtered out trivial boards, {len(neighbor_boards)} non-trivial neighbor boards remain ({len(neighbor_boards)/num_neighbors:.2%}).")
 
     if dataset_size is not None:
         neighbor_boards = random.sample(neighbor_boards, min(dataset_size, len(neighbor_boards)))
@@ -203,7 +218,7 @@ def get_neighbor_boards(boards: list[Board], boards_set: set[Board], dataset_siz
     
     return neighbor_boards
 
-def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = None, num_neighbors: int=2):
+def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = None, num_neighbors: int=2, remove_trivial: bool = True, remove_bias: bool = True):
     '''
     Generates a set of datasets.
     1. boards seen during training and their ground-truth value values and policies
@@ -213,7 +228,7 @@ def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = 
     Then the final dataset's size is further reduced.
     '''
     # get unique boards seen during training
-    boards_set = get_unique_boards_from_training_data()
+    boards_set = get_unique_boards_from_training_data(remove_trivial=remove_trivial)
 
     # create the list of training boards. trim if necessary.
     training_boards = list(boards_set)
@@ -221,6 +236,8 @@ def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = 
 
     # create, trim, and save a Dataset with the GTV for the training boards
     training_gtv_dataset = create_gtv_dataset_from_board_list(training_boards)
+    if remove_bias:
+        training_gtv_dataset.balance_values()
     if final_size is not None: training_gtv_dataset.trim(new_size=final_size, shuffle=True)
     save_dataset("training_gtv", training_gtv_dataset)
 
@@ -230,9 +247,11 @@ def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = 
         logger.info(f"Generating {i+1}-neighbor dataset...")
         # get all the neighboring (children) boards of the previous neighbors,
         # starting with training_boards
-        neighbor_boards = get_neighbor_boards(neighbor_boards, boards_set, temporary_size)
+        neighbor_boards = get_neighbor_boards(neighbor_boards, boards_set, temporary_size, remove_trivial=remove_trivial)
         # create, trim, and save a gtv dataset based on the generated boards
         neighbor_gtv_dataset = create_gtv_dataset_from_board_list(neighbor_boards)
+        if remove_bias:
+            neighbor_gtv_dataset.balance_values()
         if final_size is not None: neighbor_gtv_dataset.trim(new_size=final_size, shuffle=True)
         save_dataset(f"neighbor_{i+1}_gtv", neighbor_gtv_dataset)
 
@@ -245,11 +264,14 @@ def main():
     )
     logger.info("Generating datasets...")
 
-    random_ground_truth_values(n=1000)
+    remove_trivial = True
+    remove_bias = True
 
-    training_experienced_values(n=1000)
+    random_ground_truth_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
-    training_neighbors_gtv(10000, 1000, 2)
+    training_experienced_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
+
+    training_neighbors_gtv(10000, 1000, 2, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
     logger.info("Finished generating datasets.")
 

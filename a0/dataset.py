@@ -71,3 +71,69 @@ class Dataset:
 
     def __len__(self) -> int:
         return self.states.shape[0]
+    
+    def print_distribution(self) -> None:
+        """
+        Print the distribution of values in the dataset.
+        """
+        wins = self.values > 0
+        draws = self.values == 0  
+        losses = self.values < 0
+        
+        win_count = int(jnp.sum(wins))
+        draw_count = int(jnp.sum(draws))
+        loss_count = int(jnp.sum(losses))
+        
+        print(f"Dataset distribution:")
+        print(f"  Wins (>0):  {win_count:6d} ({win_count/len(self):.2%})")
+        print(f"  Draws (=0): {draw_count:6d} ({draw_count/len(self):.2%})")
+        print(f"  Losses (<0):{loss_count:6d} ({loss_count/len(self):.2%})")
+    
+    def balance_values(self) -> None:
+        """
+        Balance the dataset to have equal proportions of wins (>0) and losses (<0).
+        Reports the distribution before and after balancing.
+        """
+        # Categorize values by sign
+        wins = self.values > 0
+        draws = self.values == 0
+        losses = self.values < 0
+        
+        self.print_distribution()
+
+        # Find the minimum count to balance to
+        win_count = int(jnp.sum(wins))
+        loss_count = int(jnp.sum(losses))
+        target_count = min(win_count, loss_count)
+        draw_target_count = target_count // 50  # keep some draws, but fewer
+        
+        if target_count == 0:
+            print("Cannot balance: one category has no samples")
+            return
+        
+        # Randomly sample indices for each category
+        key = jrandom.PRNGKey(42)
+        indices_to_keep = []
+        
+        for mask, name in [(wins, "wins"), (draws, "draws"), (losses, "losses")]:
+            category_indices = jnp.where(mask)[0]
+            # Determine the target for this category
+            category_target = draw_target_count if name == "draws" else target_count
+            # for balancing, sample if there are more than needed (target different for draws)
+            if len(category_indices) > category_target:
+                key, subkey = jrandom.split(key)
+                selected = jrandom.choice(subkey, category_indices, shape=(category_target,), replace=False)
+                indices_to_keep.extend(selected.tolist())
+            # otherwise, keep all
+            else:
+                indices_to_keep.extend(category_indices.tolist())
+        
+        # Update dataset
+        indices_to_keep = jnp.array(sorted(indices_to_keep))
+        self.states = self.states[indices_to_keep]
+        self.values = self.values[indices_to_keep]
+        self.policies = self.policies[indices_to_keep]
+        
+        print(f"Balanced to {target_count} samples each ({len(self)} total)")
+        self.print_distribution()
+        
