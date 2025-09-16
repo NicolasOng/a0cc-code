@@ -87,8 +87,12 @@ def policy_accuracy_function(pred_policy: NDArray[np.float32], label_policy: NDA
     Both pred_policy and label_policy are expected to be 1D arrays of shape (board_size ** 4,).
     Both arrays should be "masked" so that only valid moves are considered.
     '''
-    # Argmax of the predicted policy (model's choice)
-    pred_top_move = np.argmax(pred_policy)
+    # Find all moves with maximum predicted value
+    pred_max = np.max(pred_policy)
+    pred_top_moves = np.where(pred_policy == pred_max)[0]
+    
+    # Randomly select one if there are ties
+    pred_top_move = np.random.choice(pred_top_moves)
 
     # Identify all top moves in the label policy (handle ties)
     label_max = np.max(label_policy)

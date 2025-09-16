@@ -318,7 +318,11 @@ def duplicate_states_analysis(state_acc_dicts: list[dict[Board, list[bool]]], th
     # create a dict of all boards and their accuracies.
     logger.info("Analyzing duplicate game states...")
 
-    graph_state_seen_counts = len(state_acc_dicts) == 1
+    # this block of code graphs how many states were seen a certain number of times.
+    # and graphs the results
+    # for example, how many states were seen once, twice, etc.
+    #graph_state_seen_counts = len(state_acc_dicts) == 1
+    graph_state_seen_counts = False
     if graph_state_seen_counts:
         # state_seen_count: dict[how many times state was seen] = number of states seen that many times
         state_seen_count: defaultdict[int, int] = defaultdict(int)
@@ -347,7 +351,10 @@ def duplicate_states_analysis(state_acc_dicts: list[dict[Board, list[bool]]], th
         plt.show()
         plt.clf()
 
-    graph_unique_seen_counts_descending = len(state_acc_dicts) == 1
+    # this block of code counts how many times each unique state was seen,
+    # then graphs the results in descending order.
+    #graph_unique_seen_counts_descending = len(state_acc_dicts) == 1
+    graph_unique_seen_counts_descending = False
     if graph_unique_seen_counts_descending:
         # counts list: number of times each unique state was seen, descending order
         counts_list = sorted([len(accuracies) for accuracies in state_acc_dicts[0].values()], reverse=True)
@@ -367,7 +374,7 @@ def duplicate_states_analysis(state_acc_dicts: list[dict[Board, list[bool]]], th
         plt.show()
         plt.clf()
     
-    graph_binned_counts_vars_accs = False
+    graph_binned_counts_vars_accs = True
     if graph_binned_counts_vars_accs:
         # bin counts, accuracies, and variance.
         acc_var_dict: dict[int, tuple[int, int, float, float, float]] = defaultdict(lambda: (0, 0, 0.0, 0.0, 0.0))
@@ -441,49 +448,53 @@ def duplicate_states_analysis(state_acc_dicts: list[dict[Board, list[bool]]], th
             x_label = 'Number of Times State Was Seen Bins' 
             by = "State Seen Count" 
 
-        plt.figure(figsize=(12, 6))
-        plt.bar(x_labels, y_ucounts, label='Unique States')
-        plt.bar(x_labels, y_tcounts, bottom=y_ucounts, label='Duplicate States')
-        plt.xlabel(x_label)
-        plt.ylabel('Number of Unique States')
-        plt.title(f'Number of Unique States by {by}')
-        plt.legend()
-        plt.grid(axis='y', alpha=0.3)
-        plt.show()
+        # plt.figure(figsize=(12, 6))
+        # plt.bar(x_labels, y_ucounts, label='Unique States')
+        # plt.bar(x_labels, y_tcounts, bottom=y_ucounts, label='Duplicate States')
+        # plt.xlabel(x_label)
+        # plt.ylabel('Number of Unique States')
+        # plt.title(f'Number of Unique States by {by}')
+        # plt.legend()
+        # plt.grid(axis='y', alpha=0.3)
+        # plt.show()
+        logger.info(f"Unique States: {x_labels}, {y_ucounts}, {y_tcounts}")
 
-        plt.figure(figsize=(12, 6))
-        plt.bar(x_labels, y_means, alpha=0.5, label='Mean Accuracy')
-        plt.xlabel(x_label)
-        plt.ylabel('Accuracy')
-        plt.title(f'Mean Accuracy by {by}')
-        plt.legend()
-        plt.grid(axis='y', alpha=0.3)
-        plt.ylim(0, 1)  # Set y-axis from 0 to 1
-        plt.show()
-        plt.clf()
+        # plt.figure(figsize=(12, 6))
+        # plt.bar(x_labels, y_means, alpha=0.5, label='Mean Accuracy')
+        # plt.xlabel(x_label)
+        # plt.ylabel('Accuracy')
+        # plt.title(f'Mean Accuracy by {by}')
+        # plt.legend()
+        # plt.grid(axis='y', alpha=0.3)
+        # plt.ylim(0, 1)  # Set y-axis from 0 to 1
+        # plt.show()
+        # plt.clf()
+        logger.info(f"Accuracy: {x_labels}, {y_means}")
 
-        plt.figure(figsize=(12, 6))
-        plt.bar(x_labels, y_vars, alpha=0.5, label='Mean Variance')
-        plt.xlabel(x_label)
-        plt.ylabel('Variance')
-        plt.title(f'Mean Variance by {by}')
-        plt.legend()
-        plt.grid(axis='y', alpha=0.3)
-        plt.ylim(0, 1)  # Set y-axis from 0 to 1
-        plt.show()
-        plt.clf()
+        # plt.figure(figsize=(12, 6))
+        # plt.bar(x_labels, y_vars, alpha=0.5, label='Mean Variance')
+        # plt.xlabel(x_label)
+        # plt.ylabel('Variance')
+        # plt.title(f'Mean Variance by {by}')
+        # plt.legend()
+        # plt.grid(axis='y', alpha=0.3)
+        # plt.ylim(0, 1)  # Set y-axis from 0 to 1
+        # plt.show()
+        # plt.clf()
+        logger.info(f"Variance: {x_labels}, {y_vars}")
 
-        plt.figure(figsize=(12, 6))
-        plt.bar(x_labels, y_consensus, alpha=0.5, label='Mean Consensus')
-        plt.xlabel(x_label)
-        plt.ylabel('Consensus')
-        plt.title(f'Mean Consensus by {by}')
-        plt.legend()
-        plt.grid(axis='y', alpha=0.3)
-        plt.ylim(0, 1)  # Set y-axis from 0 to 1
-        plt.show()
+        # plt.figure(figsize=(12, 6))
+        # plt.bar(x_labels, y_consensus, alpha=0.5, label='Mean Consensus')
+        # plt.xlabel(x_label)
+        # plt.ylabel('Consensus')
+        # plt.title(f'Mean Consensus by {by}')
+        # plt.legend()
+        # plt.grid(axis='y', alpha=0.3)
+        # plt.ylim(0, 1)  # Set y-axis from 0 to 1
+        # plt.show()
+        logger.info(f"Consensus: {x_labels}, {y_consensus}")
     
-    acc_states_over_time = True
+    acc_states_over_time = False
     if acc_states_over_time:
         # board: list[tuple(iteration, num seen, cum num seen, acc, cum acc)]
         board_stats_dict: dict[Board, list[tuple[int, int, int, float, float]]] = defaultdict(list)
@@ -529,10 +540,10 @@ def duplicate_states_analysis(state_acc_dicts: list[dict[Board, list[bool]]], th
             its.append(iteration)
 
         # plot all the graphs
-        plot_state_stats(board_stats_dict, 'Times Seen', its, average_stats["Times Seen"])
-        plot_state_stats(board_stats_dict, 'Cumulative Times Seen', its, average_stats["Cumulative Times Seen"])
-        plot_state_stats(board_stats_dict, 'Accuracy', its, average_stats["Accuracy"])
-        plot_state_stats(board_stats_dict, 'Cumulative Accuracy', its, average_stats["Cumulative Accuracy"])
+        # plot_state_stats(board_stats_dict, 'Times Seen', its, average_stats["Times Seen"])
+        # plot_state_stats(board_stats_dict, 'Cumulative Times Seen', its, average_stats["Cumulative Times Seen"])
+        # plot_state_stats(board_stats_dict, 'Accuracy', its, average_stats["Accuracy"])
+        # plot_state_stats(board_stats_dict, 'Cumulative Accuracy', its, average_stats["Cumulative Accuracy"])
 
 def plot_state_stats(board_stats_dict: dict[Board, list[tuple[int, int, int, float, float]]], mode: str, its: list[int], avg: list[float]):
     plt.figure(figsize=(12, 6))
@@ -709,9 +720,7 @@ def main():
     #state_acc_dicts = split_by_visited_seen_bins(get_state_accuracy_dict(get_all_games_generated_during_training()), thresholds)
     #duplicate_states_analysis(state_acc_dicts, thresholds)
     # overall
-    # state_acc_dicts = [get_state_accuracy_dict(get_all_games_generated_during_training())]
-    # duplicate_states_analysis(state_acc_dicts)
-    #exit()
+    duplicate_states_analysis([get_state_accuracy_dict(get_all_games_generated_during_training())])
 
     check_game_data_accuracy(list(game_data_generator(config.training_dir, config.training_iterations)))
     check_game_data_bias(list(game_data_generator(config.training_dir, config.training_iterations)))
