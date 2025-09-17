@@ -49,7 +49,8 @@ def random_ground_truth_values(n: int = 1000, remove_trivial: bool = True, remov
     # create and save a gtv dataset based on the generated boards
     rgtv_dataset = create_gtv_dataset_from_board_list(boards)
     if remove_bias:
-        rgtv_dataset.balance_values()
+        balance_dataset(rgtv_dataset)
+        #rgtv_dataset.balance_values()
     rgtv_dataset.trim(new_size=n, shuffle=True)
     save_dataset("random_gtv", rgtv_dataset)
 
@@ -255,6 +256,27 @@ def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = 
         if final_size is not None: neighbor_gtv_dataset.trim(new_size=final_size, shuffle=True)
         save_dataset(f"neighbor_{i+1}_gtv", neighbor_gtv_dataset)
 
+def balance_dataset(dataset: Dataset) -> Dataset:
+    '''
+    Balances the dataset to have an equal number of each value (-1, 0, 1).
+    Modifies the dataset in-place and returns it.
+    Instead of trimming, it oversamples the minority classes.
+    When sampling from the minority class, it mirrors the board to create a new sample.
+    '''
+    logger.info("Balancing dataset...")
+    # get boards from the minority class (win or loss, ignore draws)
+    num_wins, num_draws, num_losses = dataset.get_distribution()
+    logger.info(f"Current distribution: Wins: {num_wins}, Draws: {num_draws}, Losses: {num_losses}")
+    if num_wins == num_losses:
+        logger.info("Dataset is already balanced.")
+        return dataset
+
+    exit()
+
+    # with a subset of the boards, create mirrored boards with b.flip_horizontal()
+
+    # turn those boards into new samples, add them to the dataset
+    return dataset
 
 def main():
     setup_logging(

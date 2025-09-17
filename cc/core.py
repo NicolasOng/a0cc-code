@@ -556,6 +556,27 @@ class Board:
                 elif self.board[i][j] == Tile.PLAYER_O:
                     self.board[i][j] = Tile.PLAYER_X
     
+    def flip_horizontal(self) -> None:
+        '''
+        Flips the board horizontally (left-right reflection in board view).
+        '''
+        n = len(self.board)
+        # Transpose the matrix (reflect across main diagonal)
+        new_board = [[self.board[j][i] for j in range(n)] for i in range(n)]
+        self.board = new_board
+    
+    def flip_vertical(self) -> None:
+        '''
+        Flips the board vertically (top-bottom reflection in board view).
+        '''
+        n = len(self.board)
+        # Reflect across anti-diagonal: (i,j) -> (n-1-j, n-1-i)
+        new_board = [[Tile.EMPTY for _ in range(n)] for _ in range(n)]
+        for i in range(n):
+            for j in range(n):
+                new_board[n-1-j][n-1-i] = self.board[i][j]
+        self.board = new_board
+    
     def simple_hash(self):
         hashable_board = tuple(tuple(tile.value for tile in row) for row in self.board)
         return (hashable_board, self.current_player.value, self.home_size)

@@ -72,9 +72,10 @@ class Dataset:
     def __len__(self) -> int:
         return self.states.shape[0]
     
-    def print_distribution(self) -> None:
+    def get_distribution(self) -> tuple[int, int, int]:
         """
-        Print the distribution of values in the dataset.
+        Get the distribution of values in the dataset.
+        Returns a tuple of (win_count, draw_count, loss_count).
         """
         wins = self.values > 0
         draws = self.values == 0  
@@ -83,6 +84,14 @@ class Dataset:
         win_count = int(jnp.sum(wins))
         draw_count = int(jnp.sum(draws))
         loss_count = int(jnp.sum(losses))
+        
+        return win_count, draw_count, loss_count
+    
+    def print_distribution(self) -> None:
+        """
+        Print the distribution of values in the dataset.
+        """
+        win_count, draw_count, loss_count = self.get_distribution()
         
         print(f"Dataset distribution:")
         print(f"  Wins (>0):  {win_count:6d} ({win_count/len(self):.2%})")
