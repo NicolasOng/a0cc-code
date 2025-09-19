@@ -100,9 +100,10 @@ def create_rotated_policy_mapping(board_size: int) -> list[int]:
                     end_pos = end_x * board_size + end_y
                     move_index = start_pos * (board_size * board_size) + end_pos
                     # and the rotated move index
-                    rstart_x, rstart_y = board_size - 1 - start_x, board_size - 1 - start_y
+                    bs = board_size - 1
+                    rstart_x, rstart_y = bs - start_x, bs - start_y
                     rstart_pos = rstart_x * board_size + rstart_y
-                    rend_x, rend_y = board_size - 1 - end_x, board_size - 1 - end_y
+                    rend_x, rend_y = bs - end_x, bs - end_y
                     rend_pos = rend_x * board_size + rend_y
                     rmove_index = rstart_pos * (board_size * board_size) + rend_pos
                     # add the mapping
@@ -110,12 +111,67 @@ def create_rotated_policy_mapping(board_size: int) -> list[int]:
 
     return rotated_policy_mapping
 
+def create_horizontally_flipped_policy_mapping(board_size: int) -> list[int]:
+    '''
+    Creates a mapping for the policy distribution indices
+    when the board is flipped horizontally.
+    This is used to flip the policy distribution logits.
+    '''
+    flipped_policy_mapping = [0] * board_size ** 4
+    for start_x in range(board_size):
+        for start_y in range(board_size):
+            for end_x in range(board_size):
+                for end_y in range(board_size):
+                    # get the normal move index
+                    start_pos = start_x * board_size + start_y
+                    end_pos = end_x * board_size + end_y
+                    move_index = start_pos * (board_size * board_size) + end_pos
+                    # and the flipped move index
+                    fstart_x, fstart_y = start_y, start_x
+                    fstart_pos = fstart_x * board_size + fstart_y
+                    fend_x, fend_y = end_y, end_x
+                    fend_pos = fend_x * board_size + fend_y
+                    fmove_index = fstart_pos * (board_size * board_size) + fend_pos
+                    # add the mapping
+                    flipped_policy_mapping[move_index] = fmove_index
+
+    return flipped_policy_mapping
+
+def create_vertically_flipped_policy_mapping(board_size: int) -> list[int]:
+    '''
+    Creates a mapping for the policy distribution indices
+    when the board is flipped vertically.
+    This is used to flip the policy distribution logits.
+    '''
+    flipped_policy_mapping = [0] * board_size ** 4
+    for start_x in range(board_size):
+        for start_y in range(board_size):
+            for end_x in range(board_size):
+                for end_y in range(board_size):
+                    # get the normal move index
+                    start_pos = start_x * board_size + start_y
+                    end_pos = end_x * board_size + end_y
+                    move_index = start_pos * (board_size * board_size) + end_pos
+                    # and the flipped move index
+                    bs = board_size - 1
+                    fstart_x, fstart_y = bs - start_y, bs - start_x
+                    fstart_pos = fstart_x * board_size + fstart_y
+                    fend_x, fend_y = bs - end_y, bs - end_x
+                    fend_pos = fend_x * board_size + fend_y
+                    fmove_index = fstart_pos * (board_size * board_size) + fend_pos
+                    # add the mapping
+                    flipped_policy_mapping[move_index] = fmove_index
+
+    return flipped_policy_mapping
+
 class Policy:
     def __init__(self, board_size: int):
         self.board_size = board_size
         self.policy: NDArray[np.float32] = np.zeros((self.board_size ** 4), dtype=np.float32) # (board_size ** 4,)
         self.mask: NDArray[np.bool] = np.full((self.board_size ** 4), False, dtype=np.bool) # (board_size ** 4,)
         self.policy_rotation_mapping = create_rotated_policy_mapping(board_size)
+        self.policy_flip_h_mapping = create_horizontally_flipped_policy_mapping(board_size)
+        self.policy_flip_v_mapping = create_vertically_flipped_policy_mapping(board_size)
     
     def get_policy_list(self) -> list[float]:
         return self.policy.tolist()
@@ -161,6 +217,31 @@ class Policy:
         '''
         self.policy = self.rotate_policy_list(self.policy).astype(np.float32)
         self.mask = self.rotate_policy_list(self.mask).astype(np.bool)
+    
+    def flip_policy_list(self, logits: NDArray[np.generic], horizontal: bool) -> NDArray[np.generic]:
+        '''
+        Flips the policy logits horizontally or vertically using the precomputed mapping.
+        This is used to adjust the policy distribution when the board is flipped.
+        Assumes the given logits has the correct length.
+        '''
+        if horizontal:
+            flip_mapping = self.policy_flip_h_mapping
+        else:
+            flip_mapping = self.policy_flip_v_mapping
+
+        flipped_logits: NDArray[np.generic] = np.zeros((self.board_size ** 4), dtype=logits.dtype)
+        for index in range(len(logits)):
+            flipped_index = flip_mapping[index]
+            flipped_logits[flipped_index] = logits[index]
+        return flipped_logits
+    
+    def flip_policy(self, horizontal: bool) -> None:
+        '''
+        Flips the policy distribution horizontally or vertically in-place.
+        This is used to adjust the policy distribution when the board is flipped.
+        '''
+        self.policy = self.flip_policy_list(self.policy, horizontal).astype(np.float32)
+        self.mask = self.flip_policy_list(self.mask, horizontal).astype(np.bool)
 
     def set_logits(self, logits: NDArray[np.float32], rotate_180: bool) -> None:
         '''

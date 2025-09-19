@@ -264,18 +264,26 @@ def balance_dataset(dataset: Dataset) -> Dataset:
     When sampling from the minority class, it mirrors the board to create a new sample.
     '''
     logger.info("Balancing dataset...")
-    # get boards from the minority class (win or loss, ignore draws)
+    # get the dataset statistics
+    dataset.shuffle()
     num_wins, num_draws, num_losses = dataset.get_distribution()
     logger.info(f"Current distribution: Wins: {num_wins}, Draws: {num_draws}, Losses: {num_losses}")
     if num_wins == num_losses:
         logger.info("Dataset is already balanced.")
         return dataset
-
+    
+    # determine which is the minority class and how many samples to add
     exit()
 
-    # with a subset of the boards, create mirrored boards with b.flip_horizontal()
+    # go through the dataset.
+    # for each sample in the minority class, create a mirrored board (with b.flip_horizontal()) and add it to the dataset
+    # until the dataset is balanced
 
-    # turn those boards into new samples, add them to the dataset
+    # note - need to be able to flip the policy horizontally as well
+
+    # add the new samples to the dataset
+    # shuffle the dataset
+    # print the new distribution
     return dataset
 
 def main():
