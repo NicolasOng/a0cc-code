@@ -138,6 +138,10 @@ def main():
     gd_bias_series = load_series(f"{config.eval_dir}/gamedata_bias.pkl")
     gd_overall_bias_series = load_series(f"{config.eval_dir}/gamedata_overall_bias.pkl")
 
+    gd_prog_acc_100 = load_series(f"{config.eval_dir}/gamedata_progress_acc_100.pkl")
+    gd_prog_acc_10 = load_series(f"{config.eval_dir}/gamedata_progress_acc_10.pkl")
+    state_progress_gtv = load_series(f"{config.eval_dir}/state_progress_gtv_datasets_eval.pkl")
+
     # plot all the series
     plot_given("Model Performance on Ground Truth of States Seen During Training",
                [
@@ -268,6 +272,24 @@ def main():
                    ("Overall Loss Percentage", gd_overall_bias_series.x, gd_overall_bias_series.ys["Overall Loss Percent"]),
                    ("Overall Draw Percentage", gd_overall_bias_series.x, gd_overall_bias_series.ys["Overall Draw Percent"])
                ], "Training Iteration", "Percentage", "gamedata_bias")
+    
+    plot_given("Training Data Accuracy Over Game Progress (100 bins)",
+               [
+                   ("Value Accuracy", gd_prog_acc_100.x, gd_prog_acc_100.ys["Value Accuracy"]),
+                   #("Policy Accuracy", gd_prog_acc_100.x, gd_prog_acc_100.ys["Policy Accuracy"])
+               ], "Game Progress (%)", "Accuracy", "gamedata_progress_acc_100")
+    
+    plot_given("Training Data Accuracy Over Game Progress (10 bins)",
+               [
+                   ("Value Accuracy", gd_prog_acc_10.x, gd_prog_acc_10.ys["Value Accuracy"]),
+                   #("Policy Accuracy", gd_prog_acc_10.x, gd_prog_acc_10.ys["Policy Accuracy"])
+               ], "Game Progress (%)", "Accuracy", "gamedata_progress_acc_10")
+    
+    plot_given("Model Accuracy on Ground Truth Value by State Progress",
+               [
+                   ("Value Accuracy", state_progress_gtv.x, state_progress_gtv.ys["value_accuracy"]),
+                   ("Policy Accuracy", state_progress_gtv.x, state_progress_gtv.ys["policy_accuracy"])
+               ], "State Progress (%)", "Accuracy", "state_progress_gtv")
 
 if __name__ == "__main__":
     main()

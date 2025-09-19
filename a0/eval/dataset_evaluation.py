@@ -281,6 +281,35 @@ def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list
             'policy_accuracies': policy_accuracies
         }, f)
 
+def evaluate_on_all_datasets(model: AlphaZeroModel, datasets: dict[int, Dataset], fn: str) -> None:
+    '''
+    Evaluates the model on all datasets in the dictionary.
+    The dictionary is expected to have keys that are integers that can be ordered,
+    and values as Dataset objects.
+    '''
+    logger.info(f"Evaluating model on all datasets ({fn})...")
+
+    # Iterate through all datasets in the dictionary
+    metrics = Series(["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"])
+    for bin_key in sorted(datasets.keys()):
+        dataset = datasets[bin_key]
+        dataset.batch_size = 25
+        if len(dataset) < dataset.batch_size:
+            logger.info(f"Skipping small dataset with progress bin {bin_key}")
+            continue
+        logger.info(f"Evaluating dataset with progress bin {bin_key}")
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, dataset)
+        metrics.x.append(bin_key)
+        metrics.ys["loss"].append(loss)
+        metrics.ys["value_loss"].append(value_loss)
+        metrics.ys["policy_loss"].append(policy_loss)
+        metrics.ys["value_accuracy"].append(value_accuracy)
+        metrics.ys["policy_accuracy"].append(policy_accuracy)
+    
+    # save the metrics to a file
+    metrics_path = f"{config.eval_dir}/{fn}.pkl"
+    save_series(metrics, metrics_path)
+
 def load_dataset(dataset_path: str) -> Dataset:
     '''
     Loads a dataset from the given path.
@@ -353,6 +382,31 @@ def calculate_dataset_bias(dataset: Dataset) -> tuple[float, float, float]:
     #logger.info(f"Dataset bias - Wins: {win_percent:.2%}, Losses: {loss_percent:.2%}, Draws: {draw_percent:.2%}")
     return win_percent, loss_percent, draw_percent
 
+def load_dataset_dict(dataset_path: str) -> dict[int, Dataset]:
+    '''
+    Args:
+        dataset_path: Path to the dataset file.
+        
+    Returns:
+        A dictionary mapping bin keys (progress percentages) to Dataset objects.
+        For example: {0: Dataset, 10: Dataset, 20: Dataset, ...}
+    '''
+    logger.info(f"Loading dataset dict from {dataset_path}...")
+    
+    try:
+        with open(dataset_path, 'rb') as file:
+            datasets = pickle.load(file)
+        
+        logger.info(f"Successfully loaded {len(datasets)} datasets")
+        
+        return datasets
+    except FileNotFoundError:
+        logger.error(f"Dataset file not found: {dataset_path}")
+        raise
+    except Exception as e:
+        logger.error(f"Error loading datasets: {e}")
+        raise
+
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='dataset_evaluation')
 
@@ -388,6 +442,8 @@ def main():
     for dataset, name in datasets_list:
         win_percent, loss_percent, draw_percent = calculate_dataset_bias(dataset)
         logger.info(f"Dataset {name} bias - Wins: {win_percent:.2%}, Losses: {loss_percent:.2%}, Draws: {draw_percent:.2%}")
+    
+    evaluate_on_all_datasets(models[-1][1], load_dataset_dict(f"{config.dataset_out_dir}/state_progress_gtv_datasets.pkl"), "state_progress_gtv_datasets_eval")
 
     logger.info("Dataset evaluation completed.")
 

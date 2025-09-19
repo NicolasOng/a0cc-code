@@ -122,6 +122,10 @@ def main():
     load_and_merge_series(outputs, "gamedata_acc.pkl", confidence)
     load_and_merge_series(outputs, "gamedata_overall_acc.pkl", confidence)
     load_and_merge_series(outputs, "training_metrics.pkl", confidence)
+    load_and_merge_series(outputs, "gamedata_bias.pkl", confidence)
+    load_and_merge_series(outputs, "gamedata_overall_bias.pkl", confidence)
+    load_and_merge_series(outputs, "gamedata_progress_acc_100.pkl", confidence)
+    load_and_merge_series(outputs, "gamedata_progress_acc_10.pkl", confidence)
 
     # load the merged series from disk
     # this step is seperated in case I don't want to recalculate all the series
@@ -137,6 +141,11 @@ def main():
     gd_accuracy_series = load_series(f"{config.eval_dir}/merged_gamedata_acc.pkl")
     gd_overall_acc_series = load_series(f"{config.eval_dir}/merged_gamedata_overall_acc.pkl")
     training_metrics = load_series(f"{config.eval_dir}/merged_training_metrics.pkl")
+    gd_bias_series = load_series(f"{config.eval_dir}/merged_gamedata_bias.pkl")
+    gd_overall_bias_series = load_series(f"{config.eval_dir}/merged_gamedata_overall_bias.pkl")
+    gd_prog_acc_100 = load_series(f"{config.eval_dir}/merged_gamedata_progress_acc_100.pkl")
+    gd_prog_acc_10 = load_series(f"{config.eval_dir}/merged_gamedata_progress_acc_10.pkl")
+
 
     # try plotting
     plot_shaded_error("Value Head Model Performance on Ground Truth of States and Training Data Accuracy",
@@ -170,6 +179,12 @@ def main():
                           ("Training Data PM", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy PM"], gd_accuracy_series.ys["Iteration Policy PM_ci"]),
                           ("Training Data Overall PM", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Policy PM"], gd_overall_acc_series.ys["Overall Policy PM_ci"])
                       ], "Iterations", "Accuracy", "merged_full_accuracy_policy_ci")
+    
+    plot_shaded_error("Training Data Value Accuracy Over Game Progress (10 & 100 bins)",
+                      [
+                            ("Value Accuracy (100 bins)", "±95% CI", gd_prog_acc_100.x, gd_prog_acc_100.ys["Value Accuracy"], gd_prog_acc_100.ys["Value Accuracy_ci"]),
+                            ("Value Accuracy (10 bins)", "±95% CI", gd_prog_acc_10.x, gd_prog_acc_10.ys["Value Accuracy"], gd_prog_acc_10.ys["Value Accuracy_ci"]),
+                      ], "Game Progress (%)", "Accuracy", "merged_gamedata_progress_acc_ci")
 
 if __name__ == "__main__":
     main()

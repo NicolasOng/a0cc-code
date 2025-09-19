@@ -707,6 +707,61 @@ def get_training_performance_metrics():
     # save the series
     save_series(training_metrics, f"{config.eval_dir}/training_metrics.pkl")
 
+def gamedata_accuracy_over_progress(game_data_lists: list[tuple[int, list[GameData]]]) -> None:
+    gt = GroundTruth()
+
+    bins_100: dict[int, tuple[int, int]] = {100 * i // 100: (0, 0) for i in range(100)}
+    bins_10: dict[int, tuple[int, int]] = {100 * i // 10: (0, 0) for i in range(10)}
+
+    # put all the boards from the game data into the appropriate bins
+    logger.info("Extracting boards from game data into progress accuracy bins...")
+    for _, game_data_list in tqdm(game_data_lists):
+        for game_data in game_data_list:
+            game_length = len(game_data.turn_data)
+            winner = game_data.winner
+            turn_data = game_data.turn_data
+            for turn_no, turn in enumerate(turn_data):
+                progress = (turn_no * 100) // game_length
+                # find the appropriate bin for this progress
+                bin_100_key = max([k for k in bins_100.keys() if k <= progress])
+                bin_10_key = max([k for k in bins_10.keys() if k <= progress])
+                # trivial check if needed
+                if gt.is_trivial(turn.board):
+                    continue
+                # check the accuracy of the board
+                # value acc
+                board = turn.board
+                sd_outcome = gt.get_outcome(board)
+                gd_outcome = 0 if winner is None else 1 if winner == board.current_player else -1
+                # increment the counts (correct, total) for the appropriate bins
+                if sd_outcome == gd_outcome:
+                    bins_100[bin_100_key] = (bins_100[bin_100_key][0] + 1, bins_100[bin_100_key][1] + 1)
+                    bins_10[bin_10_key] = (bins_10[bin_10_key][0] + 1, bins_10[bin_10_key][1] + 1)
+                else:
+                    bins_100[bin_100_key] = (bins_100[bin_100_key][0], bins_100[bin_100_key][1] + 1)
+                    bins_10[bin_10_key] = (bins_10[bin_10_key][0], bins_10[bin_10_key][1] + 1)
+                # TODO: policy acc
+    print(bins_100)
+    print(bins_10)
+
+    accs_100 = {bin_key: bin_tuples[0] / bin_tuples[1] for bin_key, bin_tuples in bins_100.items() if bin_tuples[1] > 0}
+    accs_10 = {bin_key: bin_tuples[0] / bin_tuples[1] for bin_key, bin_tuples in bins_10.items() if bin_tuples[1] > 0}
+    print(accs_100)
+    print(accs_10)
+
+    progress_acc_100 = Series(["Value Accuracy"])
+    progress_acc_10 = Series(["Value Accuracy"])
+    for bin_key in sorted(accs_100.keys()):
+        progress_acc_100.x.append(bin_key)
+        progress_acc_100.ys["Value Accuracy"].append(accs_100[bin_key])
+    for bin_key in sorted(accs_10.keys()):
+        progress_acc_10.x.append(bin_key)
+        progress_acc_10.ys["Value Accuracy"].append(accs_10[bin_key])
+
+    # save the series
+    save_series(progress_acc_100, f"{config.eval_dir}/gamedata_progress_acc_100.pkl")
+    save_series(progress_acc_10, f"{config.eval_dir}/gamedata_progress_acc_10.pkl")
+
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='training_data_evals')
     
@@ -726,6 +781,7 @@ def main():
     check_game_data_bias(list(game_data_generator(config.training_dir, config.training_iterations)))
     get_stats_of_each_iterations_game_data()
     get_training_performance_metrics()
+    gamedata_accuracy_over_progress(list(game_data_generator(config.training_dir, config.training_iterations)))
 
     logger.info("Training data evaluations completed.")
 
