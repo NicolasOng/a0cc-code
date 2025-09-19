@@ -256,6 +256,69 @@ def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = 
         if final_size is not None: neighbor_gtv_dataset.trim(new_size=final_size, shuffle=True)
         save_dataset(f"neighbor_{i+1}_gtv", neighbor_gtv_dataset)
 
+def state_progress_gtv_datasets(num_bins: int = 100, size: int | None = 500, remove_trivial: bool = True, remove_bias: bool = True):
+    '''
+    Generates and saves datasets of ground truth values for boards at different stages of the game.
+    The stages are determined by the number of pieces on the board, divided into num_bins bins.
+    Each dataset contains boards with a number of pieces within the bin range.
+    '''
+    logger.info("Generating state progress GTV datasets...")
+    gt = GroundTruth()
+
+    # the bins dict holds the boards by their game progress,
+    # or how far into the game they appear.
+    # for example: 0% to 10%, 10% to 20%, ..., 90% to 100%
+    # bins are accessed by their lower bound, e.g. 0, 10, 20, ..., 90
+    assert num_bins > 0 and num_bins <= 100, "num_bins must be between 1 and 100 (inclusive)"
+    bins: dict[int, set[Board]] = {100 * i // num_bins: set() for i in range(num_bins)}
+
+    # get the game data lists from the training data generator
+    game_data_lists = game_data_generator(config.training_dir, config.training_iterations)
+
+    # put all the boards from the game data into the appropriate bins
+    logger.info("Extracting boards from game data into bins...")
+    for _, game_data_list in tqdm(game_data_lists):
+        for game_data in game_data_list:
+            game_length = len(game_data.turn_data)
+            turn_data = game_data.turn_data
+            for turn_no, turn in enumerate(turn_data):
+                progress = (turn_no * 100) // game_length
+                # find the appropriate bin for this progress
+                bin_key = max([k for k in bins.keys() if k <= progress])
+                #logger.info(f"Turn {turn_no}/{game_length}, progress: {progress}%, bin: {bin_key}%")
+                # trivial check if needed
+                if remove_trivial and gt.is_trivial(turn.board):
+                    continue
+                # add the board to the appropriate bin
+                bins[bin_key].add(turn.board)
+
+    # log the number of boards in each bin
+    for bin_key, bin_boards in bins.items():
+        logger.info(f"Bin {bin_key}: {len(bin_boards)} boards")
+
+    # create a dataset for each bin
+    logger.info("Creating dataset for each bin...")
+    datasets = {bin_key: create_gtv_dataset_from_board_list(list(bin_boards)) for bin_key, bin_boards in bins.items() if bin_boards}
+
+    # balance each dataset if needed
+    logger.info("Balancing datasets to remove bias...")
+    if remove_bias:
+        for bin_key, dataset in datasets.items():
+            dataset.balance_values()
+    
+    # trim each dataset to the specified size
+    logger.info("Trimming datasets to specified size...")
+    if size is not None:
+        for bin_key, dataset in datasets.items():
+            dataset.trim(new_size=size, shuffle=True)
+    
+    # save the dataset dict into a single file
+    logger.info("Saving state progress GTV datasets...")
+    output_path = f"{config.dataset_out_dir}/state_progress_gtv_datasets.pkl"
+    with open(output_path, 'wb') as file:
+        pickle.dump(datasets, file)
+    logger.info(f"State progress GTV datasets saved to {output_path}.")
+
 def balance_dataset(dataset: Dataset) -> Dataset:
     '''
     Balances the dataset to have an equal number of each value (-1, 0, 1).
@@ -297,11 +360,13 @@ def main():
     remove_trivial = True
     remove_bias = True
 
-    random_ground_truth_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
+    #random_ground_truth_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
-    training_experienced_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
+    #training_experienced_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
-    training_neighbors_gtv(10000, 1000, 2, remove_trivial=remove_trivial, remove_bias=remove_bias)
+    #training_neighbors_gtv(10000, 1000, 2, remove_trivial=remove_trivial, remove_bias=remove_bias)
+
+    state_progress_gtv_datasets(100, 500, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
     logger.info("Finished generating datasets.")
 
