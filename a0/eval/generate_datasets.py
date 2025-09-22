@@ -4,12 +4,13 @@ import copy
 
 import jax.numpy as jnp
 from tqdm import tqdm
+import numpy as np
 
 from cc.core import Board, Game
 from cc.ground_truth import GroundTruth
 from a0.dataset import Dataset
 from a0.experience_buffer import ExperienceData
-from a0.train.alphazero import board_to_input
+from a0.model_utils import board_to_input, input_to_board, Policy
 from a0.eval.training_data import game_data_generator
 
 from config import config
@@ -49,7 +50,7 @@ def random_ground_truth_values(n: int = 1000, remove_trivial: bool = True, remov
     # create and save a gtv dataset based on the generated boards
     rgtv_dataset = create_gtv_dataset_from_board_list(boards)
     if remove_bias:
-        balance_dataset(rgtv_dataset)
+        rgtv_dataset = balance_dataset(rgtv_dataset)
         #rgtv_dataset.balance_values()
     rgtv_dataset.trim(new_size=n, shuffle=True)
     save_dataset("random_gtv", rgtv_dataset)
@@ -336,18 +337,64 @@ def balance_dataset(dataset: Dataset) -> Dataset:
         return dataset
     
     # determine which is the minority class and how many samples to add
-    exit()
+    min_class = min(num_wins, num_losses)
+    max_class = max(num_wins, num_losses)
+    to_add = max_class - min_class
+    add_wins = num_wins < num_losses
+    logger.info(f"Minority class: {'Wins' if add_wins else 'Losses'}, need to add {to_add} samples.")
 
     # go through the dataset.
     # for each sample in the minority class, create a mirrored board (with b.flip_horizontal()) and add it to the dataset
     # until the dataset is balanced
-
-    # note - need to be able to flip the policy horizontally as well
-
+    # create lists to hold the new samples
+    flipped_states: list[jnp.ndarray] = []
+    flipped_values: list[float] = []
+    flipped_policies: list[jnp.ndarray] = []
+    # for each sample in the dataset
+    for i in range(len(dataset.states)):
+        # get the board, value, and policy
+        value_jnp = dataset.values[i, 0]
+        board_jnp = dataset.states[i]
+        policy_jnp = dataset.policies[i]
+        value = float(value_jnp)
+        # add the original sample to the new lists
+        flipped_states.append(board_jnp)
+        flipped_values.append(value)
+        flipped_policies.append(policy_jnp)
+        # if we need more flipped samples, and this sample is in the minority class
+        if (to_add > 0) and ((add_wins and value == 1.0) or (not add_wins and value == -1.0)):
+            # create a mirrored board
+            flipped_board = input_to_board(np.array(board_jnp))
+            flipped_board.flip_horizontal()
+            flipped_board_jnp = jnp.array(board_to_input(flipped_board))
+            # create a mirrored policy
+            p = Policy(len(flipped_board.board))
+            p.set_logits(np.array(policy_jnp), rotate_180=False)
+            p.flip_policy(horizontal=True)
+            flipped_policy_jnp = jnp.array(p.policy)
+            # add the new sample to the dataset
+            flipped_states.append(flipped_board_jnp)
+            flipped_values.append(value)
+            flipped_policies.append(flipped_policy_jnp)
+            # decrement the number of samples to add
+            to_add -= 1
+    
     # add the new samples to the dataset
+    balanced_dataset = Dataset(batch_size=256)
+    e_board = jnp.stack([board for board in flipped_states]) # (board_size, board_size) -> (N, board_size, board_size)
+    e_value = jnp.array([value for value in flipped_values])[:, None] # Add [:, None] to make its shape (N, 1)
+    e_policy = jnp.stack([policy for policy in flipped_policies]) # (board_size ** 4) -> (N, board_size ** 4)
+    logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
+    balanced_dataset.set(e_board, e_value, e_policy)
     # shuffle the dataset
+    balanced_dataset.shuffle()
+    # balance the dataset if there wasn't enough samples in the minority class
+    # to duplicate to balance the dataset fully
+    #balanced_dataset.balance_values()
     # print the new distribution
-    return dataset
+    num_wins, num_draws, num_losses = balanced_dataset.get_distribution()
+    logger.info(f"Current distribution: Wins: {num_wins}, Draws: {num_draws}, Losses: {num_losses}")
+    return balanced_dataset
 
 def main():
     setup_logging(
@@ -360,11 +407,11 @@ def main():
     remove_trivial = True
     remove_bias = True
 
-    #random_ground_truth_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
+    random_ground_truth_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
-    #training_experienced_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
+    training_experienced_values(n=1000, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
-    #training_neighbors_gtv(10000, 1000, 2, remove_trivial=remove_trivial, remove_bias=remove_bias)
+    training_neighbors_gtv(10000, 1000, 2, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
     state_progress_gtv_datasets(100, 500, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
