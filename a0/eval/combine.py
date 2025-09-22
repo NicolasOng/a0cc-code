@@ -126,6 +126,7 @@ def main():
     load_and_merge_series(outputs, "gamedata_overall_bias.pkl", confidence)
     load_and_merge_series(outputs, "gamedata_progress_acc_100.pkl", confidence)
     load_and_merge_series(outputs, "gamedata_progress_acc_10.pkl", confidence)
+    load_and_merge_series(outputs, "state_progress_gtv_datasets_eval.pkl", confidence)
 
     # load the merged series from disk
     # this step is seperated in case I don't want to recalculate all the series
@@ -145,8 +146,8 @@ def main():
     gd_overall_bias_series = load_series(f"{config.eval_dir}/merged_gamedata_overall_bias.pkl")
     gd_prog_acc_100 = load_series(f"{config.eval_dir}/merged_gamedata_progress_acc_100.pkl")
     gd_prog_acc_10 = load_series(f"{config.eval_dir}/merged_gamedata_progress_acc_10.pkl")
-
-
+    state_progress_gtv = load_series(f"{config.eval_dir}/merged_state_progress_gtv_datasets_eval.pkl")
+    
     # try plotting
     plot_shaded_error("Value Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
@@ -185,6 +186,12 @@ def main():
                             ("Value Accuracy (100 bins)", "±95% CI", gd_prog_acc_100.x, gd_prog_acc_100.ys["Value Accuracy"], gd_prog_acc_100.ys["Value Accuracy_ci"]),
                             ("Value Accuracy (10 bins)", "±95% CI", gd_prog_acc_10.x, gd_prog_acc_10.ys["Value Accuracy"], gd_prog_acc_10.ys["Value Accuracy_ci"]),
                       ], "Game Progress (%)", "Accuracy", "merged_gamedata_progress_acc_ci")
+
+    plot_shaded_error("Model Accuracy on Ground Truth Value by State Progress",
+               [
+                   ("Value Accuracy", "±95% CI", state_progress_gtv.x, state_progress_gtv.ys["value_accuracy"], state_progress_gtv.ys["value_accuracy_ci"]),
+                   #("Policy Accuracy", state_progress_gtv.x, state_progress_gtv.ys["policy_accuracy"])
+               ], "State Progress (%)", "Accuracy", "state_progress_gtv")
 
 if __name__ == "__main__":
     main()

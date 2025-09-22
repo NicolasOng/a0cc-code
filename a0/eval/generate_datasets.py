@@ -140,7 +140,7 @@ def training_experienced_values(n: int | None = None, remove_trivial: bool = Tru
     logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
     ev_dataset.set(e_board, e_value, e_policy)
     if remove_bias:
-        ev_dataset.balance_values()
+        ev_dataset = balance_dataset(ev_dataset)
     if n is not None:
         ev_dataset.trim(new_size=n, shuffle=True)
 
@@ -239,7 +239,7 @@ def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = 
     # create, trim, and save a Dataset with the GTV for the training boards
     training_gtv_dataset = create_gtv_dataset_from_board_list(training_boards)
     if remove_bias:
-        training_gtv_dataset.balance_values()
+        training_gtv_dataset = balance_dataset(training_gtv_dataset)
     if final_size is not None: training_gtv_dataset.trim(new_size=final_size, shuffle=True)
     save_dataset("training_gtv", training_gtv_dataset)
 
@@ -253,7 +253,7 @@ def training_neighbors_gtv(temporary_size: int | None, final_size: int | None = 
         # create, trim, and save a gtv dataset based on the generated boards
         neighbor_gtv_dataset = create_gtv_dataset_from_board_list(neighbor_boards)
         if remove_bias:
-            neighbor_gtv_dataset.balance_values()
+            neighbor_gtv_dataset = balance_dataset(neighbor_gtv_dataset)
         if final_size is not None: neighbor_gtv_dataset.trim(new_size=final_size, shuffle=True)
         save_dataset(f"neighbor_{i+1}_gtv", neighbor_gtv_dataset)
 
@@ -305,7 +305,8 @@ def state_progress_gtv_datasets(num_bins: int = 100, size: int | None = 500, rem
     logger.info("Balancing datasets to remove bias...")
     if remove_bias:
         for bin_key, dataset in datasets.items():
-            dataset.balance_values()
+            dataset = balance_dataset(dataset)
+            datasets[bin_key] = dataset
     
     # trim each dataset to the specified size
     logger.info("Trimming datasets to specified size...")
@@ -390,7 +391,7 @@ def balance_dataset(dataset: Dataset) -> Dataset:
     balanced_dataset.shuffle()
     # balance the dataset if there wasn't enough samples in the minority class
     # to duplicate to balance the dataset fully
-    #balanced_dataset.balance_values()
+    balanced_dataset.balance_values()
     # print the new distribution
     num_wins, num_draws, num_losses = balanced_dataset.get_distribution()
     logger.info(f"Current distribution: Wins: {num_wins}, Draws: {num_draws}, Losses: {num_losses}")
@@ -413,7 +414,7 @@ def main():
 
     training_neighbors_gtv(10000, 1000, 2, remove_trivial=remove_trivial, remove_bias=remove_bias)
 
-    state_progress_gtv_datasets(100, 500, remove_trivial=remove_trivial, remove_bias=remove_bias)
+    state_progress_gtv_datasets(100, 500, remove_trivial=remove_trivial, remove_bias=False)
 
     logger.info("Finished generating datasets.")
 

@@ -288,7 +288,7 @@ def main():
     plot_given("Model Accuracy on Ground Truth Value by State Progress",
                [
                    ("Value Accuracy", state_progress_gtv.x, state_progress_gtv.ys["value_accuracy"]),
-                   ("Policy Accuracy", state_progress_gtv.x, state_progress_gtv.ys["policy_accuracy"])
+                   #("Policy Accuracy", state_progress_gtv.x, state_progress_gtv.ys["policy_accuracy"])
                ], "State Progress (%)", "Accuracy", "state_progress_gtv")
 
 if __name__ == "__main__":
