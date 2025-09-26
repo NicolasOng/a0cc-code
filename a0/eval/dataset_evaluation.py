@@ -294,9 +294,9 @@ def evaluate_on_all_datasets(model: AlphaZeroModel, datasets: dict[int, Dataset]
     for bin_key in sorted(datasets.keys()):
         dataset = datasets[bin_key]
         dataset.batch_size = 25
-        if len(dataset) < dataset.batch_size:
-            logger.info(f"Skipping small dataset with progress bin {bin_key}")
-            continue
+        # if len(dataset) < dataset.batch_size:
+        #     logger.info(f"Skipping small dataset with progress bin {bin_key}")
+        #     continue
         logger.info(f"Evaluating dataset with progress bin {bin_key}")
         loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, dataset)
         metrics.x.append(bin_key)
@@ -441,7 +441,7 @@ def main():
     datasets_list = [(training_dataset, "training_gtv"), (random_dataset, "random_gtv"), (training_e_dataset, "training_ev")] + [(neighbor_datasets[i], f"neighbor_{i+1}_gtv") for i in range(2)]
     for dataset, name in datasets_list:
         win_percent, loss_percent, draw_percent = calculate_dataset_bias(dataset)
-        logger.info(f"Dataset {name} bias - Wins: {win_percent:.2%}, Losses: {loss_percent:.2%}, Draws: {draw_percent:.2%}")
+        logger.info(f"Dataset {name} bias - Wins: {win_percent:.2%}, Losses: {loss_percent:.2%}, Draws: {draw_percent:.2%}, Total: {len(dataset)}")
     
     evaluate_on_all_datasets(models[-1][1], load_dataset_dict(f"{config.dataset_out_dir}/state_progress_gtv_datasets.pkl"), "state_progress_gtv_datasets_eval")
 
