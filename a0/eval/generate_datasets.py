@@ -323,8 +323,12 @@ def state_progress_gtv_datasets(num_bins: int = 100, size: int | None = 500, gen
         for bin_key, bin_boards in bins.items():
             non_trivial_boards = remove_trivial_boards(list(bin_boards))
             bins_nt[bin_key] = non_trivial_boards
-            logger.info(f"Bin {bin_key}: {len(non_trivial_boards)}/{len(bin_boards)} non-trivial boards ({len(non_trivial_boards)/len(bin_boards):.2%})")
-
+            logger.info(f"Bin {bin_key}: {len(non_trivial_boards)}/{len(bin_boards)} non-trivial boards ({len(non_trivial_boards)/len(bin_boards) if len(bin_boards) > 0 else 0:.2%})")
+    
+        # log the number of boards in each bin
+        for bin_key, bin_boards in bins_nt.items():
+            logger.info(f"Bin {bin_key}: {len(bin_boards)} boards")
+    
     # create a dataset for each bin
     logger.info("Creating dataset for each bin...")
     datasets = {bin_key: create_gtv_dataset_from_board_list(list(bin_boards)) for bin_key, bin_boards in bins.items() if bin_boards}
@@ -442,7 +446,8 @@ def remove_trivial_boards(boards: list[Board]) -> list[Board]:
     '''
     gt = GroundTruth()
     non_trivial_boards = [board for board in boards if not gt.is_trivial(board)]
-    logger.info(f"Removed trivial boards. {len(non_trivial_boards)}/{len(boards)} non-trivial boards remain ({len(non_trivial_boards)/len(boards):.2%}).")
+    percentage = len(non_trivial_boards) / len(boards) if boards else 0
+    logger.info(f"Removed trivial boards. {percentage:.2%} non-trivial boards remain ({len(non_trivial_boards)}/{len(boards)}).")
     return non_trivial_boards
 
 def main():

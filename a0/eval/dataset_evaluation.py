@@ -293,10 +293,10 @@ def evaluate_on_all_datasets(model: AlphaZeroModel, datasets: dict[int, Dataset]
     metrics = Series(["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"])
     for bin_key in sorted(datasets.keys()):
         dataset = datasets[bin_key]
-        dataset.batch_size = 25
-        # if len(dataset) < dataset.batch_size:
-        #     logger.info(f"Skipping small dataset with progress bin {bin_key}")
-        #     continue
+        dataset.batch_size = 1
+        if len(dataset) < dataset.batch_size:
+            logger.info(f"Skipping small dataset with progress bin {bin_key}")
+            continue
         logger.info(f"Evaluating dataset with progress bin {bin_key}")
         loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, dataset)
         metrics.x.append(bin_key)
@@ -423,13 +423,27 @@ def main():
     for i in range(2):
         neighbor_dataset = load_dataset(f"{config.dataset_out_dir}/neighbor_{i+1}_gtv.pkl")
         neighbor_datasets.append(neighbor_dataset)
+    
+    # load the datasets (non-trivial)
+    training_nt_dataset = load_dataset(f"{config.dataset_out_dir}/training_nt_gtv.pkl")
+    random_nt_dataset = load_dataset(f"{config.dataset_out_dir}/random_nt_gtv.pkl")
+    training_e_nt_dataset = load_dataset(f"{config.dataset_out_dir}/training_nt_ev.pkl")
+    neighbor_nt_datasets: list[Dataset] = []
+    for i in range(2):
+        neighbor_dataset = load_dataset(f"{config.dataset_out_dir}/neighbor_{i+1}_nt_gtv.pkl")
+        neighbor_nt_datasets.append(neighbor_dataset)
 
-    # trim down the training dataset to a smaller size for faster evaluation
+    # trim down the datasets to a smaller size for faster evaluation
     n = 1000
     training_dataset.trim(n, shuffle=False)
     training_e_dataset.trim(n, shuffle=False)
     for i in range(2):
         neighbor_datasets[i].trim(n, shuffle=False)
+    
+    training_nt_dataset.trim(n, shuffle=False)
+    training_e_nt_dataset.trim(n, shuffle=False)
+    for i in range(2):
+        neighbor_nt_datasets[i].trim(n, shuffle=False)
     
     # Evaluate all models
     evaluate_all_models(models, training_dataset, "training_gtv_eval")
@@ -437,13 +451,21 @@ def main():
     evaluate_all_models(models, training_e_dataset, "training_ev_eval")
     for i in range(2):
         evaluate_all_models(models, neighbor_datasets[i], f"neighbor_{i+1}_gtv_eval")
+    
+    # Evaluate all models
+    evaluate_all_models(models, training_nt_dataset, "training_nt_gtv_eval")
+    evaluate_all_models(models, random_nt_dataset, "random_nt_gtv_eval")
+    evaluate_all_models(models, training_e_nt_dataset, "training_e_nt_gtv_eval")
+    for i in range(2):
+        evaluate_all_models(models, neighbor_nt_datasets[i], f"neighbor_{i+1}_nt_gtv_eval")
 
     datasets_list = [(training_dataset, "training_gtv"), (random_dataset, "random_gtv"), (training_e_dataset, "training_ev")] + [(neighbor_datasets[i], f"neighbor_{i+1}_gtv") for i in range(2)]
     for dataset, name in datasets_list:
         win_percent, loss_percent, draw_percent = calculate_dataset_bias(dataset)
         logger.info(f"Dataset {name} bias - Wins: {win_percent:.2%}, Losses: {loss_percent:.2%}, Draws: {draw_percent:.2%}, Total: {len(dataset)}")
-    
+
     evaluate_on_all_datasets(models[-1][1], load_dataset_dict(f"{config.dataset_out_dir}/state_progress_gtv_datasets.pkl"), "state_progress_gtv_datasets_eval")
+    evaluate_on_all_datasets(models[-1][1], load_dataset_dict(f"{config.dataset_out_dir}/state_progress_nt_gtv_datasets.pkl"), "state_progress_nt_gtv_datasets_eval")
 
     logger.info("Dataset evaluation completed.")
 

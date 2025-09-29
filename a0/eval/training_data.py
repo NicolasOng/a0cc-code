@@ -745,13 +745,20 @@ def gamedata_accuracy_over_progress(game_data_lists: list[tuple[int, list[GameDa
     print(accs_100)
     print(accs_10)
 
-    progress_acc_100 = Series(["Value Accuracy"])
-    progress_acc_10 = Series(["Value Accuracy"])
+    nums_100 = {bin_key: bin_tuples[1] for bin_key, bin_tuples in bins_100.items()}
+    nums_10 = {bin_key: bin_tuples[1] for bin_key, bin_tuples in bins_10.items()}
+    print(nums_100)
+    print(nums_10)
+
+    progress_acc_100 = Series(["Num States", "Value Accuracy"])
+    progress_acc_10 = Series(["Num States", "Value Accuracy"])
     for bin_key in sorted(accs_100.keys()):
         progress_acc_100.x.append(bin_key)
+        progress_acc_100.ys["Num States"].append(nums_100[bin_key])
         progress_acc_100.ys["Value Accuracy"].append(accs_100[bin_key])
     for bin_key in sorted(accs_10.keys()):
         progress_acc_10.x.append(bin_key)
+        progress_acc_10.ys["Num States"].append(nums_10[bin_key])
         progress_acc_10.ys["Value Accuracy"].append(accs_10[bin_key])
 
     # save the series

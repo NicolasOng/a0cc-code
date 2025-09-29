@@ -114,6 +114,22 @@ def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[f
     plt.savefig(f"{config.plot_dir}/{fn}.png")
     plt.clf()
 
+def plot_bar(title: str, series: tuple[str, list[int], list[float]], x_label: str, y_label: str, fn: str) -> None:
+    plt.figure(figsize=(16, 9))
+    
+    label, x_values, y_values = series
+    
+    plt.bar(x_values, y_values, label=label)
+    
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, axis='y', alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}{fn}.png")
+    plt.clf()
+
 def main():
     setup_logging(
         level=20,
@@ -123,6 +139,7 @@ def main():
     logger.info("plotting...")
 
     # load all the series
+    # ["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"]
     train_gt_series = load_series(f"{config.eval_dir}/training_gtv_eval.pkl")
     random_gt_series = load_series(f"{config.eval_dir}/random_gtv_eval.pkl")
     train_ev_series = load_series(f"{config.eval_dir}/training_ev_eval.pkl")
@@ -130,17 +147,35 @@ def main():
     for i in range(2):
         neighbor_gt_series = load_series(f"{config.eval_dir}/neighbor_{i+1}_gtv_eval.pkl")
         n_neighbor_gt_series.append(neighbor_gt_series)
-    
+
+    train_nt_gt_series = load_series(f"{config.eval_dir}/training_nt_gtv_eval.pkl")
+    random_nt_gt_series = load_series(f"{config.eval_dir}/random_nt_gtv_eval.pkl")
+    train_nt_ev_series = load_series(f"{config.eval_dir}/training_nt_ev_eval.pkl")
+    n_neighbor_nt_gt_series: list[Series] = []
+    for i in range(2):
+        neighbor_nt_gt_series = load_series(f"{config.eval_dir}/neighbor_{i+1}_nt_gtv_eval.pkl")
+        n_neighbor_nt_gt_series.append(neighbor_nt_gt_series)
+
+    # ["Total Games", "Player X Wins", "Player O Wins", "Draws (Repeat)", "Draws (Timeout)", "Avg Game Length", "Avg Game Time", "Std Game Length", "Std Game Time"]
     gamedata_series = load_series(f"{config.eval_dir}/gamedata_stats.pkl")
+    # ["Iteration Value Accuracy", "Iteration Policy Accuracy", "Iteration Policy PM", "Iteration Policy Accuracy NT", "Iteration Policy PM NT"]
     gd_accuracy_series = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
+    # ["Overall Value Accuracy", "Overall Policy Accuracy", "Overall Policy PM", "Overall Policy Accuracy NT", "Overall Policy PM NT"]
     gd_overall_accuracy_series = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
+    # ["Loss", "Value Loss", "Policy Loss", "Value Accuracy", "Policy Accuracy"]
     training_metrics = load_series(f"{config.eval_dir}/training_metrics.pkl")
+    # ["Iteration Win Percent", "Iteration Loss Percent", "Iteration Draw Percent"]
     gd_bias_series = load_series(f"{config.eval_dir}/gamedata_bias.pkl")
+    # ["Overall Win Percent", "Overall Loss Percent", "Overall Draw Percent"]
     gd_overall_bias_series = load_series(f"{config.eval_dir}/gamedata_overall_bias.pkl")
 
+    # ["Num States", "Value Accuracy"]
     gd_prog_acc_100 = load_series(f"{config.eval_dir}/gamedata_progress_acc_100.pkl")
     gd_prog_acc_10 = load_series(f"{config.eval_dir}/gamedata_progress_acc_10.pkl")
+
+    # ["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"]
     state_progress_gtv = load_series(f"{config.eval_dir}/state_progress_gtv_datasets_eval.pkl")
+    state_progress_nt_gtv = load_series(f"{config.eval_dir}/state_progress_nt_gtv_datasets_eval.pkl")
 
     # plot all the series
     plot_given("Model Performance on Ground Truth of States Seen During Training",
@@ -193,21 +228,29 @@ def main():
                     ("Neighbor 1 Accuracy", n_neighbor_gt_series[0].x, n_neighbor_gt_series[0].ys["policy_accuracy"]),
                     ("Neighbor 2 Accuracy", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["policy_accuracy"]),
                     ("Random Accuracy", random_gt_series.x, random_gt_series.ys["policy_accuracy"]),
+                    ("Seen Accuracy NT", train_nt_gt_series.x, train_nt_gt_series.ys["policy_accuracy"]),
+                    ("Neighbor 1 Accuracy NT", n_neighbor_nt_gt_series[0].x, n_neighbor_nt_gt_series[0].ys["policy_accuracy"]),
+                    ("Neighbor 2 Accuracy NT", n_neighbor_nt_gt_series[1].x, n_neighbor_nt_gt_series[1].ys["policy_accuracy"]),
+                    ("Random Accuracy NT", random_nt_gt_series.x, random_nt_gt_series.ys["policy_accuracy"]),
                     ("Training Data Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy"]),
-                    ("Training Data PM", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy PM"]),
                     ("Overall Training Data Accuracy", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy Accuracy"]),
-                    ("Overall Training Data PM", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy PM"])
+                    ("Training Data Accuracy NT", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy NT"]),
+                    ("Overall Training Data Accuracy NT", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy Accuracy NT"])
                ],
                "Iteration", "Accuracy", "full_accuracy_policy")
     
     plot_given("Training Data Accuracy by Iteration",
                [
-                    ("Iteration Value Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"]),
-                    ("Experience Buffer", gd_accuracy_series.x, gd_accuracy_series.ys["EB Value Accuracy"]),
-                    ("Iteration Policy Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy"]),
-                    ("Experience Buffer Policy Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["EB Policy Accuracy"]),
-                    ("Iteration Policy PM", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy PM"]),
-                    ("Experience Buffer Policy PM", gd_accuracy_series.x, gd_accuracy_series.ys["EB Policy PM"])
+                    ("Overall Value Accuracy", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Value Accuracy"]),
+                    ("Overall Policy Accuracy", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy Accuracy"]),
+                    ("Overall Policy PM", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy PM"]),
+                    ("Overall Policy Accuracy NT", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy Accuracy NT"]),
+                    ("Overall Policy PM NT", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy PM NT"]),
+                    ("Value Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"]),
+                    ("Policy Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy"]),
+                    ("Policy PM", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy PM"]),
+                    ("Policy Accuracy NT", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy NT"]),
+                    ("Policy PM NT", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy PM NT"]),
                ], "Iterations", "Accuracy", "training_data_accuracy")
 
     plot_given("Training Performance Metrics",
@@ -273,23 +316,26 @@ def main():
                    ("Overall Draw Percentage", gd_overall_bias_series.x, gd_overall_bias_series.ys["Overall Draw Percent"])
                ], "Training Iteration", "Percentage", "gamedata_bias")
     
-    plot_given("Training Data Accuracy Over Game Progress (100 bins)",
+    plot_given("Training Data Accuracy Over Game Progress",
                [
-                   ("Value Accuracy", gd_prog_acc_100.x, gd_prog_acc_100.ys["Value Accuracy"]),
+                   ("Value Accuracy (100 bins)", gd_prog_acc_100.x, gd_prog_acc_100.ys["Value Accuracy"]),
+                   ("Value Accuracy (10 bins)", gd_prog_acc_10.x, gd_prog_acc_10.ys["Value Accuracy"])
                    #("Policy Accuracy", gd_prog_acc_100.x, gd_prog_acc_100.ys["Policy Accuracy"])
-               ], "Game Progress (%)", "Accuracy", "gamedata_progress_acc_100")
-    
-    plot_given("Training Data Accuracy Over Game Progress (10 bins)",
-               [
-                   ("Value Accuracy", gd_prog_acc_10.x, gd_prog_acc_10.ys["Value Accuracy"]),
-                   #("Policy Accuracy", gd_prog_acc_10.x, gd_prog_acc_10.ys["Policy Accuracy"])
-               ], "Game Progress (%)", "Accuracy", "gamedata_progress_acc_10")
+               ], "Game Progress (%)", "Accuracy", "gamedata_progress_acc")
     
     plot_given("Model Accuracy on Ground Truth Value by State Progress",
                [
                    ("Value Accuracy", state_progress_gtv.x, state_progress_gtv.ys["value_accuracy"]),
                    #("Policy Accuracy", state_progress_gtv.x, state_progress_gtv.ys["policy_accuracy"])
                ], "State Progress (%)", "Accuracy", "state_progress_gtv")
+
+    plot_bar("Number of States in Each Progress Bin (100 bins)",
+            ("Num States", gd_prog_acc_100.x, gd_prog_acc_100.ys["Num States"]),
+            "State Progress (%)", "Number of States", "gamedata_progress_num_states_100")
+
+    plot_bar("Number of States in Each Progress Bin (10 bins)",
+            ("Num States", gd_prog_acc_10.x, gd_prog_acc_10.ys["Num States"]),
+            "State Progress (%)", "Number of States", "gamedata_progress_num_states_10")
 
 if __name__ == "__main__":
     main()
