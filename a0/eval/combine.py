@@ -117,6 +117,12 @@ def main():
     load_and_merge_series(outputs, "training_ev_eval.pkl", confidence)
     for i in range(2):
         load_and_merge_series(outputs, f"neighbor_{i+1}_gtv_eval.pkl", confidence)
+    
+    load_and_merge_series(outputs, "training_nt_gtv_eval.pkl", confidence)
+    load_and_merge_series(outputs, "random_nt_gtv_eval.pkl", confidence)
+    load_and_merge_series(outputs, "training_nt_ev_eval.pkl", confidence)
+    for i in range(2):
+        load_and_merge_series(outputs, f"neighbor_{i+1}_nt_gtv_eval.pkl", confidence)
 
     load_and_merge_series(outputs, "gamedata_stats.pkl", confidence)
     load_and_merge_series(outputs, "gamedata_acc.pkl", confidence)
@@ -127,6 +133,7 @@ def main():
     load_and_merge_series(outputs, "gamedata_progress_acc_100.pkl", confidence)
     load_and_merge_series(outputs, "gamedata_progress_acc_10.pkl", confidence)
     load_and_merge_series(outputs, "state_progress_gtv_datasets_eval.pkl", confidence)
+    load_and_merge_series(outputs, "state_progress_nt_gtv_datasets_eval.pkl", confidence)
 
     # load the merged series from disk
     # this step is seperated in case I don't want to recalculate all the series
@@ -138,6 +145,14 @@ def main():
         neighbor_gt_series = load_series(f"{config.eval_dir}/merged_neighbor_{i+1}_gtv_eval.pkl")
         n_neighbor_gt_series.append(neighbor_gt_series)
 
+    train_nt_gt_series = load_series(f"{config.eval_dir}/merged_training_nt_gtv_eval.pkl")
+    random_nt_gt_series = load_series(f"{config.eval_dir}/merged_random_nt_gtv_eval.pkl")
+    train_nt_ev_series = load_series(f"{config.eval_dir}/merged_training_nt_ev_eval.pkl")
+    n_neighbor_nt_gt_series: list[Series] = []
+    for i in range(2):
+        neighbor_nt_gt_series = load_series(f"{config.eval_dir}/merged_neighbor_{i+1}_nt_gtv_eval.pkl")
+        n_neighbor_nt_gt_series.append(neighbor_nt_gt_series)
+
     gamedata_series = load_series(f"{config.eval_dir}/merged_gamedata_stats.pkl")
     gd_accuracy_series = load_series(f"{config.eval_dir}/merged_gamedata_acc.pkl")
     gd_overall_acc_series = load_series(f"{config.eval_dir}/merged_gamedata_overall_acc.pkl")
@@ -147,6 +162,7 @@ def main():
     gd_prog_acc_100 = load_series(f"{config.eval_dir}/merged_gamedata_progress_acc_100.pkl")
     gd_prog_acc_10 = load_series(f"{config.eval_dir}/merged_gamedata_progress_acc_10.pkl")
     state_progress_gtv = load_series(f"{config.eval_dir}/merged_state_progress_gtv_datasets_eval.pkl")
+    state_progress_nt_gtv = load_series(f"{config.eval_dir}/merged_state_progress_nt_gtv_datasets_eval.pkl")
     
     # try plotting
     plot_shaded_error("Value Head Model Performance on Ground Truth of States and Training Data Accuracy",
