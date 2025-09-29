@@ -427,7 +427,7 @@ def main():
     # load the datasets (non-trivial)
     training_nt_dataset = load_dataset(f"{config.dataset_out_dir}/training_nt_gtv.pkl")
     random_nt_dataset = load_dataset(f"{config.dataset_out_dir}/random_nt_gtv.pkl")
-    training_e_nt_dataset = load_dataset(f"{config.dataset_out_dir}/training_nt_ev.pkl")
+    training_nt_e_dataset = load_dataset(f"{config.dataset_out_dir}/training_nt_ev.pkl")
     neighbor_nt_datasets: list[Dataset] = []
     for i in range(2):
         neighbor_dataset = load_dataset(f"{config.dataset_out_dir}/neighbor_{i+1}_nt_gtv.pkl")
@@ -441,7 +441,7 @@ def main():
         neighbor_datasets[i].trim(n, shuffle=False)
     
     training_nt_dataset.trim(n, shuffle=False)
-    training_e_nt_dataset.trim(n, shuffle=False)
+    training_nt_e_dataset.trim(n, shuffle=False)
     for i in range(2):
         neighbor_nt_datasets[i].trim(n, shuffle=False)
     
@@ -455,7 +455,7 @@ def main():
     # Evaluate all models
     evaluate_all_models(models, training_nt_dataset, "training_nt_gtv_eval")
     evaluate_all_models(models, random_nt_dataset, "random_nt_gtv_eval")
-    evaluate_all_models(models, training_e_nt_dataset, "training_e_nt_gtv_eval")
+    evaluate_all_models(models, training_nt_e_dataset, "training_nt_ev_eval")
     for i in range(2):
         evaluate_all_models(models, neighbor_nt_datasets[i], f"neighbor_{i+1}_nt_gtv_eval")
 
