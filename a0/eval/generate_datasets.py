@@ -12,6 +12,7 @@ from a0.dataset import Dataset
 from a0.experience_buffer import ExperienceData
 from a0.model_utils import board_to_input, input_to_board, Policy
 from a0.eval.training_data import game_data_generator
+from a0.eval.dataset_evaluation import Series, save_series
 
 from config import config
 
@@ -295,6 +296,7 @@ def state_progress_gtv_datasets(num_bins: int = 100, size: int | None = 500, gen
     assert num_bins > 0 and num_bins <= 100, "num_bins must be between 1 and 100 (inclusive)"
     bins: dict[int, set[Board]] = {100 * i // num_bins: set() for i in range(num_bins)}
     bins_nt: dict[int, list[Board]] = {100 * i // num_bins: list() for i in range(num_bins)}
+    state_progress_state_nums = Series(["Num States", "Num States NT"])
 
     # get the game data lists from the training data generator
     game_data_lists = game_data_generator(config.training_dir, config.training_iterations)
@@ -316,6 +318,8 @@ def state_progress_gtv_datasets(num_bins: int = 100, size: int | None = 500, gen
     # log the number of boards in each bin
     for bin_key, bin_boards in bins.items():
         logger.info(f"Bin {bin_key}: {len(bin_boards)} boards")
+        state_progress_state_nums.x.append(bin_key)
+        state_progress_state_nums.ys["Num States"].append(len(bin_boards))
 
     # if needed, remove trivial boards from each bin
     if gen_non_trivial:
@@ -328,6 +332,9 @@ def state_progress_gtv_datasets(num_bins: int = 100, size: int | None = 500, gen
         # log the number of boards in each bin
         for bin_key, bin_boards in bins_nt.items():
             logger.info(f"Bin {bin_key}: {len(bin_boards)} boards")
+            state_progress_state_nums.ys["Num States NT"].append(len(bin_boards))
+    
+    save_series(state_progress_state_nums, f"{config.eval_dir}/state_progress_state_nums.pkl")
     
     # create a dataset for each bin
     logger.info("Creating dataset for each bin...")

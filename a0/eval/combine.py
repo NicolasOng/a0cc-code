@@ -134,6 +134,7 @@ def main():
     load_and_merge_series(outputs, "gamedata_progress_acc_10.pkl", confidence)
     load_and_merge_series(outputs, "state_progress_gtv_datasets_eval.pkl", confidence)
     load_and_merge_series(outputs, "state_progress_nt_gtv_datasets_eval.pkl", confidence)
+    load_and_merge_series(outputs, "state_progress_state_nums.pkl", confidence)
 
     # load the merged series from disk
     # this step is seperated in case I don't want to recalculate all the series
@@ -163,7 +164,8 @@ def main():
     gd_prog_acc_10 = load_series(f"{config.eval_dir}/merged_gamedata_progress_acc_10.pkl")
     state_progress_gtv = load_series(f"{config.eval_dir}/merged_state_progress_gtv_datasets_eval.pkl")
     state_progress_nt_gtv = load_series(f"{config.eval_dir}/merged_state_progress_nt_gtv_datasets_eval.pkl")
-    
+    state_progress_state_nums = load_series(f"{config.eval_dir}/merged_state_progress_state_nums.pkl")
+
     # try plotting
     plot_shaded_error("Value Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
@@ -212,6 +214,12 @@ def main():
                    ("Value Accuracy", "±95% CI", state_progress_gtv.x, state_progress_gtv.ys["value_accuracy"], state_progress_gtv.ys["value_accuracy_ci"]),
                    #("Policy Accuracy", state_progress_gtv.x, state_progress_gtv.ys["policy_accuracy"])
                ], "State Progress (%)", "Accuracy", "state_progress_gtv")
+    
+    plot_shaded_error("Number of States in Each Progress Bin",
+            [
+                ("Num States", "±95% CI", state_progress_state_nums.x, state_progress_state_nums.ys["Num States"], state_progress_state_nums.ys["Num States_ci"]),
+                #("Num States NT", "±95% CI", state_progress_state_nums.x, state_progress_state_nums.ys["Num States NT"], state_progress_state_nums.ys["Num States NT_ci"]),
+            ], "State Progress (%)", "Number of States", "state_progress_num_states")
 
 if __name__ == "__main__":
     main()

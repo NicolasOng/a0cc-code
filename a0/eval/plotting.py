@@ -55,7 +55,7 @@ def plot_given(title: str, series: list[tuple[str, list[int], list[float]]], x_l
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}{fn}.png")
-    plt.clf()
+    plt.close()
 
 def plot_stacked(title: str, x: list[int], series: list[tuple[str, list[float]]], x_label: str, y_label: str, fn: str) -> None:
     plt.figure(figsize=(16, 9))
@@ -69,7 +69,7 @@ def plot_stacked(title: str, x: list[int], series: list[tuple[str, list[float]]]
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}.png")
-    plt.clf()
+    plt.close()
 
 def plot_stacked_proportional(title: str, x: list[int], total: list[float], series: list[tuple[str, list[float]]], x_label: str, y_label: str, fn: str) -> None:
     plt.figure(figsize=(16, 9))
@@ -85,7 +85,7 @@ def plot_stacked_proportional(title: str, x: list[int], total: list[float], seri
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}.png")
-    plt.clf()
+    plt.close()
 
 def plot_std_error(title: str, x: list[int], avg: list[float], std: list[float], x_label: str, y_label: str, fn: str):
     plt.figure(figsize=(16, 9))
@@ -97,7 +97,7 @@ def plot_std_error(title: str, x: list[int], avg: list[float], std: list[float],
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}.png")
-    plt.clf()
+    plt.close()
 
 def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[float], list[float]]], x_label: str, y_label: str, fn: str):
     plt.figure(figsize=(16, 9))
@@ -112,7 +112,7 @@ def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[f
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}.png")
-    plt.clf()
+    plt.close()
 
 def plot_bar(title: str, series: tuple[str, list[int], list[float]], x_label: str, y_label: str, fn: str) -> None:
     plt.figure(figsize=(16, 9))
@@ -127,8 +127,8 @@ def plot_bar(title: str, series: tuple[str, list[int], list[float]], x_label: st
     plt.legend()
     plt.grid(True, axis='y', alpha=0.3)
     plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}{fn}.png")
-    plt.clf()
+    plt.savefig(f"{config.plot_dir}/{fn}.png")
+    plt.close()
 
 def main():
     setup_logging(
@@ -176,6 +176,8 @@ def main():
     # ["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"]
     state_progress_gtv = load_series(f"{config.eval_dir}/state_progress_gtv_datasets_eval.pkl")
     state_progress_nt_gtv = load_series(f"{config.eval_dir}/state_progress_nt_gtv_datasets_eval.pkl")
+    # ["Num States", "Num States NT"]
+    state_progress_state_nums = load_series(f"{config.eval_dir}/state_progress_state_nums.pkl")
 
     # plot all the series
     plot_given("Model Performance on Ground Truth of States Seen During Training",
@@ -336,6 +338,14 @@ def main():
     plot_bar("Number of States in Each Progress Bin (10 bins)",
             ("Num States", gd_prog_acc_10.x, gd_prog_acc_10.ys["Num States"]),
             "State Progress (%)", "Number of States", "gamedata_progress_num_states_10")
+    
+    plot_bar("Number of States in Each Progress Bin",
+            ("Num States", state_progress_state_nums.x, state_progress_state_nums.ys["Num States"]),
+            "State Progress (%)", "Number of States", "state_progress_num_states")
+
+    plot_bar("Number of Non-Trivial States in Each Progress Bin",
+            ("Num States", state_progress_state_nums.x, state_progress_state_nums.ys["Num States NT"]),
+            "State Progress (%)", "Number of States", "state_progress_num_states_nt")
 
 if __name__ == "__main__":
     main()
