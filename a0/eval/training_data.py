@@ -729,6 +729,8 @@ def gamedata_accuracy_over_progress(game_data_lists: list[tuple[int, list[GameDa
                 board = turn.board
                 sd_outcome = gt.get_outcome(board)
                 gd_outcome = 0 if winner is None else 1 if winner == board.current_player else -1
+                if gd_outcome == 0:
+                    continue # skip draws for this analysis
                 # increment the counts (correct, total) for the appropriate bins
                 if sd_outcome == gd_outcome:
                     bins_100[bin_100_key] = (bins_100[bin_100_key][0] + 1, bins_100[bin_100_key][1] + 1)
