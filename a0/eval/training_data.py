@@ -56,25 +56,29 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
     with the ground truth outcomes.
     '''
     #last_n_iterations = config.replay_buffer_size // config.training_samples
-    gd_accuracy_series = Series(["Iteration Value Accuracy", "Iteration Policy Accuracy", "Iteration Policy PM", "Iteration Policy Accuracy NT", "Iteration Policy PM NT"])
-    gd_overall_accuracy_series = Series(["Overall Value Accuracy", "Overall Policy Accuracy", "Overall Policy PM", "Overall Policy Accuracy NT", "Overall Policy PM NT"])
+    gd_accuracy_series = Series(["Iteration Value Accuracy", "Iteration Value Accuracy ND", "Iteration Policy Accuracy", "Iteration Policy PM", "Iteration Policy Accuracy NT", "Iteration Policy PM NT"])
+    gd_overall_accuracy_series = Series(["Overall Value Accuracy", "Overall Value Accuracy ND", "Overall Policy Accuracy", "Overall Policy PM", "Overall Policy Accuracy NT", "Overall Policy PM NT"])
     gt = GroundTruth()
     total_num_correct_value = 0
+    total_num_correct_value_nd = 0
     total_num_correct_policy = 0
     total_pm_policy = 0
     total_num_correct_policy_nt = 0
     total_pm_policy_nt = 0
     total = 0
     total_nt = 0
+    total_nd = 0
     # for each game data list/iteration,
     for i, game_data_list in game_data_lists:
         iteration_num_correct_value = 0
+        iteration_num_correct_value_nd = 0
         iteration_num_correct_policy = 0
         iteration_pm_policy = 0
         iteration_num_correct_policy_nt = 0
         iteration_pm_policy_nt = 0
         iteration_total = 0
         iteration_total_nt = 0
+        iteration_total_nd = 0
         # go through each game,
         for _, game_data in enumerate(game_data_list):
             winner = game_data.winner
@@ -85,9 +89,17 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
                 # check the value accuracy
                 sd_outcome = gt.get_outcome(board)
                 gd_outcome = 0 if winner is None else 1 if winner == board.current_player else -1
-                if sd_outcome == gd_outcome:
+                accurate_outcome = sd_outcome == gd_outcome
+                if accurate_outcome:
                     iteration_num_correct_value += 1
                     total_num_correct_value += 1
+                # account for non-draws
+                if not gd_outcome == 0:
+                    iteration_total_nd += 1
+                    total_nd += 1
+                    if accurate_outcome:
+                        iteration_num_correct_value_nd += 1
+                        total_num_correct_value_nd += 1
                 # check the policy accuracy
                 sd_policy = np.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))
                 gd_policy: NDArray[np.float32] = game_state.player_data
@@ -110,12 +122,14 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
                 iteration_total += 1
                 total += 1
         iteration_value_accuracy = iteration_num_correct_value / iteration_total if iteration_total > 0 else 0
+        iteration_value_accuracy_nd = iteration_num_correct_value_nd / iteration_total_nd if iteration_total_nd > 0 else 0
         iteration_policy_accuracy = iteration_num_correct_policy / iteration_total if iteration_total > 0 else 0
         iteration_policy_pm = iteration_pm_policy / iteration_total if iteration_total > 0 else 0
         iteration_policy_accuracy_nt = iteration_num_correct_policy_nt / iteration_total_nt if iteration_total_nt > 0 else 0
         iteration_policy_pm_nt = iteration_pm_policy_nt / iteration_total_nt if iteration_total_nt > 0 else 0
         # log the iteration's accuracy
         logger.info(f"Iteration {i} value accuracy: {iteration_value_accuracy:.2%} ({iteration_num_correct_value}/{iteration_total})")
+        logger.info(f"Iteration {i} value accuracy (non-draws only): {iteration_value_accuracy_nd:.2%} ({iteration_num_correct_value_nd}/{iteration_total_nd})")
         logger.info(f"Iteration {i} policy accuracy: {iteration_policy_accuracy:.2%} ({iteration_num_correct_policy}/{iteration_total})")
         logger.info(f"Iteration {i} policy PM: {iteration_policy_pm:.2%}")
         logger.info(f"Iteration {i} policy accuracy (non-trivial only): {iteration_policy_accuracy_nt:.2%} ({iteration_num_correct_policy_nt}/{iteration_total_nt})")
@@ -123,6 +137,7 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
         # add this info to the series object
         gd_accuracy_series.x.append(i)
         gd_accuracy_series.ys["Iteration Value Accuracy"].append(iteration_value_accuracy)
+        gd_accuracy_series.ys["Iteration Value Accuracy ND"].append(iteration_value_accuracy_nd)
         gd_accuracy_series.ys["Iteration Policy Accuracy"].append(iteration_policy_accuracy)
         gd_accuracy_series.ys["Iteration Policy PM"].append(iteration_policy_pm)
         gd_accuracy_series.ys["Iteration Policy Accuracy NT"].append(iteration_policy_accuracy_nt)
@@ -133,11 +148,13 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
 
     # Calculate, log, and save the overall accuracy
     total_value_accuracy = total_num_correct_value / total if total > 0 else 0
+    total_value_accuracy_nd = total_num_correct_value_nd / total_nd if total_nd > 0 else 0
     total_policy_accuracy = total_num_correct_policy / total if total > 0 else 0
     total_policy_pm = total_pm_policy / total if total > 0 else 0
     total_policy_accuracy_nt = total_num_correct_policy_nt / total_nt if total_nt > 0 else 0
     total_policy_pm_nt = total_pm_policy_nt / total_nt if total_nt > 0 else 0
     logger.info(f"Overall Value Accuracy: {total_value_accuracy:.2%} ({total_num_correct_value}/{total})")
+    logger.info(f"Overall Value Accuracy (Non-Draws Only): {total_value_accuracy_nd:.2%} ({total_num_correct_value_nd}/{total_nd})")
     logger.info(f"Overall Policy Accuracy: {total_policy_accuracy:.2%} ({total_num_correct_policy}/{total})")
     logger.info(f"Overall Policy PM: {total_policy_pm:.2%}")
     logger.info(f"Overall Policy Accuracy (Non-Trivial Only): {total_policy_accuracy_nt:.2%} ({total_num_correct_policy_nt}/{total_nt})")
@@ -145,12 +162,14 @@ def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) 
     # saving the first and last iteration for easy plotting
     gd_overall_accuracy_series.x.append(gd_accuracy_series.x[0])
     gd_overall_accuracy_series.ys["Overall Value Accuracy"].append(total_value_accuracy)
+    gd_overall_accuracy_series.ys["Overall Value Accuracy ND"].append(total_value_accuracy_nd)
     gd_overall_accuracy_series.ys["Overall Policy Accuracy"].append(total_policy_accuracy)
     gd_overall_accuracy_series.ys["Overall Policy PM"].append(total_policy_pm)
     gd_overall_accuracy_series.ys["Overall Policy Accuracy NT"].append(total_policy_accuracy_nt)
     gd_overall_accuracy_series.ys["Overall Policy PM NT"].append(total_policy_pm_nt)
     gd_overall_accuracy_series.x.append(gd_accuracy_series.x[-1])
     gd_overall_accuracy_series.ys["Overall Value Accuracy"].append(total_value_accuracy)
+    gd_overall_accuracy_series.ys["Overall Value Accuracy ND"].append(total_value_accuracy_nd)
     gd_overall_accuracy_series.ys["Overall Policy Accuracy"].append(total_policy_accuracy)
     gd_overall_accuracy_series.ys["Overall Policy PM"].append(total_policy_pm)
     gd_overall_accuracy_series.ys["Overall Policy Accuracy NT"].append(total_policy_accuracy_nt)

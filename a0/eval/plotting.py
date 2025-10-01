@@ -158,9 +158,9 @@ def main():
 
     # ["Total Games", "Player X Wins", "Player O Wins", "Draws (Repeat)", "Draws (Timeout)", "Avg Game Length", "Avg Game Time", "Std Game Length", "Std Game Time"]
     gamedata_series = load_series(f"{config.eval_dir}/gamedata_stats.pkl")
-    # ["Iteration Value Accuracy", "Iteration Policy Accuracy", "Iteration Policy PM", "Iteration Policy Accuracy NT", "Iteration Policy PM NT"]
+    # ["Iteration Value Accuracy", "Iteration Value Accuracy ND", "Iteration Policy Accuracy", "Iteration Policy PM", "Iteration Policy Accuracy NT", "Iteration Policy PM NT"]
     gd_accuracy_series = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
-    # ["Overall Value Accuracy", "Overall Policy Accuracy", "Overall Policy PM", "Overall Policy Accuracy NT", "Overall Policy PM NT"]
+    # ["Overall Value Accuracy", "Overall Value Accuracy ND", "Overall Policy Accuracy", "Overall Policy PM", "Overall Policy Accuracy NT", "Overall Policy PM NT"]
     gd_overall_accuracy_series = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
     # ["Loss", "Value Loss", "Policy Loss", "Value Accuracy", "Policy Accuracy"]
     training_metrics = load_series(f"{config.eval_dir}/training_metrics.pkl")
