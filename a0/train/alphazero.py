@@ -111,7 +111,14 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
         process_name="training_alphazero"
     )
     # then play the game
-    game = Game(config.board_size, config.num_pieces, True, False, False)
+    game = Game(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        draw_on_repeat=True,
+        no_reverse_moves=False,
+        no_illegal_moves=False,
+        no_side_moves=False
+    )
     player: A0Player = dill.loads(serialized_player)
     game_data = play(game, [player, player], config.turn_limit)
     return game_data_to_training_set(game_data), game_data

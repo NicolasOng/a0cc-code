@@ -81,6 +81,13 @@ class Move:
         '''
         _, forward = self.diagonal_distances()
         return forward > 0
+    
+    def is_sideways(self) -> bool:
+        '''
+        Returns True if the move is a sideways move (no movement on the anti-diagonal).
+        '''
+        _, forward = self.diagonal_distances()
+        return forward == 0
 
 class Board:
     def __init__(self, board_size: int = 7, home_size: int = 3) -> None:
@@ -598,7 +605,7 @@ class Board:
         return self.__hash__() == other.__hash__()
 
 class Game:
-    def __init__(self, board_size: int = 7, num_pieces: int = 6, draw_on_repeat: bool=False, no_reverse_moves: bool=False, no_illegal_moves: bool=False) -> None:
+    def __init__(self, board_size: int = 7, num_pieces: int = 6, draw_on_repeat: bool=False, no_reverse_moves: bool=False, no_illegal_moves: bool=False, no_side_moves: bool=False) -> None:
         self.board = Board(board_size=board_size, home_size=board_to_home_size[board_size])
         self.board_history: list[Board] = []
         self.end = False
@@ -614,6 +621,8 @@ class Game:
         self.use_four_corners_to_jump = False
         # if true, players can't move pieces "backwards" (towards their home area).
         self.no_reverse_moves = False or no_reverse_moves
+        # if true, players can't move pieces "sideways"
+        self.no_side_moves = False or no_side_moves
         # if true, players can't make moves that lead to an illegal state.
         self.no_illegal_moves = False or no_illegal_moves
         # if true, players can't make moves that lead to a draw.
@@ -648,7 +657,7 @@ class Game:
             logging.debug(f"Player {board.current_player} has piece at {pos}")
 
         # generate all on-board non-blocked moves for each piece
-        moves = []
+        moves: list[Move] = []
         for pos in player_positions:
             x, y = pos.x, pos.y
             valid_moves = board.get_moves(x, y, self.movement_rules)
@@ -660,6 +669,12 @@ class Game:
                 moves = [move for move in moves if not move.is_up()]
             else:
                 moves = [move for move in moves if not move.is_down()]
+        
+        # remove side moves if no_side_moves is set
+        if self.no_side_moves:
+            moves_no_sides = [move for move in moves if not move.is_sideways()]
+            if len(moves_no_sides) > 0:
+                moves = moves_no_sides
         
         # remove moves that lead to an illegal state if no_illegal_moves is set
         if self.no_illegal_moves:
@@ -842,7 +857,7 @@ class Game:
         '''
         # only check for an illegal state if illegal moves are allowed
         if not self.no_illegal_moves and board.is_illegal_state(self.board_history[0]):
-            return self.board.current_player
+            return board.current_player
         player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
         cur_player = board.current_player
         if player_x_winner and cur_player == Player.PLAYER_O:
@@ -856,10 +871,11 @@ class Game:
         Checks if the given board is a terminal state (or an illegal state).
         If so, checks the winner.
         Use this method to not re-calculate the winners.
+        Assumes no game history, so no repeated states can be checked for draws.
         '''
         # first check for an illegal state
         if not self.no_illegal_moves and board.is_illegal_state(self.board_history[0]):
-            return True, self.board.current_player
+            return True, board.current_player
 
         player_x_winner, player_o_winner = board.check_for_winner(self.board_history[0])
         cur_player = board.current_player

@@ -89,7 +89,14 @@ class NNMCTSProblem:
 class A0Player:
     def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False):
         self.model = model
-        self.game = Game(board_size, num_pieces, False, True, False)
+        self.game = Game(
+            board_size=board_size,
+            num_pieces=num_pieces,
+            draw_on_repeat=False,
+            no_reverse_moves=True,
+            no_illegal_moves=False,
+            no_side_moves=False
+        )
         self.temperature = 1.0  # Temperature for exploration in MCTS
         self.random_selection_prob = 0  # Probability of selecting a random move
         self.mcts_iterations = 64
@@ -107,6 +114,8 @@ class A0Player:
         mcts.run(iterations=self.mcts_iterations)
         children = mcts.get_root_children()
         assert len(children) > 0, "No children found in MCTS root node."
+
+        # mcts.print_children()
 
         # with the root's children, create a policy distribution logits
         mcts_root_children_visit_counts = [float(child.visits) for child in children]
