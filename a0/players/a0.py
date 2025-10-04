@@ -87,19 +87,19 @@ class NNMCTSProblem:
         return value
 
 class A0Player:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False):
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False):
         self.model = model
         self.game = Game(
             board_size=board_size,
             num_pieces=num_pieces,
             draw_on_repeat=False,
-            no_reverse_moves=True,
+            no_reverse_moves=no_reverse_moves,
             no_illegal_moves=False,
-            no_side_moves=False
+            no_side_moves=no_side_moves
         )
         self.temperature = 1.0  # Temperature for exploration in MCTS
         self.random_selection_prob = 0  # Probability of selecting a random move
-        self.mcts_iterations = 64
+        self.mcts_iterations = mcts_samples
         self.exploit = exploit
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:

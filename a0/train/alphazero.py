@@ -115,9 +115,9 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
         board_size=config.board_size,
         num_pieces=config.num_pieces,
         draw_on_repeat=True,
-        no_reverse_moves=False,
+        no_reverse_moves=not config.backwards_moves,
         no_illegal_moves=False,
-        no_side_moves=False
+        no_side_moves=not config.sideways_moves
     )
     player: A0Player = dill.loads(serialized_player)
     game_data = play(game, [player, player], config.turn_limit)
@@ -216,7 +216,14 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
         print(f"Iteration {i + 1}/{iterations}")
         logger.info(f"Iteration {i + 1}/{iterations}")
         # create a player with the current model
-        player = A0Player(config.board_size, config.num_pieces, model)
+        player = A0Player(
+            config.board_size,
+            config.num_pieces,
+            model,
+            mcts_samples=config.mcts_samples,
+            no_reverse_moves=not config.backwards_moves,
+            no_side_moves=not config.sideways_moves
+        )
 
         # generate training data with self-play
         training_set, game_data = self_play(player)

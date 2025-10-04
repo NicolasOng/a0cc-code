@@ -19,6 +19,10 @@ class Config:
     turn_limit: int | None
     replay_buffer_size: int
     training_batch_size: int
+    mcts_samples: int
+    
+    backwards_moves: bool
+    sideways_moves: bool
 
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json"):
         '''
