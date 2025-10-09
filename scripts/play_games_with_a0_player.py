@@ -34,7 +34,7 @@ def human_game(mcts_iterations: int = 64) -> tuple[int, int]:
 
     human_player = HumanPlayer()
 
-    players = [player, human_player]
+    players = [player, player]
 
     game = Game(config.board_size, config.num_pieces, False, False, False)
 
@@ -156,7 +156,7 @@ def main():
         process_name="play_w_a0"
     )
 
-    human_game(mcts_iterations=256)
+    human_game(mcts_iterations=512)
 
     # eval_acc(mcts_iterations=64)
     # eval_acc(mcts_iterations=512)

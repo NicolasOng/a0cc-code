@@ -76,7 +76,7 @@ def compare_models(model_location1, model_location2, num_games=100, mcts_samples
 def main():
     model_location2 = "/home/nicolas/Downloads/output1-sf/training/model_49.pkl"
     model_location1 = "/home/nicolas/Downloads/output1-f/training/model_49.pkl"
-    compare_models(model_location1, model_location2, num_games=1)
+    compare_models(model_location1, model_location2, num_games=1, mcts_samples=512)
 
 if __name__ == "__main__":
     main()

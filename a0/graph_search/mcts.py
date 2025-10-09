@@ -36,15 +36,24 @@ class MCTSProblem(Protocol):
         Useful for MCTS.
         '''
         ...
+    
+    def is_maximizing(self, state: Any) -> bool:
+        '''
+        Returns True if the current player to move in the given state is the maximizing player.
+        I.E. the player is trying to maximize the reward given in get_reward.
+        This is used in the selection policy in the MCTS.
+        '''
+        ...
 
 class MCTSNode:
-    def __init__(self, state: Any, prior: float, parent: Optional[MCTSNode]=None):
+    def __init__(self, state: Any, prior: float, parent: Optional[MCTSNode]=None, is_maximizing: bool=True):
         self.state = state
         self.parent = parent
         self.children: list[MCTSNode] = []
         self.visits = 0
         self.reward = 0.0
         self.prior = prior
+        self.is_maximizing = is_maximizing
     
     def fully_expanded(self) -> bool:
         '''
@@ -88,19 +97,23 @@ class MCTS:
             # expand it by generating its successors
             if not self.problem.is_terminal(node.state) and not node.children:
                 successors, priors = self.problem.get_successors(node.state)
+                maximizing = self.problem.is_maximizing(node.state)
                 if priors is None:
                     default_prior = 1.0 / len(successors) if successors else 0.0
                     priors = [default_prior] * len(successors)
                 for succ, prior in zip(successors, priors):
-                    child = MCTSNode(succ, prior, parent=node)
+                    child = MCTSNode(succ, prior, parent=node, is_maximizing=maximizing)
                     node.children.append(child)
             
             # 1.2
             # we now have a node that is either terminal or has unvisited children.
-            # if it has children, select one of the unvisited ones randomly
+            # if it has children, select one of the unvisited ones with the highest prior.
             if node.children:
-                node = random.choice([child for child in node.children if child.visits == 0])
-            
+                unvisited_children = [child for child in node.children if child.visits == 0]
+                max_prior = max(child.prior for child in unvisited_children)
+                highest_prior_unvisited_children = [child for child in unvisited_children if child.prior == max_prior]
+                node = random.choice(highest_prior_unvisited_children)
+
             # 2. Simulation/Rollout/Heuristic Evaluation
             # evaluate the node's state.
             # how this is done depends on the problem implementation.
@@ -111,27 +124,35 @@ class MCTS:
                 node.visits += 1
                 node.reward += reward
                 node = node.parent
+                # reward = 0.9 * reward
     
     @staticmethod
     def uct(node: MCTSNode) -> float:
+        assert node.parent is not None, "UCT called on root node"
         # prioritize unvisited nodes
         if node.visits == 0:
             return float('inf')
-        # explotation factor
+        # exploitation factor (reward / visits)
         exploit = node.reward / node.visits
-        # exploration factor
+        if not node.is_maximizing:
+            exploit = -exploit
+        # exploration factor (c * sqrt(ln(N) / n))
         explore = math.sqrt(2) * math.sqrt(math.log(node.parent.visits) / node.visits)
         return exploit + explore
     
     @staticmethod
     def puct(node: MCTSNode) -> float:
-        c_puct=1.0
+        assert node.parent is not None, "PUCT called on root node"
+        # prioritize unvisited nodes
         if node.visits == 0:
-            q_value = 0
-        else:
-            q_value = node.reward / node.visits
-        prior_score = c_puct * node.prior * math.sqrt(node.parent.visits) / (1 + node.visits)
-        return q_value + prior_score
+            return float('inf')
+        # exploitation factor (reward / visits)
+        exploit = node.reward / node.visits
+        if not node.is_maximizing:
+            exploit = -exploit
+        # exploration/prior factor (c * P * (sqrt(N) / (1 + n)))
+        explore = 1.0 * node.prior * (math.sqrt(node.parent.visits) / (1 + node.visits))
+        return exploit + explore
 
     def get_best_root_child(self) -> Optional[MCTSNode]:
         '''

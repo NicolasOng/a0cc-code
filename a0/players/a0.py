@@ -69,6 +69,9 @@ class NNMCTSProblem:
         (could implement a rollout in the future)
         '''
         is_done, winner = self.game.get_done_and_winner(state)
+        # print(state.board_view())
+        # print(f"Is done: {is_done}, Winner: {winner}, root player: {self._initial_state.current_player}")
+        # print(f"final value: {0.0 if winner is None else 1.0 if winner == self._initial_state.current_player else -1.0}")
         if is_done:
             # if the game is done, return the value based on the winner
             if winner is None:
@@ -79,12 +82,24 @@ class NNMCTSProblem:
         value, _ = self.model(jnp.array(board_input))
         value = float(value[0][0])
 
+        # print("Value from model:", value)
+        # print("State current player:", state.current_player)
+        # print(f"final value: {value if state.current_player == self._initial_state.current_player else -value}")
+
         # if the current player is not the initial player,
         if state.current_player != self._initial_state.current_player:
             # we need to negate the value
             value = -value
         
         return value
+
+    def is_maximizing(self, state: Board) -> bool:
+        '''
+        Returns True if the current player to move in the given state is the maximizing player.
+        Basically, if it's the same player as the initial state.
+        '''
+        #return True
+        return state.current_player == self._initial_state.current_player
 
 class A0Player:
     def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False):
@@ -116,6 +131,7 @@ class A0Player:
         assert len(children) > 0, "No children found in MCTS root node."
 
         # mcts.print_children()
+        # print(state.board_view())
 
         # with the root's children, create a policy distribution logits
         mcts_root_children_visit_counts = [float(child.visits) for child in children]
