@@ -7,6 +7,7 @@ from numpy.typing import NDArray
 from config import config
 
 from a0.players.a0 import A0Player
+from a0.players.human import HumanPlayer
 from a0.model import AlphaZeroModel, load_model, save_model
 from cc.core import Game, Player
 from a0.eval.dataset_evaluation import Series, save_series, policy_accuracy_function, policy_probability_mass_function
@@ -17,6 +18,60 @@ from a0.model_utils import board_to_input, Policy
 
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
+
+def human_game(mcts_iterations: int = 64) -> tuple[int, int]:
+    gt = GroundTruth()
+
+    model = AlphaZeroModel(
+        config.board_size,
+        training=False,
+        rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
+    )
+    model = load_model(f"{config.training_dir}/model_{49}.pkl")
+
+    player = A0Player(config.board_size, config.num_pieces, model, exploit=True)
+    player.mcts_iterations = mcts_iterations
+
+    human_player = HumanPlayer()
+
+    players = [player, human_player]
+
+    game = Game(config.board_size, config.num_pieces, False, False, False)
+
+    turn = 0
+    turn_limit = 80
+    total_nt_acc = 0
+    total_nt = 0
+    while not game.end and (turn < turn_limit):
+        #if turn == 10: exit()
+        player = players[turn % len(players)]
+
+        moves = game.start_turn()
+        
+        move, player_data = player.select_move(game.board, moves)
+
+        if type(player) == A0Player:
+            logger.info("\n" + game.board.visualize_move_ends([move]))
+            logger.info(f"Current player: {game.board.current_player}")
+            logger.info(f"Selected move: {move}")
+
+            # visualize moves
+            gt_moves, gt_outcomes = gt.get_1ply_policy_moves(game.board)
+            player_p = Policy(config.board_size)
+            player_p.set_logits(np.array(player_data), rotate_180=game.board.current_player == Player.PLAYER_O)
+            player_probs = player_p.get_move_probabilities(gt_moves)
+            for m, o, p in sorted(zip(gt_moves, gt_outcomes, player_probs), key=lambda x: x[2], reverse=True):
+                logger.info(f"Move: {m}, Outcome: {o}, Player Prob: {p:.3f}")
+
+        game.end_turn(move)
+
+        turn += 1
+    
+    if game.winner is None:
+        logger.info(f"It's a draw!")
+    else:
+        logger.info(f"Player {game.winner} wins!")
+    logger.info(f"Total turns played: {turn}")
 
 def game(mcts_iterations: int = 64) -> tuple[int, int]:
     gt = GroundTruth()
@@ -101,9 +156,11 @@ def main():
         process_name="play_w_a0"
     )
 
-    eval_acc(mcts_iterations=64)
-    eval_acc(mcts_iterations=512)
-    eval_acc(mcts_iterations=1024)
+    human_game(mcts_iterations=256)
+
+    # eval_acc(mcts_iterations=64)
+    # eval_acc(mcts_iterations=512)
+    # eval_acc(mcts_iterations=1024)
 
 if __name__ == "__main__":
     main()

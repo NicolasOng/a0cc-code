@@ -15,30 +15,46 @@ from config import config
 
 def main():
     human_player = HumanPlayer()
-    #human_player = RandomPlayer()
+    human_player = RandomPlayer()
 
     # other_player = MCTSRolloutPlayer(board_size=config.board_size, num_pieces=config.num_pieces, no_reverse_moves=False)
 
     # other_player = GroundTruthPlayer(mistake_rate=0.1, print_info=True)
 
-    model_filename = "..."
-    model = load_model(model_filename)
-    other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
+    # model_filename = "..."
+    # model = load_model(model_filename)
+    # other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
     #other_player = A0Player(board_size=config.board_size, num_pieces=config.num_pieces, model=model, exploit=True)
+    other_player = RandomPlayer()
 
     results = play(
-        Game(config.board_size, config.num_pieces, True, False, True),
+        Game(config.board_size, config.num_pieces, True, False, False),
         players=[
             other_player,
             human_player
         ],
-        turn_limit=1000
+        turn_limit=80
     )
 
     # print the results
     print(f"Game ended: {results.ended}, Winner: {results.winner}, Turns: {len(results.turn_data)}")
     if results.final_board:
         print(f"Final board:\n{results.final_board.board_view()}")
+    
+    return results.winner is not None, results.final_board
+
+def main2():
+    not_draws = 0
+    for i in range(100):
+        print(f"Starting game {i+1}")
+        not_draw, final_board = main()
+        if not_draw:
+            not_draws += 1
+            if final_board:
+                print(f"Final board state:\n{final_board.board_view()}")
+        print("-" * 40)
+    
+    print(f"Out of 100 games, {not_draws} were not draws.")
 
 if __name__ == "__main__":
-    main()
+    main2()
