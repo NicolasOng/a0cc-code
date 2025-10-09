@@ -181,10 +181,15 @@ def self_play(player: A0Player) -> tuple[list[ExperienceData], list[GameData]]:
             
             # stop when the training set is full
             if len(training_set) >= config.training_samples:
-                logger.info("Training set is full, cancelling all games")
-                # need to wait for remaining games to finish
+                logger.info("Training set is full, cancelling all games.")
+                # cancel any submitted but not yet started games
                 for future in futures:
                     future.cancel()
+                # note the following does not immediately stop all processes,
+                # but prevents new tasks from being started
+                # and frees this main process to continue
+                # the remaining games/processes finish in the background
+                # executor.shutdown(wait=False)
                 break
     
     logger.info(f"Generated training set of size: {len(training_set)}/{config.training_samples}")
