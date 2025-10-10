@@ -173,11 +173,13 @@ class A0Player:
         # return the selected move and the mcts policy distribution
         return selected_move, mcts_policy
 
-    def get_value_and_policy(self, state: Board) -> tuple[float, NDArray[np.float32]]:
+    def get_value_and_policy(self, state: Board) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
         '''
         Returns the value and policy for the given state using the model.
         The policy is rotated if the current player is O,
         to maintain consistency in training.
+        value is a np array of shape (1, 1)
+        policy is a np array of shape (1, board_size**4)
         '''
         p = Policy(len(state.board))
 
@@ -204,9 +206,13 @@ class A0Player:
         if state.current_player == Player.PLAYER_O:
             p.rotate_policy()
         mcts_policy = p.policy
+        # convert to np array of shape (1, board_size**4)
+        mcts_policy = np.expand_dims(mcts_policy, axis=0)
 
         # get MCTS's estimated value for the state
         mcts_value = mcts.root.reward / mcts.root.visits if mcts.root.visits > 0 else 0.0
+        # and convert it to a numpy array of shape (1, 1)
+        mcts_value = np.array([[mcts_value]])
 
         # return the mcts value and policy
         return mcts_value, mcts_policy
