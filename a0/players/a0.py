@@ -172,3 +172,41 @@ class A0Player:
 
         # return the selected move and the mcts policy distribution
         return selected_move, mcts_policy
+
+    def get_value_and_policy(self, state: Board) -> tuple[float, NDArray[np.float32]]:
+        '''
+        Returns the value and policy for the given state using the model.
+        The policy is rotated if the current player is O,
+        to maintain consistency in training.
+        '''
+        p = Policy(len(state.board))
+
+        # perform mcts and get the root's children
+        mcts = MCTS(NNMCTSProblem(state, self.game, self.model))
+        mcts.run(iterations=self.mcts_iterations)
+        children = mcts.get_root_children()
+        assert len(children) > 0, "No children found in MCTS root node."
+
+        # with the root's children, create a policy distribution logits
+        mcts_root_children_visit_counts = [float(child.visits) for child in children]
+        mcts_root_children_moves = [state.child_board_to_move(child.state) for child in children]
+
+        # create a well-shaped policy distribution,
+        p.set_logits_from_moves(mcts_root_children_moves, mcts_root_children_visit_counts, rotate_180=False)
+        # mask non-legal moves,
+        p.set_legal_moves(mcts_root_children_moves)
+        p.apply_mask(0.0)
+        # softmax it to get the policy distribution
+        p.apply_power_normalize(self.temperature)
+
+        # we rotate the policy if the current player is O,
+        # since this is for training/evaluating the model
+        if state.current_player == Player.PLAYER_O:
+            p.rotate_policy()
+        mcts_policy = p.policy
+
+        # get MCTS's estimated value for the state
+        mcts_value = mcts.root.reward / mcts.root.visits if mcts.root.visits > 0 else 0.0
+
+        # return the mcts value and policy
+        return mcts_value, mcts_policy

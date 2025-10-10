@@ -24,6 +24,7 @@ def play_game(player1, player2):
     )
 
     print(results.final_board.board_view())
+    print(len(results.turn_data))
     
     return results.winner, results.ended
 

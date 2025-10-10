@@ -12,5 +12,7 @@
     "training_batch_size": 256,
     "mcts_samples": 64,
     "backwards_moves": false,
-    "sideways_moves": true
+    "sideways_moves": true,
+    "eval_neighbors": 2,
+    "eval_mcts_samples": [64, 512]
 }

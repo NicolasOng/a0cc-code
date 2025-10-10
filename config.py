@@ -24,6 +24,9 @@ class Config:
     backwards_moves: bool
     sideways_moves: bool
 
+    eval_neighbors: int
+    eval_mcts_samples: list[int]
+
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json"):
         '''
         Initialize the configuration from a JSON file.
