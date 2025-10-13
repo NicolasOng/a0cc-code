@@ -55,7 +55,7 @@ def evaluate_model_mcts(player: A0Player, evaluation_dataset: Dataset):
         board_input, value_label, policy_label = batch
 
         # convert the board input to a Board object
-        board_input = np.squeeze(board_input, axis=1)  # because the shape was (B, 1, 5, 5, 2) for some reason
+        board_input = np.squeeze(board_input)  # because the shape was (B, 1, 5, 5, 2) for some reason
         po = random.random() < 0.5
         board = input_to_board(board_input, player_o=po)
 
@@ -224,11 +224,11 @@ def main():
             evaluate_all_models_mcts(players, neighbor_datasets[i], f"mcts_eval_{mcts_samples}/neighbor_{i+1}_gtv_mcts_eval_{mcts_samples}")
 
         # Evaluate all models
-        evaluate_all_models_mcts(players, training_nt_dataset, f"mcts_eval_{mcts_samples}/training_nt_gtv_mcts_eval_{mcts_samples}")
-        evaluate_all_models_mcts(players, random_nt_dataset, f"mcts_eval_{mcts_samples}/random_nt_gtv_mcts_eval_{mcts_samples}")
-        evaluate_all_models_mcts(players, training_nt_e_dataset, f"mcts_eval_{mcts_samples}/training_nt_ev_mcts_eval_{mcts_samples}")
-        for i in range(num_neighbors):
-            evaluate_all_models_mcts(players, neighbor_nt_datasets[i], f"mcts_eval_{mcts_samples}/neighbor_{i+1}_nt_gtv_mcts_eval_{mcts_samples}")
+        # evaluate_all_models_mcts(players, training_nt_dataset, f"mcts_eval_{mcts_samples}/training_nt_gtv_mcts_eval_{mcts_samples}")
+        # evaluate_all_models_mcts(players, random_nt_dataset, f"mcts_eval_{mcts_samples}/random_nt_gtv_mcts_eval_{mcts_samples}")
+        # evaluate_all_models_mcts(players, training_nt_e_dataset, f"mcts_eval_{mcts_samples}/training_nt_ev_mcts_eval_{mcts_samples}")
+        # for i in range(num_neighbors):
+        #     evaluate_all_models_mcts(players, neighbor_nt_datasets[i], f"mcts_eval_{mcts_samples}/neighbor_{i+1}_nt_gtv_mcts_eval_{mcts_samples}")
 
     logger.info("Dataset evaluation completed.")
 
