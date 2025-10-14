@@ -13,8 +13,9 @@ class PlayerClass(Protocol):
         ...
 
 class TurnData:
-    def __init__(self, board: Board, move: Move, player_data: Any):
+    def __init__(self, board: Board, moves: list[Move], move: Move, player_data: Any):
         self.board: Board = board
+        self.moves: list[Move] = moves
         self.move: Move = move
         self.player_data: Any = player_data
 
@@ -51,6 +52,7 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
 
         turn_data = TurnData(
             board=copy.deepcopy(game.board),
+            moves=moves,
             move=move,
             player_data=player_data
         )
