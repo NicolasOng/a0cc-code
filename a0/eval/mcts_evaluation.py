@@ -55,7 +55,8 @@ def evaluate_model_mcts(player: A0Player, evaluation_dataset: Dataset):
         board_input, value_label, policy_label = batch
 
         # convert the board input to a Board object
-        board_input = np.squeeze(board_input)  # because the shape was (B, 1, 5, 5, 2) for some reason
+        if board_input.shape[1] == 1:
+            board_input = np.squeeze(board_input, axis=1) # because the shape was (B, 1, 5, 5, 2) for some reason
         po = random.random() < 0.5
         board = input_to_board(board_input, player_o=po)
 

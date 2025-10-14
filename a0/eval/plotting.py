@@ -1,4 +1,5 @@
 import sys
+import os
 
 import pickle
 import matplotlib.pyplot as plt
@@ -24,6 +25,7 @@ def save_series(series: Series, series_path: str) -> None:
     Saves a Series object to the given path.
     '''
     logger.info(f"Saving series to {series_path}...")
+    os.makedirs(os.path.dirname(series_path), exist_ok=True)
     with open(series_path, 'wb') as f:
         pickle.dump(series, f)
 
