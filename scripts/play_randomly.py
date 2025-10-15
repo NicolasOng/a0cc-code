@@ -8,12 +8,12 @@ from cc.core import Game, Player
 
 from config import config
 
-def main(p):
+def main(p, no_illegal_moves:bool=False, no_reverse_moves:bool=False, no_side_moves:bool=False):
     player1 = RandomPlayer()
     player2 = RandomPlayer()
 
     results = play(
-        Game(config.board_size, config.num_pieces, True, False, False, False),
+        Game(config.board_size, config.num_pieces, True, no_reverse_moves, no_illegal_moves, no_side_moves),
         players=[
             player1,
             player2
@@ -27,7 +27,7 @@ def main(p):
         if results.final_board:
             print(f"Final board:\n{results.final_board.board_view()}")
     
-    return results.winner, results.ended, results.final_board, results
+    return results.winner, results.ended, results
 
 def create_histogram(data, title="Histogram", xlabel="Value", ylabel="Frequency", bins=None):
     """
@@ -45,6 +45,35 @@ def create_histogram(data, title="Histogram", xlabel="Value", ylabel="Frequency"
     plt.title(title)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
+    plt.grid(True, alpha=0.3)
+    plt.show()
+
+def create_stacked_histogram(data_lists, labels=None, title="Stacked Histogram", xlabel="Value", ylabel="Frequency", bins=None, alpha=0.7):
+    """
+    Create a stacked histogram from multiple lists of integers.
+    
+    Args:
+        data_lists: List of lists containing integer data
+        labels: List of labels for each data list (None for default labels)
+        title: Title for the histogram
+        xlabel: Label for x-axis
+        ylabel: Label for y-axis
+        bins: Number of bins or bin edges (None for auto)
+        alpha: Transparency level (0-1)
+    """
+    plt.figure(figsize=(10, 6))
+    
+    # Generate default labels if none provided
+    if labels is None:
+        labels = [f"Dataset {i+1}" for i in range(len(data_lists))]
+    
+    # Create stacked histogram
+    plt.hist(data_lists, bins=bins, label=labels, edgecolor='black', alpha=alpha, stacked=True)
+    
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.legend()
     plt.grid(True, alpha=0.3)
     plt.show()
 
@@ -69,11 +98,16 @@ def main2():
     po_illegal_win = 0
     px_proper_win = 0
     po_proper_win = 0
-    num_turns: list[int] = []
+    num_turns_proper_wins: list[int] = []
+    num_turns_illegal_wins: list[int] = []
+    num_turns_repeats: list[int] = []
 
     for i in range(n):
         print(f"Starting game {i+1}")
-        winner, ended, final_board, results = main(False)
+        winner, ended, results = main(False,
+                                    no_illegal_moves=False,
+                                    no_reverse_moves=False,
+                                    no_side_moves=False)
         draw_by_repeat = False
         draw_by_timeout = False
         if winner is Player.PLAYER_X:
@@ -88,6 +122,7 @@ def main2():
             draw_by_timeout = True
         
         proper_win = False
+        illegal_win = False
         winner_exists = False
         if winner is not None:
             winner_exists = True
@@ -98,14 +133,21 @@ def main2():
                 else:
                     po_proper_win += 1
             else:
+                illegal_win = True
                 if winner is Player.PLAYER_X:
                     px_illegal_win += 1
                 else:
                     po_illegal_win += 1
         
-        print(len(results.turn_data))
-        if winner_exists:
-            num_turns.append(len(results.turn_data))
+        num_turns = len(results.turn_data)
+        print(num_turns)
+
+        if proper_win:
+            num_turns_proper_wins.append(num_turns)
+        if illegal_win:
+            num_turns_illegal_wins.append(num_turns)
+        if draw_by_repeat:
+            num_turns_repeats.append(num_turns)
         
         if winner is not None and False:
             print_final_results(results)
@@ -116,7 +158,7 @@ def main2():
         if draw_by_timeout and False:
             print_final_results(results)
         
-        if proper_win and len(results.turn_data) < 250 and len(results.turn_data) > 150 and True:
+        if proper_win and len(results.turn_data) < 250 and len(results.turn_data) > 150 and False:
             print_final_results(results)
     
     print(f"total games: {n}")
@@ -125,7 +167,15 @@ def main2():
     print(f"Player X proper wins: {px_proper_win / n:.2%} ({px_proper_win}), Player O proper wins: {po_proper_win / n:.2%} ({po_proper_win})")
     print(f"Player X illegal wins: {px_illegal_win / n:.2%} ({px_illegal_win}), Player O illegal wins: {po_illegal_win / n:.2%} ({po_illegal_win})")
 
-    create_histogram(num_turns, title="Histogram of Number of Turns per (Winning) Game", xlabel="Number of Turns", ylabel="Frequency", bins=20)
+    #create_histogram(num_turns, title="Histogram of Number of Turns per (Winning) Game", xlabel="Number of Turns", ylabel="Frequency", bins=20)
+    create_stacked_histogram(
+        [num_turns_proper_wins, num_turns_illegal_wins, num_turns_repeats],
+        labels=["Proper Wins", "Illegal Wins", "Draws by Repetition"],
+        title="Stacked Histogram of Number of Turns per Game Outcome",
+        xlabel="Number of Turns",
+        ylabel="Frequency",
+        bins=20,
+        alpha=0.7)
 
 if __name__ == "__main__":
     main2()

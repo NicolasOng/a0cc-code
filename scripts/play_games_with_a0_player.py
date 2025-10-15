@@ -34,7 +34,7 @@ def human_game(mcts_iterations: int = 64) -> tuple[int, int]:
 
     human_player = HumanPlayer()
 
-    players = [player, player]
+    players = [player, human_player]
 
     game = Game(config.board_size, config.num_pieces, False, False, False)
 

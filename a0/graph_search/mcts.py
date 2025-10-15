@@ -287,3 +287,52 @@ class MCTS:
         print(f"  Number of leaves: {total_leaves}")
         print(f"  Depth - Max: {max_depth}, Min: {min_depth}, Avg: {avg_depth:.2f}")
         print(f"  Branching factor - Max: {max_branching}, Min: {min_branching}, Avg: {avg_branching:.2f}")
+
+    @staticmethod
+    def print_tree_compact(node: MCTSNode, to_depth: int | None = None, prefix: str = "", is_last: bool = True) -> None:
+        '''
+        Prints the tree with multi-line states formatted compactly.
+        '''
+        if to_depth is not None and to_depth < 0:
+            return
+
+        # Print current node
+        connector = "└── " if is_last else "├── "
+        node_info = f"({'+' if node.is_maximizing else '-'}) V:{node.visits} R:{node.reward:.2f} P:{node.prior:.2f}, AR:{node.reward / node.visits if node.visits > 0 else 0.0:.2f}, PUCT:{MCTS.puct(node) if node.parent else 0:.2f}, UCT:{MCTS.uct(node) if node.parent else 0:.2f}"
+        print(f"{prefix}{connector}{node_info}")
+        
+        # Prepare prefix for children  
+        child_prefix = prefix + ("    " if is_last else "│   ")
+        
+        # Print children
+        for i, child in enumerate(sorted(node.children, key=lambda c: c.visits, reverse=True)):
+            is_child_last = (i == len(node.children) - 1)
+            MCTS.print_tree_compact(child, to_depth - 1 if to_depth is not None else None, child_prefix, is_child_last)
+
+    @staticmethod 
+    def print_tree_full(node: MCTSNode, to_depth: int | None = None, prefix: str = "", is_last: bool = True) -> None:
+        '''
+        Prints the tree with multi-line states formatted compactly.
+        '''
+        if to_depth is not None and to_depth < 0:
+            return
+        
+        # Print the state (assuming it's a Board object)
+        state_string = node.state.board_view()
+        state_string += "\n" + f"Current player: {node.state.current_player}"
+        state_lines = state_string.split('\n')
+        for line in [""] + state_lines:
+            print(f"{prefix}{'│   '} {line}")
+
+        # Print current node
+        connector = "└── " if is_last else "├── "
+        node_info = f"({'+' if node.is_maximizing else '-'}) V:{node.visits} R:{node.reward:.2f} P:{node.prior:.2f}, AR:{node.reward / node.visits if node.visits > 0 else 0.0:.2f}, PUCT:{MCTS.puct(node) if node.parent else 0:.2f}, UCT:{MCTS.uct(node) if node.parent else 0:.2f}"
+        print(f"{prefix}{connector}{node_info}")
+        
+        # Prepare prefix for children  
+        child_prefix = prefix + ("    " if is_last else "│   ")
+
+        # Print children
+        for i, child in enumerate(sorted(node.children, key=lambda c: c.visits, reverse=True)):
+            is_child_last = (i == len(node.children) - 1)
+            MCTS.print_tree_full(child, None if to_depth is None else to_depth - 1, child_prefix, is_child_last)
