@@ -678,16 +678,17 @@ class Game:
         
         # remove moves that lead to an illegal state if no_illegal_moves is set
         if self.no_illegal_moves:
-            valid_moves = []
+            valid_moves: list[Move] = []
             for move in moves:
-                # create a copy of the board and apply the move
                 logging.debug(f"Checking if move {move} leads to an illegal state. Current player: {self.board.current_player}")
-                new_board = Board()
-                new_board.copy_board(board)
-                new_board.apply_move(move)
+                # apply the move to the current board
+                board.apply_move(move)
                 # check if the move doesn't lead to an illegal state
-                if not new_board.is_illegal_state(self.board_history[0]):
+                if not board.is_illegal_state(self.board_history[0]):
                     valid_moves.append(move)
+                # undo the move on the current board
+                board.undo_move(move)
+
             moves = valid_moves
 
         # create a pass move if needed
@@ -709,15 +710,15 @@ class Game:
 
         # remove moves that lead to a draw
         if self.no_draw_moves:
-            valid_moves = []
+            valid_moves: list[Move] = []
             for move in moves:
-                # create a copy of the board and apply the move
-                new_board = Board()
-                new_board.copy_board(self.board)
-                new_board.apply_move(move)
+                # apply the move to the current board
+                self.board.apply_move(move)
                 # check if the move doesn't lead to a draw
-                if not new_board.check_for_draw(self.board_history):
+                if not self.board.check_for_draw(self.board_history):
                     valid_moves.append(move)
+                # undo the move on the current board
+                self.board.undo_move(move)
             moves = valid_moves
 
         # create a pass move if needed

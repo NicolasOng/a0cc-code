@@ -8,12 +8,12 @@ from cc.core import Game, Player
 
 from config import config
 
-def main(p, no_illegal_moves:bool=False, no_reverse_moves:bool=False, no_side_moves:bool=False):
+def main(p, draw_on_repeat: bool=True, no_illegal_moves:bool=False, no_reverse_moves:bool=False, no_side_moves:bool=False):
     player1 = RandomPlayer()
     player2 = RandomPlayer()
 
     results = play(
-        Game(config.board_size, config.num_pieces, True, no_reverse_moves, no_illegal_moves, no_side_moves),
+        Game(config.board_size, config.num_pieces, draw_on_repeat, no_reverse_moves, no_illegal_moves, no_side_moves),
         players=[
             player1,
             player2
@@ -29,7 +29,7 @@ def main(p, no_illegal_moves:bool=False, no_reverse_moves:bool=False, no_side_mo
     
     return results.winner, results.ended, results
 
-def create_histogram(data, title="Histogram", xlabel="Value", ylabel="Frequency", bins=None):
+def create_histogram(data, fn:str="histogram", title="Histogram", xlabel="Value", ylabel="Frequency", bins=None):
     """
     Create a histogram from a list of integers.
     
@@ -46,9 +46,10 @@ def create_histogram(data, title="Histogram", xlabel="Value", ylabel="Frequency"
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.grid(True, alpha=0.3)
-    plt.show()
+    plt.savefig(f"{fn}.png")
+    plt.close()
 
-def create_stacked_histogram(data_lists, labels=None, title="Stacked Histogram", xlabel="Value", ylabel="Frequency", bins=None, alpha=0.7):
+def create_stacked_histogram(data_lists, labels=None, fn="stacked_histogram", title="Stacked Histogram", xlabel="Value", ylabel="Frequency", bins=None, alpha=0.7):
     """
     Create a stacked histogram from multiple lists of integers.
     
@@ -75,7 +76,8 @@ def create_stacked_histogram(data_lists, labels=None, title="Stacked Histogram",
     plt.ylabel(ylabel)
     plt.legend()
     plt.grid(True, alpha=0.3)
-    plt.show()
+    plt.savefig(f"{fn}.png")
+    plt.close()
 
 def print_final_results(results: GameData):
     final_board = results.final_board
@@ -105,7 +107,8 @@ def main2():
     for i in range(n):
         print(f"Starting game {i+1}")
         winner, ended, results = main(False,
-                                    no_illegal_moves=False,
+                                    draw_on_repeat=False,
+                                    no_illegal_moves=True,
                                     no_reverse_moves=False,
                                     no_side_moves=False)
         draw_by_repeat = False
@@ -171,7 +174,8 @@ def main2():
     create_stacked_histogram(
         [num_turns_proper_wins, num_turns_illegal_wins, num_turns_repeats],
         labels=["Proper Wins", "Illegal Wins", "Draws by Repetition"],
-        title="Stacked Histogram of Number of Turns per Game Outcome",
+        fn= f"stacked_hist",
+        title=f"Stacked Histogram of Number of Turns per Game Outcome, n={n} (Timeouts: {draws_timeout})",
         xlabel="Number of Turns",
         ylabel="Frequency",
         bins=20,
