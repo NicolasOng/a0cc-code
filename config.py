@@ -29,9 +29,11 @@ class Config:
 
     learning_rate: float
     weight_decay: float
-    
+
     eval_neighbors: int
     eval_mcts_samples: list[int]
+
+    model_training: bool
 
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''

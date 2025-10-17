@@ -202,7 +202,7 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
     # create/load a model
     model = AlphaZeroModel(
         config.board_size,
-        training=False,
+        training=config.model_training,
         rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
     )
     if model_path:
