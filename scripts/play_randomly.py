@@ -152,7 +152,7 @@ def main2():
         if draw_by_repeat:
             num_turns_repeats.append(num_turns)
         
-        if winner is not None and False:
+        if winner is not None and True:
             print_final_results(results)
         
         if draw_by_repeat and False:

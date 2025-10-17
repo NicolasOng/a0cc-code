@@ -23,11 +23,17 @@ class Config:
     
     backwards_moves: bool
     sideways_moves: bool
+    repeats_for_draw: int
 
+    num_trials: int
+
+    learning_rate: float
+    weight_decay: float
+    
     eval_neighbors: int
     eval_mcts_samples: list[int]
 
-    def __init__(self, config_fn: str, default_config_fn: str = "config/config.json"):
+    def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
         Initialize the configuration from a JSON file.
         - config_fn: Path to the configuration file.
@@ -60,6 +66,9 @@ class Config:
         # calculate derived attributes
         self.num_spots = self.board_size * self.board_size
 
+        if trial_num != "":
+            self.output_dir = self.output_dir.rstrip("/") + str(trial_num) + "/"
+
         # create output and other directories if they do not exist
         os.makedirs(self.output_dir, exist_ok=True)
         self.training_dir = self.output_dir + "training/"
@@ -84,4 +93,5 @@ class Config:
         os.makedirs(self.solvedata_dir, exist_ok=True)
 
 config_path = sys.argv[1] if len(sys.argv) > 1 else "config/config.json"
-config = Config(config_path, "config/config.json")
+trial_num = sys.argv[2] if len(sys.argv) > 2 else ""
+config = Config(config_path, "config/config.json", trial_num)

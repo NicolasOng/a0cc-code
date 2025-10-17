@@ -407,16 +407,17 @@ class Board:
         
         return player_x_winner, player_o_winner
 
-    def check_for_draw(self, board_history: list[Board]) -> bool:
+    def check_for_draw(self, board_history: list[Board], num_repeats_for_draw: int) -> bool:
         '''
         Checks if the game is a draw.
-        A draw occurs when a state is repeated.
+        A draw occurs when a state is repeated n times
         '''
+        num_repeats = 0
         for board in board_history:
             if self.board == board.board and self.current_player == board.current_player:
-                return True
-        return False
-    
+                num_repeats += 1
+        return num_repeats >= num_repeats_for_draw
+
     def get_player_positions(self) -> tuple[list[Point], list[Point]]:
         '''
         Returns a list of all positions occupied by each player.
@@ -605,11 +606,13 @@ class Board:
         return self.__hash__() == other.__hash__()
 
 class Game:
-    def __init__(self, board_size: int = 7, num_pieces: int = 6, draw_on_repeat: bool=False, no_reverse_moves: bool=False, no_illegal_moves: bool=False, no_side_moves: bool=False) -> None:
+    def __init__(self, board_size: int = 7, num_pieces: int = 6, repeats_for_draw: int = -1, no_reverse_moves: bool=False, no_illegal_moves: bool=False, no_side_moves: bool=False) -> None:
         self.board = Board(board_size=board_size, home_size=board_to_home_size[board_size])
         self.board_history: list[Board] = []
         self.end = False
         self.winner = None
+
+        self.repeats_for_draw = repeats_for_draw
 
         # game rules
         # draw_on_repeat -> only set to true for "real" games, not for tree search or other uses
@@ -633,7 +636,7 @@ class Game:
         self.draw_on_no_moves = False
         # set to True in normal play, False in eg tree search
         # as DFS saves the board history
-        self.draw_on_repeated_state = False or draw_on_repeat
+        self.draw_on_repeated_state = False or repeats_for_draw > 0
 
         # we need the board history to check for repeated states for draws
         self.save_board_history = self.draw_on_repeated_state or self.no_draw_moves
@@ -715,7 +718,7 @@ class Game:
                 # apply the move to the current board
                 self.board.apply_move(move)
                 # check if the move doesn't lead to a draw
-                if not self.board.check_for_draw(self.board_history):
+                if not self.board.check_for_draw(self.board_history, self.repeats_for_draw):
                     valid_moves.append(move)
                 # undo the move on the current board
                 self.board.undo_move(move)
@@ -758,7 +761,7 @@ class Game:
         # 3. check if the game is a draw
         if (self.draw_on_repeated_state and
             not self.no_draw_moves and
-            self.board.check_for_draw(self.board_history)):
+            self.board.check_for_draw(self.board_history, self.repeats_for_draw)):
             logging.debug(f"Game ended in a draw.")
             self.end = True
             self.winner = None

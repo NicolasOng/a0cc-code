@@ -13,7 +13,7 @@ class SearchMoves:
 
         # get the starting board
         num_pieces, _ = initial_state.num_pieces()
-        self.starting_board = Game(len(initial_state.board), num_pieces).board
+        self.starting_board = Game(board_size=len(initial_state.board), num_pieces=num_pieces).board
 
     def initial_state(self) -> Board:
         '''
@@ -76,7 +76,11 @@ class SearchMoves:
 
 class MCTSRolloutPlayer:
     def __init__(self, board_size: int, num_pieces: int, no_reverse_moves: bool = True, mcts_iterations: int = 10000):
-        self.game = Game(board_size, num_pieces, False, no_reverse_moves, False)
+        self.game = Game(board_size=board_size,
+                        num_pieces=num_pieces,
+                        repeats_for_draw=-1,
+                        no_reverse_moves=no_reverse_moves,
+                        no_illegal_moves=False)
         self.mcts_iterations = mcts_iterations
         self.max_depth = 1000
     

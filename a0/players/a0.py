@@ -107,7 +107,7 @@ class A0Player:
         self.game = Game(
             board_size=board_size,
             num_pieces=num_pieces,
-            draw_on_repeat=False,
+            repeats_for_draw=-1,
             no_reverse_moves=no_reverse_moves,
             no_illegal_moves=False,
             no_side_moves=no_side_moves

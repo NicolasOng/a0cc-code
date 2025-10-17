@@ -106,7 +106,10 @@ def main():
 
     # create a list of the output dirs to pull from
     eval_dir = "/eval/"
-    outputs = [f"output1{eval_dir}", f"output2{eval_dir}", f"output3{eval_dir}", f"output4{eval_dir}"]
+    output_dir = config.output_dir[:-1]
+    outputs: list[str] = []
+    for i in range(config.num_trials):
+        outputs.append(f"{output_dir}{i+1}{eval_dir}")
 
     # choose the confidence level for all the plots
     confidence = 0.95

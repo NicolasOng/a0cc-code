@@ -114,7 +114,7 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
     game = Game(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
-        draw_on_repeat=True,
+        repeats_for_draw=config.repeats_for_draw,
         no_reverse_moves=not config.backwards_moves,
         no_illegal_moves=False,
         no_side_moves=not config.sideways_moves

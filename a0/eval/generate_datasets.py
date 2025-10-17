@@ -131,8 +131,8 @@ def training_experienced_values(n: int | None = None, gen_non_trivial: bool = Tr
     # load all this into a Dataset object
     boards = list(boards_set)
     ev_dataset = Dataset(batch_size=256)
-    e_board = jnp.stack([d.board for d in boards]) # (board_size, board_size) -> (N, board_size, board_size)
-    e_value = jnp.array([d.value for d in boards])[:, None] # Add [:, None] to make its shape (N, 1)
+    e_board = jnp.concatenate([d.board for d in boards], axis=0) # (1, board_size, board_size, 2) -> (N, board_size, board_size, 2)
+    e_value = jnp.array([d.value for d in boards]).reshape(-1, 1) # list[float] -> (N, 1)
     e_policy = jnp.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
     logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
     ev_dataset.set(e_board, e_value, e_policy)
@@ -151,8 +151,8 @@ def training_experienced_values(n: int | None = None, gen_non_trivial: bool = Tr
     if gen_non_trivial:
         boards = list(boards_set_non_trivial)
         ev_dataset_non_trivial = Dataset(batch_size=256)
-        e_board = jnp.stack([d.board for d in boards]) # (board_size, board_size) -> (N, board_size, board_size)
-        e_value = jnp.array([d.value for d in boards])[:, None] # Add [:, None] to make its shape (N, 1)
+        e_board = jnp.concatenate([d.board for d in boards], axis=0) # (1, board_size, board_size, 2) -> (N, board_size, board_size, 2)
+        e_value = jnp.array([d.value for d in boards]).reshape(-1, 1) # list[float] -> (N, 1)
         e_policy = jnp.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
         logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
         ev_dataset_non_trivial.set(e_board, e_value, e_policy)
@@ -177,14 +177,14 @@ def create_gtv_dataset_from_board_list(boards: list[Board]):
     policies: list[jnp.ndarray] = []
     gt = GroundTruth()
     for board in tqdm(boards):
-        states.append(jnp.array(board_to_input(board)))
-        values.append(gt.get_outcome(board))
-        policies.append(jnp.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True)))
+        states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
+        values.append(gt.get_outcome(board)) # float
+        policies.append(jnp.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))) # (board_size ** 4,)
     
     # load all this into a Dataset object
     logger.info("Creating Dataset object with ground truth values...")
-    jnp_states = jnp.stack(states) # (N, board_size, board_size)
-    jnp_values = jnp.array(values) [:, None]  # Add [:, None] to make its shape (N, 1)
+    jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
+    jnp_values = jnp.array(values).reshape(-1, 1)  # (N, 1)
     jnp_policies = jnp.stack(policies) # (N, board_size ** 4)
     logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
     gtv_dataset = Dataset(batch_size=256)
@@ -204,7 +204,11 @@ def get_neighbor_boards(boards: list[Board], boards_set: set[Board], dataset_siz
     If dataset_size is specified, returns a random sample of the neighbors.
     Modifies boards_set in-place.
     '''
-    cc = Game(config.board_size, config.num_pieces, False, False, False)
+    cc = Game(board_size=config.board_size,
+            num_pieces=config.num_pieces,
+            repeats_for_draw=-1,
+            no_reverse_moves=False,
+            no_illegal_moves=False)
     
     neighbor_boards: list[Board] = []
     for board in tqdm(boards):

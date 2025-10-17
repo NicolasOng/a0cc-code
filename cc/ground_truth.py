@@ -14,7 +14,11 @@ class GroundTruth:
     def __init__(self):
         self.r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
         self.s = CCState(config.num_spots, config.num_pieces, config.num_players)
-        self.cc = Game(config.board_size, config.num_pieces, False, False, False)
+        self.cc = Game(board_size=config.board_size,
+                        num_pieces=config.num_pieces,
+                        repeats_for_draw=-1,
+                        no_reverse_moves=False,
+                        no_illegal_moves=False)
         self.l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
     
     def rank(self, board: Board) -> int:

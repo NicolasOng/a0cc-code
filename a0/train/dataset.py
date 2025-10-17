@@ -176,8 +176,8 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
 
     # value: 0.00005
     optimizer = nnx.Optimizer(model, optax.adamw(
-        learning_rate=0.00005,
-        weight_decay=1e-4
+        learning_rate=config.learning_rate,
+        weight_decay=config.weight_decay
     ))
 
     for ts, batch in enumerate(batches):

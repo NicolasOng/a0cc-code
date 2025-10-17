@@ -60,6 +60,9 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
 
         game.end_turn(move)
 
+        #print(game.board.board_view())
+        #time.sleep(0.1)
+
         turn += 1
     
     if game.winner is None:
