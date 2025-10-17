@@ -12,5 +12,11 @@
     "training_batch_size": 256,
     "mcts_samples": 64,
     "backwards_moves": false,
-    "sideways_moves": false
+    "sideways_moves": false,
+    "repeats_for_draw": 1,
+    "num_trials": 8,
+    "learning_rate": 0.00005,
+    "weight_decay": 1e-4,
+    "eval_neighbors": 2,
+    "eval_mcts_samples": [64, 128]
 }
