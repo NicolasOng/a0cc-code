@@ -182,17 +182,17 @@ def main():
     state_progress_state_nums = load_series(f"{config.eval_dir}/state_progress_state_nums.pkl")
 
     # ["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"]
-    mcts_eval_series: list[tuple[int, Series, Series, Series, list[Series]]] = []
-    for mcts_samples in config.eval_mcts_samples:
-        training_gtv = load_series(f"{config.eval_dir}/mcts_eval_{mcts_samples}/training_gtv_mcts_eval_{mcts_samples}")
-        random_gtv = load_series(f"{config.eval_dir}/mcts_eval_{mcts_samples}/random_gtv_mcts_eval_{mcts_samples}")
-        training_ev = load_series(f"{config.eval_dir}/mcts_eval_{mcts_samples}/training_ev_mcts_eval_{mcts_samples}")
-        num_neighbors = config.eval_neighbors
-        neighbor_gtvs: list[Series] = []
-        for i in range(num_neighbors):
-            neighbor_gtv = load_series(f"{config.eval_dir}/mcts_eval_{mcts_samples}/neighbor_{i+1}_gtv_mcts_eval_{mcts_samples}")
-            neighbor_gtvs.append(neighbor_gtv)
-        mcts_eval_series.append((mcts_samples, training_gtv, random_gtv, training_ev, neighbor_gtvs))
+    # mcts_eval_series: list[tuple[int, Series, Series, Series, list[Series]]] = []
+    # for mcts_samples in config.eval_mcts_samples:
+    #     training_gtv = load_series(f"{config.eval_dir}/mcts_eval_{mcts_samples}/training_gtv_mcts_eval_{mcts_samples}")
+    #     random_gtv = load_series(f"{config.eval_dir}/mcts_eval_{mcts_samples}/random_gtv_mcts_eval_{mcts_samples}")
+    #     training_ev = load_series(f"{config.eval_dir}/mcts_eval_{mcts_samples}/training_ev_mcts_eval_{mcts_samples}")
+    #     num_neighbors = config.eval_neighbors
+    #     neighbor_gtvs: list[Series] = []
+    #     for i in range(num_neighbors):
+    #         neighbor_gtv = load_series(f"{config.eval_dir}/mcts_eval_{mcts_samples}/neighbor_{i+1}_gtv_mcts_eval_{mcts_samples}")
+    #         neighbor_gtvs.append(neighbor_gtv)
+    #     mcts_eval_series.append((mcts_samples, training_gtv, random_gtv, training_ev, neighbor_gtvs))
 
 
     # plot all the series
