@@ -1,4 +1,5 @@
 import math
+import matplotlib.pyplot as plt
 
 def num_goal_states(s: int = 16, p: int = 3) -> int:
     g = p
@@ -14,13 +15,55 @@ def num_goal_states(s: int = 16, p: int = 3) -> int:
 def num_total_states(s: int = 16, p: int = 3) -> int:
     return 2 * math.comb(s, p) * math.comb(s - p, p)
 
-sizes: list[int] = [16, 25, 49, 81]
-pieces: list[int] = [3, 6, 6, 6]
+def plot_line_graph_with_x(x_values: list, y_values: list[float], 
+                           title: str = "Line Graph", 
+                           xlabel: str = "X", ylabel: str = "Y"):
+    """Create a line graph with custom x-axis values."""
+    plt.figure(figsize=(16, 9))
+    plt.plot(x_values, y_values, marker='o', linewidth=2, markersize=8)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.yscale('log')
+    plt.xscale('log')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
 
+sizes: list[int] = [4, 9, 9, 9, 16, 16, 16, 16, 16, 16, 25, 25, 25, 25, 36, 36, 36, 36, 36, 49, 49, 49, 49, 49, 49, 49, 81, 81, 81, 81, 81, 81, 81, 81, 121]
+pieces: list[int] = [1, 1, 2, 3, 1, 2, 3, 4, 5, 6, 1, 3, 6, 10, 1, 3, 4, 6, 10, 1, 2, 3, 4, 5, 6, 10, 1, 3, 4, 5, 6, 7, 8, 10, 10]
+
+#sizes: list[int] = [4, 9, 9, 9, 16, 16, 16, 16, 16, 16, 25, 25, 25, 36, 36, 36, 36, 49, 49, 49, 49, 49, 49, 81, 81, 81, 81, 81]
+#pieces: list[int] = [1, 1, 2, 3, 1, 2, 3, 4, 5, 6, 1, 3, 6, 1, 3, 4, 6, 1, 2, 3, 4, 5, 6, 1, 3, 4, 5, 6]
+
+total_states_list: list[int] = []
+goal_states_list: list[int] = []
+percentages: list[float] = []
 for s, p in zip(sizes, pieces):
+    num_states = num_total_states(s, p)
+    num_goal = num_goal_states(s, p)
     print(f"Size: {s}, Pieces: {p}")
-    print(f"Total States: {num_total_states(s, p)}")
-    print(f"Goal States: {num_goal_states(s, p)}")
-    print(f"Fraction: {num_goal_states(s, p) / num_total_states(s, p):.6%}")
+    print(f"Total States: {num_states}")
+    print(f"Goal States: {num_goal}")
+    fraction = num_goal / num_states
+    print(f"Fraction: {fraction:.6%}")
+    total_states_list.append(num_states)
+    goal_states_list.append(num_goal)
+    percentages.append(fraction)
     print("------")
 
+sorted_data = sorted(zip(total_states_list, goal_states_list), key=lambda pair: pair[0])
+sorted_x, sorted_y = zip(*sorted_data)
+
+plot_line_graph_with_x(sorted_x, sorted_y,
+                       title="Number of Goal States vs Total States",
+                       xlabel="Total States",
+                       ylabel="Goal States")
+
+sorted_data = sorted(zip(total_states_list, percentages), key=lambda pair: pair[0])
+sorted_x, sorted_y = zip(*sorted_data)
+
+plot_line_graph_with_x(sorted_x, sorted_y,
+                       title="Goal States/Total States vs Total States",
+                       xlabel="Total States",
+                       ylabel="Goal States/Total States")
