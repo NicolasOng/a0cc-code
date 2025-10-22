@@ -236,7 +236,10 @@ def main():
                     ("Neighbor 2 Accuracy", n_neighbor_gt_series[1].x, n_neighbor_gt_series[1].ys["value_accuracy"]),
                     ("Random Accuracy", random_gt_series.x, random_gt_series.ys["value_accuracy"]),
                     ("Training Data Accuracy", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"]),
-                    ("Overall Training Data Accuracy", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Value Accuracy"])
+                    ("Overall Training Data Accuracy", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Value Accuracy"]),
+                    ("Training Data Accuracy ND", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy ND"]),
+                    ("Overall Training Data Accuracy ND", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Value Accuracy ND"])
+
                ],
                "Iteration", "Accuracy", "full_accuracy_value")
 
