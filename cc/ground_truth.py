@@ -1,3 +1,5 @@
+import random
+
 from cc.core import Game, Board, Player, Move
 from cc.lookups import CCBaselineSolver
 from cc.ranking import CCDefaultRank, CCState
@@ -163,6 +165,89 @@ class GroundTruth:
         p.set_legal_moves(moves)
         # apply a mask so illegal moves are -1
         p.apply_mask(-1.0)
+        # rotate the policy if necessary
+        # this is used to adjust the policy distribution when the board is rotated
+        # for the model
+        if rotate_board:
+            p.rotate_policy()
+        # return the policy as a list
+        return p.get_policy_list()
+    
+    def get_valid_moves_list(self, board: Board, for_model: bool) -> list[float]:
+        '''
+        Returns a policy list for the given board,
+        except each valid move has the value 1,
+        Its length is board_size ** 4.
+        If this will be used for a model,
+        it will be rotated 180 degrees when the current player is Player.PLAYER_O.
+        '''
+        # decide if we need to rotate the board
+        rotate_board = (board.current_player == Player.PLAYER_O) and for_model
+        # get the valid moves for the board
+        moves, _ = self.get_1ply_policy_moves(board)
+        # create a list of 1.0 for each valid move
+        move_outcomes = [1.0] * len(moves)
+        # create a Policy object
+        p = Policy(config.board_size)
+        # set the logits from the moves and outcomes
+        p.set_logits_from_moves(moves, move_outcomes, rotate_180=False)
+        # rotate the policy if necessary
+        # this is used to adjust the policy distribution when the board is rotated
+        # for the model
+        if rotate_board:
+            p.rotate_policy()
+        # return the policy as a list
+        return p.get_policy_list()
+    
+    def get_random_valid_move_list(self, board: Board, for_model: bool) -> list[float]:
+        '''
+        Returns a policy list for the given board,
+        except a random valid move has the value 1,
+        Its length is board_size ** 4.
+        If this will be used for a model,
+        it will be rotated 180 degrees when the current player is Player.PLAYER_O.
+        '''
+        # decide if we need to rotate the board
+        rotate_board = (board.current_player == Player.PLAYER_O) and for_model
+        # get the valid moves for the board
+        moves, _ = self.get_1ply_policy_moves(board)
+        # choose a random move from the valid moves
+        random_move = random.choice(moves)
+        # create a Policy object
+        p = Policy(config.board_size)
+        # set the logits for the random move
+        p.set_logits_from_moves([random_move], [1.0], rotate_180=False)
+        # rotate the policy if necessary
+        # this is used to adjust the policy distribution when the board is rotated
+        # for the model
+        if rotate_board:
+            p.rotate_policy()
+        # return the policy as a list
+        return p.get_policy_list()
+    
+    def get_random_winning_move_list(self, board: Board, for_model: bool) -> list[float]:
+        '''
+        Returns a policy list for the given board,
+        except a random winning move has the value 1.
+        If there are no winning moves, all values are 0.
+        Its length is board_size ** 4.
+        If this will be used for a model,
+        it will be rotated 180 degrees when the current player is Player.PLAYER_O.
+        '''
+        # decide if we need to rotate the board
+        rotate_board = (board.current_player == Player.PLAYER_O) and for_model
+        # get the valid moves for the board
+        moves, move_outcomes = self.get_1ply_policy_moves(board)
+        # choose a random winning move
+        indices = [i for i, val in enumerate(move_outcomes) if val == 1]
+        random_index = random.choice(indices) if indices else -1
+        # create a Policy object
+        p = Policy(config.board_size)
+        # if no winning moves, return all zeros
+        if random_index == -1:
+            return p.get_policy_list()
+        # set the logits for the random winning move
+        p.set_logits_from_moves([moves[random_index]], [1.0], rotate_180=False)
         # rotate the policy if necessary
         # this is used to adjust the policy distribution when the board is rotated
         # for the model

@@ -145,4 +145,15 @@ class Dataset:
         
         print(f"Balanced to {target_count} samples each ({len(self)} total)")
         self.print_distribution()
-        
+    
+    def clear_values(self) -> None:
+        """
+        Clear the values in the dataset (set all to 0).
+        """
+        self.values = jnp.zeros_like(self.values)
+    
+    def clear_policies(self) -> None:
+        """
+        Clear the policies in the dataset (set all to 0).
+        """
+        self.policies = jnp.zeros_like(self.policies)
