@@ -219,21 +219,21 @@ def main():
     sp_dataset.clear_values()
 
     # train a model on the gtv dataset + evaluate
-    train_and_plot("sl_on_policy_head_gtv", gtv_dataset, gtv_dataset, num_epochs=10)
+    train_and_plot("sl_on_policy_head_gtv_nv", gtv_dataset, gtv_dataset, num_epochs=10)
 
     # train a model on the random gtv dataset + evaluate
-    train_and_plot("sl_on_policy_head_random_gtv", random_gtv_dataset, gtv_dataset, num_epochs=10)
+    train_and_plot("sl_on_policy_head_random_gtv_nv", random_gtv_dataset, gtv_dataset, num_epochs=10)
 
     # train a model on the random dataset + evaluate
-    train_and_plot("sl_on_policy_head_random", random_dataset, gtv_dataset, num_epochs=10)
+    train_and_plot("sl_on_policy_head_random_nv", random_dataset, gtv_dataset, num_epochs=10)
 
     # train a model on the self-play dataset + evaluate
-    m = train_and_plot("sl_on_policy_head_selfplay", sp_dataset, gtv_dataset, num_epochs=10)
+    m = train_and_plot("sl_on_policy_head_selfplay_nv", sp_dataset, gtv_dataset, num_epochs=10)
     # also eval on itself
     loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(m, sp_dataset)
-    logger.info(f"Evaluation on sp dataset - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
+    logger.info(f"Evaluation on sp dataset nv - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
     loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(m, spgtv_dataset)
-    logger.info(f"Evaluation on spgtv dataset - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
+    logger.info(f"Evaluation on spgtv dataset nv - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
 
 if __name__ == "__main__":
     setup_logging(
