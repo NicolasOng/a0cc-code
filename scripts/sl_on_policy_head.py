@@ -8,6 +8,8 @@ from a0.eval.training_data import game_data_generator
 from a0.train.dataset import train_model_epochs, plot_model_performance
 from a0.model import AlphaZeroModel
 from a0.eval.dataset_evaluation import evaluate_model, policy_accuracy_function
+from a0.graph_search.mcts import MCTS
+from a0.mcts.gt import MCTS_GT
 
 import jax.numpy as jnp
 import numpy as np
@@ -194,7 +196,7 @@ def train_and_plot(fn: str, dataset: Dataset, eval_dataset: Dataset, num_epochs:
     return trained_model
 
 def main():
-    # TODO: do with larger n, also can delete the value-less ones if no effect.
+    # TODO: do with larger n
     # create a dataset from self-play data
     sp_dataset, sp_boards = create_dataset_from_selfplay(remove_trivial=True)
     logger.info("Self-play dataset created.")
@@ -222,20 +224,24 @@ def main():
     random_dataset = create_random_dataset_from_states(boards)
     logger.info("Random dataset created.")
 
+    # create a ground truth dataset with different states for validation
+    gtv_dataset_validation = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
+    logger.info("Validation dataset created.")
+
     # check the random policy accuracy on the gtv boards
     check_random_policy_acc(boards)
 
     # train a model on the gtv dataset + evaluate
-    train_and_plot("sl_on_policy_head_gtv", gtv_dataset, gtv_dataset, num_epochs=10)
+    train_and_plot("sl_on_policy_head_gtv", gtv_dataset, gtv_dataset_validation, num_epochs=10)
 
     # train a model on the random gtv dataset + evaluate
-    train_and_plot("sl_on_policy_head_random_gtv", random_gtv_dataset, gtv_dataset, num_epochs=10)
+    train_and_plot("sl_on_policy_head_random_gtv", random_gtv_dataset, gtv_dataset_validation, num_epochs=10)
 
     # train a model on the random dataset + evaluate
-    train_and_plot("sl_on_policy_head_random", random_dataset, gtv_dataset, num_epochs=10)
+    train_and_plot("sl_on_policy_head_random", random_dataset, gtv_dataset_validation, num_epochs=10)
 
     # train a model on the self-play dataset + evaluate
-    m = train_and_plot("sl_on_policy_head_selfplay", sp_dataset, gtv_dataset, num_epochs=10)
+    m = train_and_plot("sl_on_policy_head_selfplay", sp_dataset, gtv_dataset_validation, num_epochs=10)
     # also eval on itself
     loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(m, sp_dataset)
     logger.info(f"Evaluation on sp dataset - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")

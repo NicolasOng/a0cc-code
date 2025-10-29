@@ -42,6 +42,8 @@ class MCTSProblem(Protocol):
         Returns True if the current player to move in the given state is the maximizing player.
         I.E. the player is trying to maximize the reward given in get_reward.
         This is used in the selection policy in the MCTS.
+        To be specific, if the current node is a maximizing node, all its children will set the value estimate as is,
+        while if it's a minimizing node, the value estimate will be negated.
         '''
         ...
 
