@@ -8,11 +8,11 @@ def random_number(n: int) -> float:
     return random.random()
 
 class MCTS_GT:
-    def __init__(self, initial_state: Board, game: Game, mistake_prob: float = 0.0):
+    def __init__(self, initial_state: Board, game: Game, error_rate: float = 0.0):
         self._initial_state = initial_state
         self.game = game
         self.gt = GroundTruth()
-        self.mistake_prob = mistake_prob
+        self.error_rate = error_rate
 
     def initial_state(self) -> Board:
         '''
@@ -55,7 +55,7 @@ class MCTS_GT:
         '''
         value = self.gt.get_outcome(state)
 
-        if random_number(self.gt.rank(state)) < self.mistake_prob:
+        if random_number(self.gt.rank(state)) < self.error_rate:
             # simulate a mistake by flipping the value
             value = -value
 

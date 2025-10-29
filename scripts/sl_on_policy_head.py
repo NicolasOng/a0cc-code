@@ -1,9 +1,9 @@
 import random
 
-from cc.core import Board
+from cc.core import Board, Game, Player
 from cc.ground_truth import GroundTruth
 from a0.dataset import Dataset
-from a0.model_utils import board_to_input
+from a0.model_utils import board_to_input, Policy
 from a0.eval.training_data import game_data_generator
 from a0.train.dataset import train_model_epochs, plot_model_performance
 from a0.model import AlphaZeroModel
@@ -195,7 +195,108 @@ def train_and_plot(fn: str, dataset: Dataset, eval_dataset: Dataset, num_epochs:
 
     return trained_model
 
+def generate_mcts_policy(state: Board, game: Game, error_rate: float, mcts_iterations: int) -> tuple[NDArray[np.float32], float]:
+    '''
+    Generates a policy using MCTS with ground truth evaluations.
+    Returns the policy distribution and the root reward.
+    '''
+    moves = game.generate_moves_for_given_board(state)
+
+    mcts = MCTS(
+        problem=MCTS_GT(state, game, error_rate),
+        selection_policy="uct"
+        )
+    mcts.run(iterations=mcts_iterations)
+    children = mcts.get_root_children()
+    assert len(children) > 0, "No children found in MCTS root node."
+
+    # with the root's children, create a policy distribution logits
+    mcts_root_children_visit_counts = [float(child.visits) for child in children]
+    mcts_root_children_moves = [state.child_board_to_move(child.state) for child in children]
+
+    p = Policy(len(state.board))
+    # create a well-shaped policy distribution,
+    p.set_logits_from_moves(mcts_root_children_moves, mcts_root_children_visit_counts, rotate_180=False)
+    # mask non-legal moves,
+    p.set_legal_moves(moves)
+    p.apply_mask(0.0)
+    # softmax it to get the policy distribution
+    p.apply_power_normalize(1)
+    # we rotate the policy if the current player is O,
+    # since this is for training the model
+    if state.current_player == Player.PLAYER_O:
+        p.rotate_policy()
+    return p.policy, mcts.root.reward
+
+def generate_mcts_dataset(boards: list[Board], game: Game, error_rate: float, mcts_iterations: int) -> Dataset:
+    '''
+    Generates a dataset using MCTS with ground truth evaluations on the given boards.
+    '''
+    gt = GroundTruth()
+
+    states: list[jnp.ndarray] = []
+    values: list[float] = []
+    policies: list[jnp.ndarray] = []
+
+    total_boards = 0
+    acc_count = 0
+    for board in tqdm(boards):
+        policy, value = generate_mcts_policy(board, game, error_rate, mcts_iterations)
+        states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
+        values.append(value) # float
+        policies.append(jnp.array(policy)) # (board_size ** 4,)
+
+        gt_policy = gt.get_1ply_policy_prob_dist_list(board, for_model=True)
+        acc = policy_accuracy_function(policy, np.array(gt_policy))
+        total_boards += 1
+        if acc:
+            acc_count += 1
+
+    logger.info(f"MCTS dataset generation complete for error rate {error_rate} and {mcts_iterations} iterations.")
+    logger.info(f"MCTS Policy accuracy against ground truth on generated data (NT Boards): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
+
+    # load all this into a Dataset object
+    logger.info("Creating Dataset object with MCTS-generated values...")
+    jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
+    jnp_values = jnp.array(values).reshape(-1, 1)  # (N, 1)
+    jnp_policies = jnp.stack(policies) # (N, board_size ** 4)
+    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
+    mcts_dataset = Dataset(batch_size=256)
+    mcts_dataset.set(jnp_states, jnp_values, jnp_policies)
+    return mcts_dataset
+
+def mcts_function(error_rate: float, mcts_iterations: int, validation_dataset: Dataset):
+    '''
+    Generates a dataset using MCTS with ground truth evaluations,
+    then trains/tests a model on it with a 90/10 split.
+    Uses a validation dataset for evaluation after training.
+    '''
+    # get n random unique board states
+    n = 10000
+    logger.info(f"Generating {n} random unique board states...")
+    boards = get_n_random_states(n, remove_trivial=True)
+
+    # create a ground truth dataset from these states
+    g = Game(board_size=config.board_size, num_pieces=config.num_pieces)
+    mcts_dataset = generate_mcts_dataset(boards, g, error_rate, mcts_iterations)
+    logger.info("MCTS dataset created.")
+
+    # train a model on the mcts dataset + evaluate
+    train_and_plot(f"sl_on_policy_head_mcts_er{error_rate}_it{mcts_iterations}", mcts_dataset, validation_dataset, num_epochs=10)
+
 def main():
+    '''
+    Generates the following datasets, then trains/tests models on them with a 90/10 split:
+    - Ground truth dataset from n random unique board states
+    - Random ground truth dataset from n random unique board states
+    - Random dataset from n random unique board states
+    - Self-play dataset from existing self-play data
+    Uses a validation dataset for evaluation of all models after training.
+    Additionally, evaluates the self-play trained model on both the self-play dataset and its ground truth counterpart.
+    This is to see if the model can learn the ground truth dataset and the random ground truth dataset.
+    Also the self-play dataset, and if learning from self play helps generalization to ground truth.
+    Random dataset serves as an interesting comparison.
+    '''
     # TODO: do with larger n
     # create a dataset from self-play data
     sp_dataset, sp_boards = create_dataset_from_selfplay(remove_trivial=True)
@@ -247,6 +348,18 @@ def main():
     logger.info(f"Evaluation on sp dataset - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
     loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(m, spgtv_dataset)
     logger.info(f"Evaluation on spgtv dataset - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
+
+def main2():
+    # create a ground truth dataset with different states for validation
+    gtv_dataset_validation = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
+    logger.info("Validation dataset created.")
+    
+    mcts_samples_list = [64, 512]
+    errors_rate_list = [0.0, 0.2]
+
+    for mcts_samples in mcts_samples_list:
+        for error_rate in errors_rate_list:
+            mcts_function(error_rate, mcts_samples, gtv_dataset_validation)
 
 if __name__ == "__main__":
     setup_logging(
