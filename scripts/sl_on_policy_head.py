@@ -7,7 +7,7 @@ from a0.model_utils import board_to_input
 from a0.eval.training_data import game_data_generator
 from a0.train.dataset import train_model_epochs, plot_model_performance
 from a0.model import AlphaZeroModel
-from a0.eval.dataset_evaluation import evaluate_model
+from a0.eval.dataset_evaluation import evaluate_model, policy_accuracy_function
 
 import jax.numpy as jnp
 import numpy as np
@@ -72,7 +72,7 @@ def create_random_gtd_from_states(boards: list[Board]) -> Dataset:
     for board in tqdm(boards):
         states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
         values.append(gt.get_outcome(board)) # float
-        policies.append(jnp.array(gt.get_random_winning_move_list(board, for_model=True))) # (board_size ** 4,)
+        policies.append(jnp.array(gt.get_random_best_move_prob_dist_list(board, for_model=True))) # (board_size ** 4,)
     # load all this into a Dataset object
     logger.info("Creating Dataset object with ground truth values...")
     jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
@@ -95,8 +95,8 @@ def create_random_dataset_from_states(boards: list[Board]) -> Dataset:
     gt = GroundTruth()
     for board in tqdm(boards):
         states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
-        values.append(gt.get_outcome(board)) # float
-        policies.append(jnp.array(gt.get_random_valid_move_list(board, for_model=True))) # (board_size ** 4,)
+        values.append(random.choice([0, 1])) # float
+        policies.append(jnp.array(gt.get_random_valid_move_prob_dist_list(board, for_model=True))) # (board_size ** 4,)
     # load all this into a Dataset object
     logger.info("Creating Dataset object with ground truth values...")
     jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
@@ -110,6 +110,8 @@ def create_random_dataset_from_states(boards: list[Board]) -> Dataset:
 def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, list[Board]]:
     # get the unique boards (with their outcome/policy) from the training data
     gt = GroundTruth()
+    total_boards = 0
+    acc_count = 0
     states: list[jnp.ndarray] = []
     values: list[float] = []
     policies: list[jnp.ndarray] = []
@@ -130,6 +132,12 @@ def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, 
                 if remove_trivial and gt.is_trivial(board):
                     continue
 
+                gt_policy = gt.get_1ply_policy_prob_dist_list(board, for_model=True)
+                acc = policy_accuracy_function(np.array(experienced_policy), np.array(gt_policy))
+                total_boards += 1
+                if acc:
+                    acc_count += 1
+
                 states.append(experienced_board)
                 values.append(experienced_outcome)
                 policies.append(experienced_policy)
@@ -143,7 +151,26 @@ def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, 
     sp_dataset = Dataset(batch_size=256)
     sp_dataset.set(jnp_states, jnp_values, jnp_policies)
 
+    logger.info(f"Policy accuracy against ground truth on self-play data (NT Boards): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
+
     return sp_dataset, list(boards)
+
+def check_random_policy_acc(boards: list[Board]) -> float:
+    '''
+    Checks the policy accuracy of a random policy on the given boards.
+    '''
+    gt = GroundTruth()
+    correct = 0
+    total = 0
+    for board in tqdm(boards):
+        true_policy = gt.get_1ply_policy_prob_dist_list(board, for_model=False)
+        random_policy = gt.get_random_valid_move_prob_dist_list(board, for_model=False)
+        acc: bool = policy_accuracy_function(np.array(random_policy), np.array(true_policy))
+        if acc:
+            correct += 1
+        total += 1
+    logger.info(f"Random policy accuracy: {correct / total if total > 0 else 0.0:.2%} ({correct} / {total})")
+    return correct / total if total > 0 else 0.0
 
 def train_and_plot(fn: str, dataset: Dataset, eval_dataset: Dataset, num_epochs: int = 10) -> AlphaZeroModel:
     logger.info(f"Training model '{fn}' for {num_epochs} epochs...")
@@ -195,6 +222,9 @@ def main():
     random_dataset = create_random_dataset_from_states(boards)
     logger.info("Random dataset created.")
 
+    # check the random policy accuracy on the gtv boards
+    check_random_policy_acc(boards)
+
     # train a model on the gtv dataset + evaluate
     train_and_plot("sl_on_policy_head_gtv", gtv_dataset, gtv_dataset, num_epochs=10)
 
@@ -211,29 +241,6 @@ def main():
     logger.info(f"Evaluation on sp dataset - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
     loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(m, spgtv_dataset)
     logger.info(f"Evaluation on spgtv dataset - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
-
-    # repeat, but without the values
-    gtv_dataset.clear_values()
-    random_gtv_dataset.clear_values()
-    random_dataset.clear_values()
-    sp_dataset.clear_values()
-
-    # train a model on the gtv dataset + evaluate
-    train_and_plot("sl_on_policy_head_gtv_nv", gtv_dataset, gtv_dataset, num_epochs=10)
-
-    # train a model on the random gtv dataset + evaluate
-    train_and_plot("sl_on_policy_head_random_gtv_nv", random_gtv_dataset, gtv_dataset, num_epochs=10)
-
-    # train a model on the random dataset + evaluate
-    train_and_plot("sl_on_policy_head_random_nv", random_dataset, gtv_dataset, num_epochs=10)
-
-    # train a model on the self-play dataset + evaluate
-    m = train_and_plot("sl_on_policy_head_selfplay_nv", sp_dataset, gtv_dataset, num_epochs=10)
-    # also eval on itself
-    loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(m, sp_dataset)
-    logger.info(f"Evaluation on sp dataset nv - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
-    loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(m, spgtv_dataset)
-    logger.info(f"Evaluation on spgtv dataset nv - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
 
 if __name__ == "__main__":
     setup_logging(

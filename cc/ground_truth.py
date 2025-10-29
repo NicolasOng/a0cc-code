@@ -199,7 +199,7 @@ class GroundTruth:
         # return the policy as a list
         return p.get_policy_list()
     
-    def get_random_valid_move_list(self, board: Board, for_model: bool) -> list[float]:
+    def get_random_valid_move_prob_dist_list(self, board: Board, for_model: bool) -> list[float]:
         '''
         Returns a policy list for the given board,
         except a random valid move has the value 1,
@@ -217,6 +217,11 @@ class GroundTruth:
         p = Policy(config.board_size)
         # set the logits for the random move
         p.set_logits_from_moves([random_move], [1.0], rotate_180=False)
+        # set the legal moves in the policy object
+        p.set_legal_moves(moves)
+        # apply softmax to the policy distribution,
+        # while masking illegal moves
+        p.apply_softmax(1.0, mask=True)
         # rotate the policy if necessary
         # this is used to adjust the policy distribution when the board is rotated
         # for the model
@@ -225,11 +230,11 @@ class GroundTruth:
         # return the policy as a list
         return p.get_policy_list()
     
-    def get_random_winning_move_list(self, board: Board, for_model: bool) -> list[float]:
+    def get_random_best_move_prob_dist_list(self, board: Board, for_model: bool) -> list[float]:
         '''
         Returns a policy list for the given board,
-        except a random winning move has the value 1.
-        If there are no winning moves, all values are 0.
+        except a random best move has the value 1.
+        If there are no winning moves, it picks a draw. If no draws, picks a losing move.
         Its length is board_size ** 4.
         If this will be used for a model,
         it will be rotated 180 degrees when the current player is Player.PLAYER_O.
@@ -238,16 +243,19 @@ class GroundTruth:
         rotate_board = (board.current_player == Player.PLAYER_O) and for_model
         # get the valid moves for the board
         moves, move_outcomes = self.get_1ply_policy_moves(board)
-        # choose a random winning move
-        indices = [i for i, val in enumerate(move_outcomes) if val == 1]
-        random_index = random.choice(indices) if indices else -1
+        # choose a random best move
+        best_move_value = max(move_outcomes)
+        indices = [i for i, val in enumerate(move_outcomes) if val == best_move_value]
+        random_index = random.choice(indices)
         # create a Policy object
         p = Policy(config.board_size)
-        # if no winning moves, return all zeros
-        if random_index == -1:
-            return p.get_policy_list()
-        # set the logits for the random winning move
+        # set the logits for the random best move
         p.set_logits_from_moves([moves[random_index]], [1.0], rotate_180=False)
+        # set the legal moves in the policy object
+        p.set_legal_moves(moves)
+        # apply softmax to the policy distribution,
+        # while masking illegal moves
+        p.apply_softmax(1.0, mask=True)
         # rotate the policy if necessary
         # this is used to adjust the policy distribution when the board is rotated
         # for the model
