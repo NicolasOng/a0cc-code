@@ -22,17 +22,20 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def get_n_random_states(n: int, remove_trivial: bool = True) -> list[Board]:
+def get_n_random_states(n: int, remove_trivial: bool = True, remove_terminal: bool = True) -> list[Board]:
     '''
     Returns a list of n random unique board states.
     '''
     gt = GroundTruth()
+    game = Game(board_size=config.board_size, num_pieces=config.num_pieces)
     max_rank = gt.get_max_rank()
     state_set: set[Board] = set()
     while len(state_set) < n:
         rank = random.randint(0, max_rank - 1)
         board = gt.unrank(rank)
         if remove_trivial and gt.is_trivial(board):
+            continue
+        if remove_terminal and game.get_done(board):
             continue
         state_set.add(board)
     return list(state_set)
@@ -208,6 +211,16 @@ def generate_mcts_policy(state: Board, game: Game, error_rate: float, mcts_itera
         )
     mcts.run(iterations=mcts_iterations)
     children = mcts.get_root_children()
+
+    if len(children) == 0:
+        print("MCTS generated no children!")
+        print(state.board_view())
+        print(state.current_player)
+        moves = game.generate_moves_for_given_board(state)
+        print("moves:")
+        for move in moves:
+            print(move)
+
     assert len(children) > 0, "No children found in MCTS root node."
 
     # with the root's children, create a policy distribution logits
