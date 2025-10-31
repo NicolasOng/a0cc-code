@@ -374,6 +374,30 @@ def main2():
         for error_rate in errors_rate_list:
             mcts_function(error_rate, mcts_samples, gtv_dataset_validation)
 
+
+def main3(n: int):
+    # get n random unique board states
+    logger.info(f"Generating {n} random unique board states...")
+    boards = get_n_random_states(n, remove_trivial=True)
+
+    # create a ground truth dataset from these states
+    gtv_dataset = create_gtd_from_states(boards)
+    logger.info("Ground truth dataset created.")
+
+    # create a random ground truth dataset from these states
+    random_gtv_dataset = create_random_gtd_from_states(boards)
+    logger.info("Random ground truth dataset created.")
+
+    # create a ground truth dataset with different states for validation
+    gtv_dataset_validation = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
+    logger.info("Validation dataset created.")
+
+    # train a model on the gtv dataset + evaluate
+    train_and_plot("sl_on_policy_head_gtv", gtv_dataset, gtv_dataset_validation, num_epochs=10)
+
+    # train a model on the random gtv dataset + evaluate
+    train_and_plot("sl_on_policy_head_random_gtv", random_gtv_dataset, gtv_dataset_validation, num_epochs=10)
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
@@ -381,4 +405,7 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    main2()
+    main3(1000)
+    main3(10000)
+    main3(100000)
+    main3(1000000)
