@@ -13,6 +13,7 @@ class MCTS_GT:
         self.game = game
         self.gt = GroundTruth()
         self.error_rate = error_rate
+        self.use_terminal_states = True
 
     def initial_state(self) -> Board:
         '''
@@ -53,6 +54,15 @@ class MCTS_GT:
         Uses the ground truth to determine the reward,
         plus a probability of making a mistake.
         '''
+
+        if self.use_terminal_states:
+            is_done, winner = self.game.get_done_and_winner(state)
+            if is_done:
+                # if the game is done, return the value based on the winner
+                if winner is None:
+                    return 0.0
+                return 1.0 if winner == self._initial_state.current_player else -1.0
+        
         value = self.gt.get_outcome(state)
 
         if random_number(self.gt.rank(state)) < self.error_rate:

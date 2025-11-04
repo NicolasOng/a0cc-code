@@ -178,6 +178,12 @@ def check_random_policy_acc(boards: list[Board]) -> float:
     return correct / total if total > 0 else 0.0
 
 def train_and_plot(fn: str, dataset: Dataset, eval_dataset: Dataset, num_epochs: int = 10) -> AlphaZeroModel:
+    '''
+    Trains a model on the given dataset for num_epochs epochs,
+    then evaluates it on the eval_dataset.
+    Plots the training performance.
+    The plots assume that the given eval_dataset is the GTD.
+    '''
     logger.info(f"Training model '{fn}' for {num_epochs} epochs...")
 
     model = AlphaZeroModel(
@@ -188,8 +194,14 @@ def train_and_plot(fn: str, dataset: Dataset, eval_dataset: Dataset, num_epochs:
     )
 
     test_dataset = dataset.split_off_test(len(dataset) // 10, shuffle=True)
+    eval_dataset_split = eval_dataset.split_off_test(len(eval_dataset) // 10, shuffle=True)
 
-    trained_model, dsd = train_model_epochs(model, dataset, num_epochs, save="None", plot=False, test_dataset=test_dataset)
+    datasets = {
+        "test": test_dataset,
+        "gt": eval_dataset_split
+    }
+
+    trained_model, dsd = train_model_epochs(model, dataset, num_epochs, save="None", plot=False, test_datasets=datasets)
     plot_model_performance(fn, [dsd])
 
     loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(trained_model, eval_dataset)
@@ -368,7 +380,7 @@ def main2():
     logger.info("Validation dataset created.")
     
     mcts_samples_list = [64, 512]
-    errors_rate_list = [0.0, 0.2]
+    errors_rate_list = [0.0, 0.2, 0.4, 0.5]
 
     for mcts_samples in mcts_samples_list:
         for error_rate in errors_rate_list:
@@ -376,6 +388,14 @@ def main2():
 
 
 def main3(n: int):
+    '''
+    Generates the following datasets, then trains/tests models on them with a 90/10 split:
+    - Ground truth dataset from n random unique board states
+    - Random ground truth dataset from n random unique board states
+    Uses a validation dataset for evaluation of all models after training.
+    n sets how many random unique board states to generate.
+    This is to mainly see how well the model can learn from n ground truth states.
+    '''
     # get n random unique board states
     logger.info(f"Generating {n} random unique board states...")
     boards = get_n_random_states(n, remove_trivial=True)
@@ -405,7 +425,4 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    main3(1000)
-    main3(10000)
-    main3(100000)
-    main3(1000000)
+    main2()

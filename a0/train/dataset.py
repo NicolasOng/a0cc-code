@@ -38,7 +38,7 @@ class BatchData:
     value_accuracy: float
     policy_accuracy: float
     model_no: int | None = None
-    test_metrics: TestData | None = None
+    test_metrics: dict[str, TestData]
 
 class EpochData:
     batch_data: list[BatchData]
@@ -156,7 +156,7 @@ def train_step(model: AlphaZeroModel, optimizer: nnx.Optimizer, batch: dict[str,
     optimizer.update(grads)
     return loss, value_loss, policy_loss, value_accuracy, policy_accuracy
 
-def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0, test_dataset: Dataset | None = None) -> tuple[AlphaZeroModel, EpochData, int]:
+def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0, test_datasets: dict[str, Dataset] = {}) -> tuple[AlphaZeroModel, EpochData, int]:
     logger.info(f"Training model on the given dataset ({len(dataset)})...")
     start = time.perf_counter()
 
@@ -204,17 +204,19 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
         batch_data.total_loss = loss
         batch_data.value_accuracy = value_accuracy
         batch_data.policy_accuracy = policy_accuracy
+        batch_data.test_metrics = {}
 
-        if test_dataset is not None and ts % batches_per_save == 0:
+        if test_datasets and ts % batches_per_save == 0:
             # evaluate the model on the test dataset every ... batches
-            avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy = evaluate_model(model, test_dataset)
-            test_data = TestData()
-            test_data.value_loss = avg_value_loss
-            test_data.policy_loss = avg_policy_loss
-            test_data.total_loss = avg_loss
-            test_data.value_accuracy = avg_value_accuracy
-            test_data.policy_accuracy = avg_policy_accuracy
-            batch_data.test_metrics = test_data
+            for test_dataset_name, test_dataset in test_datasets.items():
+                avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy = evaluate_model(model, test_dataset)
+                test_data = TestData()
+                test_data.value_loss = avg_value_loss
+                test_data.policy_loss = avg_policy_loss
+                test_data.total_loss = avg_loss
+                test_data.value_accuracy = avg_value_accuracy
+                test_data.policy_accuracy = avg_policy_accuracy
+                batch_data.test_metrics[test_dataset_name] = test_data
 
         if save == "batch" and ts % batches_per_save == 0:
             # Save the model after every save_batch_amount batches
@@ -231,7 +233,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
 
     return model, epoch_data, cur_model_no
 
-def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True, test_dataset: Dataset | None = None) -> tuple[AlphaZeroModel, DatasetData]:
+def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True, test_datasets: dict[str, Dataset] = {}) -> tuple[AlphaZeroModel, DatasetData]:
     """
     Train the model for a number of epochs on the given dataset.
     """
@@ -239,7 +241,7 @@ def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int,
     cur_model_no = 0
     for epoch in range(num_epochs):
         logger.info(f"Training epoch {epoch + 1}/{num_epochs}...")
-        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no, test_dataset)
+        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no, test_datasets)
         if save == "epoch":
             # Save the model after each epoch
             logger.info(f"Saving model after epoch {epoch + 1}...")
@@ -279,11 +281,11 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     policy_accuracies: list[float] = []
     batch_i = 0
     test_x: list[int] = []
-    test_value_losses: list[float] = []
-    test_policy_losses: list[float] = []
-    test_total_losses: list[float] = []
-    test_value_accuracies: list[float] = []
-    test_policy_accuracies: list[float] = []
+    test_value_losses: dict[str, list[float]] = {}
+    test_policy_losses: dict[str, list[float]] = {}
+    test_total_losses: dict[str, list[float]] = {}
+    test_value_accuracies: dict[str, list[float]] = {}
+    test_policy_accuracies: dict[str, list[float]] = {}
     for _, dataset in enumerate(dataset_datas):
         for _, epoch in enumerate(dataset.epoch_data):
             for _, batch in enumerate(epoch.batch_data):
@@ -293,13 +295,20 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
                 total_losses.append(batch.total_loss)
                 value_accuracies.append(batch.value_accuracy)
                 policy_accuracies.append(batch.policy_accuracy)
-                if batch.test_metrics is not None:
+                if batch.test_metrics:
                     test_x.append(batch_i)
-                    test_value_losses.append(batch.test_metrics.value_loss)
-                    test_policy_losses.append(batch.test_metrics.policy_loss)
-                    test_total_losses.append(batch.test_metrics.total_loss)
-                    test_value_accuracies.append(batch.test_metrics.value_accuracy)
-                    test_policy_accuracies.append(batch.test_metrics.policy_accuracy)
+                    for test_dataset_name, test_dataset_metrics in batch.test_metrics.items():
+                        if test_dataset_name not in test_value_losses:
+                            test_value_losses[test_dataset_name] = []
+                            test_policy_losses[test_dataset_name] = []
+                            test_total_losses[test_dataset_name] = []
+                            test_value_accuracies[test_dataset_name] = []
+                            test_policy_accuracies[test_dataset_name] = []
+                        test_value_losses[test_dataset_name].append(test_dataset_metrics.value_loss)
+                        test_policy_losses[test_dataset_name].append(test_dataset_metrics.policy_loss)
+                        test_total_losses[test_dataset_name].append(test_dataset_metrics.total_loss)
+                        test_value_accuracies[test_dataset_name].append(test_dataset_metrics.value_accuracy)
+                        test_policy_accuracies[test_dataset_name].append(test_dataset_metrics.policy_accuracy)
                 batch_i += 1
     
     # get dataset and epoch boundaries
@@ -346,11 +355,12 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     plt.plot(batch_x, total_losses, label="Total Loss")
 
     if len(test_x) > 0:
-        plt.plot(test_x, test_value_accuracies, label="Test Value Accuracy", linestyle='--')
-        plt.plot(test_x, test_policy_accuracies, label="Test Policy Accuracy", linestyle='--')
-        plt.plot(test_x, test_value_losses, label="Test Value Loss", linestyle='--')
-        plt.plot(test_x, test_policy_losses, label="Test Policy Loss", linestyle='--')
-        plt.plot(test_x, test_total_losses, label="Test Total Loss", linestyle='--')
+        for test_dataset_name in test_value_losses.keys():
+            plt.plot(test_x, test_value_accuracies[test_dataset_name], label=f"Value Accuracy ({test_dataset_name})", linestyle='--')
+            plt.plot(test_x, test_policy_accuracies[test_dataset_name], label=f"Policy Accuracy ({test_dataset_name})", linestyle='--')
+            plt.plot(test_x, test_value_losses[test_dataset_name], label=f"Value Loss ({test_dataset_name})", linestyle='--')
+            plt.plot(test_x, test_policy_losses[test_dataset_name], label=f"Policy Loss ({test_dataset_name})", linestyle='--')
+            plt.plot(test_x, test_total_losses[test_dataset_name], label=f"Total Loss ({test_dataset_name})", linestyle='--')
 
     # Label and style
     plt.xlabel("Batch")
@@ -360,7 +370,7 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}.png")
-    plt.clf()
+    plt.close()
 
     # plot each metric separately
     plot_single_metric(batch_x, total_losses, test_x, test_total_losses, dataset_boundaries, epoch_boundaries, "Total Loss", fn)
@@ -370,7 +380,7 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
     plot_single_metric(batch_x, policy_accuracies, test_x, test_policy_accuracies, dataset_boundaries, epoch_boundaries, "Policy Accuracy", fn)
 
 def plot_single_metric(x_train: list[int], metric_train: list[float],
-                       x_test: list[int], metric_test: list[float],
+                       x_test: list[int], metric_tests: dict[str, list[float]],
                        dataset_boundaries: list[int], epoch_boundaries: list[int],
                        label: str, fn: str):
     # set figure size
@@ -391,8 +401,9 @@ def plot_single_metric(x_train: list[int], metric_train: list[float],
         #plt.text(x, 0 - 0.05, f"Dataset {i + 1}", rotation=90, va='top', ha='center', fontsize=9, color='gray')
 
     plt.plot(x_train, metric_train, label=f"Train {label}")
-    if metric_test:
-        plt.plot(x_test, metric_test, label=f"Test {label}", linestyle='--')
+    if metric_tests:
+        for test_dataset_name, metric_test in metric_tests.items():
+            plt.plot(x_test, metric_test, label=f"Test {label} ({test_dataset_name})", linestyle='--')
 
     # Label and style
     plt.xlabel("Batch")
@@ -402,7 +413,7 @@ def plot_single_metric(x_train: list[int], metric_train: list[float],
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}_{label.replace(' ', '_').lower()}.png")
-    plt.clf()
+    plt.close()
 
 def save_epoch_data(epoch_data_path: str, epoch_data: EpochData):
     with open(epoch_data_path, 'wb') as file:
