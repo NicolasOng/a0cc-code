@@ -157,6 +157,7 @@ def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, 
     sp_dataset.set(jnp_states, jnp_values, jnp_policies)
 
     logger.info(f"Policy accuracy against ground truth on self-play data (NT Boards): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
+    logger.info(f"Total unique boards from self-play data: {len(boards)}")
 
     return sp_dataset, list(boards)
 
@@ -447,6 +448,14 @@ def main3(n: int):
     train_and_plot("sl_on_policy_head_random_gtv", random_gtv_dataset, gtv_dataset_validation, num_epochs=10)
 
 def main4():
+    '''
+    Runs two experiments:
+    - trains a model on self-play data with multiple evaluations (self-play test, seen ground truth, random ground truth)
+    - trains a model on self-play ground truth data with multiple evaluations (self-play ground truth test, random ground truth)
+    Each for 10 epochs.
+    I suspect that the first experiment will do worse, while the second will do better.
+    Then I just have to figure out the differences between the two.
+    '''
     # create a dataset from self-play data.
     sp_dataset_train, sp_boards = create_dataset_from_selfplay(remove_trivial=True)
     # do train/test split
@@ -467,6 +476,18 @@ def main4():
         {
             "selfplay_test": sp_dataset_test,
             "seen_gt": sp_gtv_dataset,
+            "random_gt": gtv_dataset
+        },
+        num_epochs=10
+    )
+
+    # train a model on the sp ground truth dataset + plot metrics
+    sp_gtv_dataset_test = sp_gtv_dataset.split_off_test(len(sp_gtv_dataset) // 10, shuffle=True)
+    train_and_plot_datasets(
+        "sl_on_policy_head_selfplay_gtv_multiple_eval",
+        sp_gtv_dataset,
+        {
+            "selfplay_gtv_test": sp_gtv_dataset_test,
             "random_gt": gtv_dataset
         },
         num_epochs=10
