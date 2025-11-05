@@ -210,6 +210,28 @@ def train_and_plot(fn: str, dataset: Dataset, eval_dataset: Dataset, num_epochs:
 
     return trained_model
 
+
+def train_and_plot_datasets(fn: str, dataset: Dataset, eval_datasets: dict[str, Dataset], num_epochs: int = 10) -> AlphaZeroModel:
+    '''
+    Trains a model on the given dataset for num_epochs epochs,
+    then evaluates it on the eval_dataset.
+    Plots the training performance.
+    The plots assume that the given eval_dataset is the GTD.
+    '''
+    logger.info(f"Training model '{fn}' for {num_epochs} epochs...")
+
+    model = AlphaZeroModel(
+        board_size=config.board_size,
+        num_filters=256,
+        training=True,
+        rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})
+    )
+
+    trained_model, dsd = train_model_epochs(model, dataset, num_epochs, save="None", plot=False, test_datasets=eval_datasets)
+    plot_model_performance(fn, [dsd])
+
+    return trained_model
+
 def generate_mcts_policy(state: Board, game: Game, error_rate: float, mcts_iterations: int) -> tuple[NDArray[np.float32], float]:
     '''
     Generates a policy using MCTS with ground truth evaluations.
@@ -375,6 +397,12 @@ def main():
     logger.info(f"Evaluation on spgtv dataset - Loss: {loss}, Value Loss: {value_loss}, Policy Loss: {policy_loss}, Value Accuracy: {value_accuracy}, Policy Accuracy: {policy_accuracy}")
 
 def main2():
+    '''
+    Generates datasets using MCTS with ground truth evaluations,
+    then trains/tests models on them with a 90/10 split.
+    Uses a validation dataset for evaluation of all models after training.
+    Tests different error rates and MCTS sample sizes.
+    '''
     # create a ground truth dataset with different states for validation
     gtv_dataset_validation = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
     logger.info("Validation dataset created.")
@@ -418,6 +446,32 @@ def main3(n: int):
     # train a model on the random gtv dataset + evaluate
     train_and_plot("sl_on_policy_head_random_gtv", random_gtv_dataset, gtv_dataset_validation, num_epochs=10)
 
+def main4():
+    # create a dataset from self-play data.
+    sp_dataset_train, sp_boards = create_dataset_from_selfplay(remove_trivial=True)
+    # do train/test split
+    sp_dataset_test = sp_dataset_train.split_off_test(len(sp_dataset_train) // 10, shuffle=True)
+    logger.info("Self-play dataset created.")
+    # create a ground truth dataset from the self-play boards
+    sp_gtv_dataset = create_gtd_from_states(sp_boards)
+    logger.info("Ground truth dataset created.")
+
+    # create a ground truth dataset with random states for validation
+    gtv_dataset = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
+    logger.info("Validation dataset created.")
+
+    # train a model on the self-play dataset + plot metrics
+    train_and_plot_datasets(
+        "sl_on_policy_head_selfplay_multiple_eval",
+        sp_dataset_train,
+        {
+            "selfplay_test": sp_dataset_test,
+            "seen_gt": sp_gtv_dataset,
+            "random_gt": gtv_dataset
+        },
+        num_epochs=10
+    )
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
@@ -425,4 +479,4 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    main2()
+    main4()
