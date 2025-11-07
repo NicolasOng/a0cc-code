@@ -112,7 +112,7 @@ def create_random_dataset_from_states(boards: list[Board]) -> Dataset:
     gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
     return gtv_dataset
 
-def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, list[Board]]:
+def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, list[Board], list[Board]]:
     # get the unique boards (with their outcome/policy) from the training data
     gt = GroundTruth()
     total_boards = 0
@@ -120,7 +120,7 @@ def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, 
     states: list[jnp.ndarray] = []
     values: list[float] = []
     policies: list[jnp.ndarray] = []
-    boards: set[Board] = set()
+    boards: list[Board] = []
     logger.info("Getting unique boards from training data, with their experienced outcome...")
     game_data_lists = game_data_generator(config.training_dir, config.training_iterations)
     for _, game_data_list in tqdm(game_data_lists):
@@ -146,7 +146,7 @@ def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, 
                 states.append(experienced_board)
                 values.append(experienced_outcome)
                 policies.append(experienced_policy)
-                boards.add(board)
+                boards.append(board)
             
     # load all this into a Dataset object
     jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
@@ -156,10 +156,12 @@ def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, 
     sp_dataset = Dataset(batch_size=256)
     sp_dataset.set(jnp_states, jnp_values, jnp_policies)
 
-    logger.info(f"Policy accuracy against ground truth on self-play data (NT Boards): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
-    logger.info(f"Total unique boards from self-play data: {len(boards)}")
+    unique_boards = list(set(boards))
 
-    return sp_dataset, list(boards)
+    logger.info(f"Policy accuracy against ground truth on self-play data (NT Boards: {remove_trivial}): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
+    logger.info(f"Total unique boards from self-play data (NT Boards: {remove_trivial}): {len(unique_boards) / len(boards) if len(boards) > 0 else 0.0:.2%} ({len(unique_boards)} / {len(boards)})")
+
+    return sp_dataset, unique_boards, boards
 
 def check_random_policy_acc(boards: list[Board]) -> float:
     '''
@@ -347,7 +349,7 @@ def main():
     '''
     # TODO: do with larger n
     # create a dataset from self-play data
-    sp_dataset, sp_boards = create_dataset_from_selfplay(remove_trivial=True)
+    sp_dataset, sp_boards, _ = create_dataset_from_selfplay(remove_trivial=True)
     logger.info("Self-play dataset created.")
 
     # create a ground truth dataset from the self-play boards
@@ -457,7 +459,7 @@ def main4():
     Then I just have to figure out the differences between the two.
     '''
     # create a dataset from self-play data.
-    sp_dataset_train, sp_boards = create_dataset_from_selfplay(remove_trivial=True)
+    sp_dataset_train, sp_boards, sp_boards_duped = create_dataset_from_selfplay(remove_trivial=True)
     # do train/test split
     sp_dataset_test = sp_dataset_train.split_off_test(len(sp_dataset_train) // 10, shuffle=True)
     logger.info("Self-play dataset created.")
@@ -493,6 +495,34 @@ def main4():
         num_epochs=10
     )
 
+def main5():
+    '''
+    Re-runs the following experiment:
+    - trains a model on self-play ground truth data with multiple evaluations (self-play ground truth test, random ground truth)
+    Except this time, keeps duplicate boards from the self-play data.
+    '''
+    # create a dataset from self-play data.
+    _, _, sp_boards_duped = create_dataset_from_selfplay(remove_trivial=True)
+    # create a ground truth dataset from the self-play boards
+    sp_gtv_dataset = create_gtd_from_states(sp_boards_duped)
+    logger.info("Ground truth dataset created.")
+
+    # create a ground truth dataset with random states for validation
+    gtv_dataset = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
+    logger.info("Validation dataset created.")
+
+    # train a model on the sp ground truth dataset + plot metrics
+    sp_gtv_dataset_test = sp_gtv_dataset.split_off_test(len(sp_gtv_dataset) // 10, shuffle=True)
+    train_and_plot_datasets(
+        "sl_on_policy_head_selfplay_gtv_multiple_eval",
+        sp_gtv_dataset,
+        {
+            "selfplay_gtv_test": sp_gtv_dataset_test,
+            "random_gt": gtv_dataset
+        },
+        num_epochs=10
+    )
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
@@ -500,4 +530,4 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    main4()
+    main5()
