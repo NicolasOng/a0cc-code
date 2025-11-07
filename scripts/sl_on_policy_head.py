@@ -6,10 +6,11 @@ from a0.dataset import Dataset
 from a0.model_utils import board_to_input, Policy
 from a0.eval.training_data import game_data_generator
 from a0.train.dataset import train_model_epochs, plot_model_performance
-from a0.model import AlphaZeroModel
+from a0.model import AlphaZeroModel, load_model
 from a0.eval.dataset_evaluation import evaluate_model, policy_accuracy_function
 from a0.graph_search.mcts import MCTS
 from a0.mcts.gt import MCTS_GT
+from a0.players.a0 import A0Player
 
 import jax.numpy as jnp
 import numpy as np
@@ -158,8 +159,8 @@ def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, 
 
     unique_boards = list(set(boards))
 
-    logger.info(f"Policy accuracy against ground truth on self-play data (NT Boards: {remove_trivial}): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
-    logger.info(f"Total unique boards from self-play data (NT Boards: {remove_trivial}): {len(unique_boards) / len(boards) if len(boards) > 0 else 0.0:.2%} ({len(unique_boards)} / {len(boards)})")
+    logger.log(25, f"Policy accuracy against ground truth on self-play data (NT Boards: {remove_trivial}): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
+    logger.log(25, f"Total unique boards from self-play data (NT Boards: {remove_trivial}): {len(unique_boards) / len(boards) if len(boards) > 0 else 0.0:.2%} ({len(unique_boards)} / {len(boards)})")
 
     return sp_dataset, unique_boards, boards
 
@@ -219,7 +220,6 @@ def train_and_plot_datasets(fn: str, dataset: Dataset, eval_datasets: dict[str, 
     Trains a model on the given dataset for num_epochs epochs,
     then evaluates it on the eval_dataset.
     Plots the training performance.
-    The plots assume that the given eval_dataset is the GTD.
     '''
     logger.info(f"Training model '{fn}' for {num_epochs} epochs...")
 
@@ -302,8 +302,8 @@ def generate_mcts_dataset(boards: list[Board], game: Game, error_rate: float, mc
         if acc:
             acc_count += 1
 
-    logger.info(f"MCTS dataset generation complete for error rate {error_rate} and {mcts_iterations} iterations.")
-    logger.info(f"MCTS Policy accuracy against ground truth on generated data (NT Boards): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
+    logger.log(25, f"MCTS dataset generation complete for error rate {error_rate} and {mcts_iterations} iterations.")
+    logger.log(25, f"MCTS Policy accuracy against ground truth on generated data (NT Boards): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
 
     # load all this into a Dataset object
     logger.info("Creating Dataset object with MCTS-generated values...")
@@ -333,6 +333,44 @@ def mcts_function(error_rate: float, mcts_iterations: int, validation_dataset: D
 
     # train a model on the mcts dataset + evaluate
     train_and_plot(f"sl_on_policy_head_mcts_er{error_rate}_it{mcts_iterations}", mcts_dataset, validation_dataset, num_epochs=10)
+
+def generate_nn_dataset(boards: list[Board], player: A0Player) -> Dataset:
+    '''
+    Generates a dataset using the given A0Player on the given boards.
+    '''
+    gt = GroundTruth()
+
+    states: list[jnp.ndarray] = []
+    values: list[float] = []
+    policies: list[jnp.ndarray] = []
+
+    total_boards = 0
+    acc_count = 0
+    for board in tqdm(boards):
+        value, policy = player.get_value_and_policy(board)
+
+        states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
+        values.append(value) # (1, 1)
+        policies.append(jnp.array(policy)) # (1, board_size ** 4)
+
+        gt_policy = gt.get_1ply_policy_prob_dist_list(board, for_model=True)
+        acc = policy_accuracy_function(policy, np.array(gt_policy))
+        total_boards += 1
+        if acc:
+            acc_count += 1
+
+    logger.info(f"NN dataset generation complete.")
+    logger.log(25, f"NN Policy accuracy against ground truth on generated data (NT Boards): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
+
+    # load all this into a Dataset object
+    logger.info("Creating Dataset object with NN-generated values...")
+    jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
+    jnp_values = jnp.concatenate(values, axis=0)  # (N, 1)
+    jnp_policies = jnp.concatenate(policies, axis=0) # (N, board_size ** 4)
+    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
+    nn_dataset = Dataset(batch_size=256)
+    nn_dataset.set(jnp_states, jnp_values, jnp_policies)
+    return nn_dataset
 
 def main():
     '''
@@ -459,7 +497,7 @@ def main4():
     Then I just have to figure out the differences between the two.
     '''
     # create a dataset from self-play data.
-    sp_dataset_train, sp_boards, sp_boards_duped = create_dataset_from_selfplay(remove_trivial=True)
+    sp_dataset_train, sp_boards, _ = create_dataset_from_selfplay(remove_trivial=True)
     # do train/test split
     sp_dataset_test = sp_dataset_train.split_off_test(len(sp_dataset_train) // 10, shuffle=True)
     logger.info("Self-play dataset created.")
@@ -523,6 +561,68 @@ def main5():
         num_epochs=10
     )
 
+def main6():
+    '''
+    Performs the following:
+    - generates policy/value targets with MCTS using the GT+err model on self-play boards
+    - generates policy/value targets with MCTS using the trained model (~85% value acc) on self-play boards
+    - trains a model on both to see how well they do
+    I expect the GT+err MCTS to do better. Then it'll be confirmed that MCTS/model is the issue for some reason.
+    '''
+    mno = 450
+    trained_model = load_model(config.training_dir + f"model_{mno}.pkl")
+    player = A0Player(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        model=trained_model,
+        exploit=True,
+        mcts_samples=64,
+        no_reverse_moves=True,
+        no_side_moves=False
+    )
+
+    # create a dataset from self-play data.
+    _, sp_boards, _ = create_dataset_from_selfplay(remove_trivial=True)
+    # sp_boards = get_n_random_states(100, remove_trivial=True, remove_terminal=True)
+    
+    # create the mcts dataset from the self-play boards with the gt+err model
+    g = Game(board_size=config.board_size, num_pieces=config.num_pieces)
+    mcts_dataset = generate_mcts_dataset(sp_boards, g, 0.2, 64)
+    # train/test split
+    mcts_dataset_test = mcts_dataset.split_off_test(len(mcts_dataset) // 10, shuffle=True)
+
+    # create the nn dataset from the self-play boards with the trained model
+    nn_dataset = generate_nn_dataset(sp_boards, player)
+    # train/test split
+    nn_dataset_test = nn_dataset.split_off_test(len(nn_dataset) // 10, shuffle=True)
+
+    # create a ground truth dataset with random states for validation
+    gtv_dataset = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
+    logger.info("Validation dataset created.")
+
+    # train a model on the mcts dataset + plot metrics
+    train_and_plot_datasets(
+        "sl_with_mcts",
+        mcts_dataset,
+        {
+            "mcts_test": mcts_dataset_test,
+            "random_gt": gtv_dataset
+        },
+        num_epochs=10
+    )
+
+    # train a model on the nn dataset + plot metrics
+    train_and_plot_datasets(
+        "sl_with_nn",
+        nn_dataset,
+        {
+            "nn_test": nn_dataset_test,
+            "random_gt": gtv_dataset
+        },
+        num_epochs=10
+    )
+
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
@@ -530,4 +630,4 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    main5()
+    main6()
