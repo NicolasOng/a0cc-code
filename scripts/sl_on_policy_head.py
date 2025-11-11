@@ -354,7 +354,7 @@ def generate_nn_dataset(boards: list[Board], player: A0Player) -> Dataset:
         policies.append(jnp.array(policy)) # (1, board_size ** 4)
 
         gt_policy = gt.get_1ply_policy_prob_dist_list(board, for_model=True)
-        acc = policy_accuracy_function(policy, np.array(gt_policy))
+        acc = policy_accuracy_function(policy[0], np.array(gt_policy))
         total_boards += 1
         if acc:
             acc_count += 1
@@ -622,6 +622,49 @@ def main6():
         num_epochs=10
     )
 
+def main7():
+    '''
+    Same as main6, but without the MCTS dataset.
+    '''
+    mno = 450
+    trained_model = load_model(config.training_dir + f"model_{mno}.pkl")
+    player = A0Player(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        model=trained_model,
+        exploit=True,
+        mcts_samples=64,
+        no_reverse_moves=True,
+        no_side_moves=False
+    )
+
+    # create a dataset from self-play data.
+    _, sp_boards, _ = create_dataset_from_selfplay(remove_trivial=True)
+    #sp_boards = get_n_random_states(10, remove_trivial=True, remove_terminal=True)
+
+    # create the nn dataset from the self-play boards with the trained model
+    nn_dataset = generate_nn_dataset(sp_boards, player)
+    # train/test split
+    nn_dataset_test = nn_dataset.split_off_test(len(nn_dataset) // 10, shuffle=True)
+
+    # create a ground truth dataset with random states for validation
+    gtv_dataset = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
+    logger.info("Validation dataset created.")
+
+    # create a seen gt dataset from the sp boards
+    seen_gt_dataset = create_gtd_from_states(sp_boards)
+
+    # train a model on the nn dataset + plot metrics
+    train_and_plot_datasets(
+        "sl_with_nn",
+        nn_dataset,
+        {
+            "nn_test": nn_dataset_test,
+            "seen_gt": seen_gt_dataset,
+            "random_gt": gtv_dataset
+        },
+        num_epochs=10
+    )
 
 if __name__ == "__main__":
     setup_logging(
@@ -630,4 +673,4 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    main6()
+    main7()
