@@ -600,12 +600,16 @@ def main6():
     gtv_dataset = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
     logger.info("Validation dataset created.")
 
+    # create a seen gt dataset from the sp boards
+    seen_gt_dataset = create_gtd_from_states(sp_boards)
+
     # train a model on the mcts dataset + plot metrics
     train_and_plot_datasets(
         "sl_with_mcts",
         mcts_dataset,
         {
             "mcts_test": mcts_dataset_test,
+            "seen_gt": seen_gt_dataset,
             "random_gt": gtv_dataset
         },
         num_epochs=10
@@ -617,6 +621,7 @@ def main6():
         nn_dataset,
         {
             "nn_test": nn_dataset_test,
+            "seen_gt": seen_gt_dataset,
             "random_gt": gtv_dataset
         },
         num_epochs=10
@@ -673,4 +678,4 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    main7()
+    main6()
