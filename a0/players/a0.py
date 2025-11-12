@@ -85,7 +85,7 @@ class A0Player:
         # return the selected move and the mcts policy distribution
         return selected_move, mcts_policy
 
-    def get_value_and_policy(self, state: Board) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+    def get_value_and_policy(self, state: Board, legal_moves: list[Move] | None) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
         '''
         Returns the value and policy for the given state using the model.
         The policy is rotated if the current player is O,
@@ -108,10 +108,14 @@ class A0Player:
         # create a well-shaped policy distribution,
         p.set_logits_from_moves(mcts_root_children_moves, mcts_root_children_visit_counts, rotate_180=False)
         # mask non-legal moves,
-        p.set_legal_moves(mcts_root_children_moves)
+        if legal_moves is not None:
+            p.set_legal_moves(legal_moves)
+        else:
+            p.set_legal_moves(mcts_root_children_moves)
         p.apply_mask(0.0)
         # softmax it to get the policy distribution
-        p.apply_power_normalize(self.temperature)
+        #p.apply_power_normalize(self.temperature)
+        p.apply_softmax(temperature=4.5, mask=True)
 
         # we rotate the policy if the current player is O,
         # since this is for training/evaluating the model

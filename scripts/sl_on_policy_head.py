@@ -347,7 +347,8 @@ def generate_nn_dataset(boards: list[Board], player: A0Player) -> Dataset:
     total_boards = 0
     acc_count = 0
     for board in tqdm(boards):
-        value, policy = player.get_value_and_policy(board)
+        legal_moves = gt.cc.generate_moves_for_given_board(board)
+        value, policy = player.get_value_and_policy(board, legal_moves)
 
         states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
         values.append(value) # (1, 1)
@@ -678,4 +679,4 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    main6()
+    main7()

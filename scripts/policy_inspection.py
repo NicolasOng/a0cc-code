@@ -58,7 +58,7 @@ def main():
     g = Game(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
-        no_reverse_moves=True,
+        no_reverse_moves=False,
         no_illegal_moves=False,
         no_side_moves=False
     )
@@ -71,7 +71,7 @@ def main():
     print_policy(gt_policy, random_board, moves)
 
     player = get_player(450)
-    _, policy = player.get_value_and_policy(random_board)
+    _, policy = player.get_value_and_policy(random_board, moves)
     print_policy(policy[0], random_board, moves)
     print(policy_accuracy_function(policy[0], np.array(gt_policy)))
 
