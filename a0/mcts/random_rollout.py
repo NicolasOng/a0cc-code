@@ -24,7 +24,7 @@ class SearchMoves:
         '''
         return self.cc.get_done(state)
 
-    def get_successors(self, state: Board) -> tuple[list[Board], None]:
+    def get_successors(self, state: Board, is_root: bool) -> tuple[list[Board], None]:
         '''
         Returns a list of successor states for the given state.
         '''

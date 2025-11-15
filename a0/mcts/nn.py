@@ -1,4 +1,4 @@
-from cc.core import Game, Board, Player
+from cc.core import Game, Board, Player, Move
 from a0.model import AlphaZeroModel
 from a0.model_utils import board_to_input, Policy
 
@@ -6,10 +6,11 @@ import jax.numpy as jnp
 import numpy as np
 
 class MCTS_NN:
-    def __init__(self, initial_state: Board, game: Game, model: AlphaZeroModel):
+    def __init__(self, initial_state: Board, game: Game, model: AlphaZeroModel, initial_moves: list[Move] | None = None):
         self._initial_state = initial_state
         self.game = game
         self.model = model
+        self.initial_moves = initial_moves
     
     def initial_state(self) -> Board:
         '''
@@ -23,12 +24,15 @@ class MCTS_NN:
         '''
         return self.game.get_done(state)
 
-    def get_successors(self, state: Board) -> tuple[list[Board], list[float]]:
+    def get_successors(self, state: Board, is_root: bool) -> tuple[list[Board], list[float]]:
         '''
         Returns a list of successor states for the given state.
         '''
         # get all possible moves for the current player
         moves = self.game.generate_moves_for_given_board(state)
+
+        if is_root and self.initial_moves is not None:
+            moves = self.initial_moves
 
         # create a list of successor states by applying each move
         successors: list[Board] = []

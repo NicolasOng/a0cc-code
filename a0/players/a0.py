@@ -12,6 +12,7 @@ from a0.graph_search.mcts import MCTS
 from a0.model import AlphaZeroModel
 from a0.model_utils import board_to_input, Policy
 from a0.mcts.nn import MCTS_NN
+from a0.mcts.gt import MCTS_GT
 
 class A0Player:
     def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False):
@@ -85,7 +86,7 @@ class A0Player:
         # return the selected move and the mcts policy distribution
         return selected_move, mcts_policy
 
-    def get_value_and_policy(self, state: Board, legal_moves: list[Move] | None) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
+    def get_value_and_policy(self, state: Board, legal_moves: list[Move] | None, mcts_type: str = "NN", normalize_type: str = "power normalize", mcts_key: str = "uct", error_rate: float = 0.2) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
         '''
         Returns the value and policy for the given state using the model.
         The policy is rotated if the current player is O,
@@ -96,7 +97,15 @@ class A0Player:
         p = Policy(len(state.board))
 
         # perform mcts and get the root's children
-        mcts = MCTS(MCTS_NN(state, self.game, self.model))
+        mcts_problem_object = None
+        if mcts_type == "NN":
+            mcts_problem_object = MCTS_NN(state, self.game, self.model, initial_moves=legal_moves)
+        elif mcts_type == "GT":
+            mcts_problem_object = MCTS_GT(state, self.game, error_rate=error_rate, initial_moves=legal_moves)
+        
+        assert mcts_problem_object is not None, f"Invalid mcts_type '{mcts_type}'"
+
+        mcts = MCTS(mcts_problem_object, selection_policy=mcts_key)
         mcts.run(iterations=self.mcts_iterations)
         children = mcts.get_root_children()
         assert len(children) > 0, "No children found in MCTS root node."
@@ -114,8 +123,8 @@ class A0Player:
             p.set_legal_moves(mcts_root_children_moves)
         p.apply_mask(0.0)
         # softmax it to get the policy distribution
-        #p.apply_power_normalize(self.temperature)
-        p.apply_softmax(temperature=4.5, mask=True)
+        p.apply_power_normalize(self.temperature)
+        #p.apply_softmax(temperature=4.5, mask=True)
 
         # we rotate the policy if the current player is O,
         # since this is for training/evaluating the model

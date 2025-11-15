@@ -334,7 +334,7 @@ def mcts_function(error_rate: float, mcts_iterations: int, validation_dataset: D
     # train a model on the mcts dataset + evaluate
     train_and_plot(f"sl_on_policy_head_mcts_er{error_rate}_it{mcts_iterations}", mcts_dataset, validation_dataset, num_epochs=10)
 
-def generate_nn_dataset(boards: list[Board], player: A0Player) -> Dataset:
+def generate_nn_dataset(boards: list[Board], player: A0Player, mcts_type: str = "NN", error_rate: float = 0.2) -> Dataset:
     '''
     Generates a dataset using the given A0Player on the given boards.
     '''
@@ -348,7 +348,12 @@ def generate_nn_dataset(boards: list[Board], player: A0Player) -> Dataset:
     acc_count = 0
     for board in tqdm(boards):
         legal_moves = gt.cc.generate_moves_for_given_board(board)
-        value, policy = player.get_value_and_policy(board, legal_moves)
+        value, policy = player.get_value_and_policy(
+            board,
+            legal_moves,
+            mcts_type=mcts_type,
+            error_rate=error_rate
+        )
 
         states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
         values.append(value) # (1, 1)
@@ -372,6 +377,93 @@ def generate_nn_dataset(boards: list[Board], player: A0Player) -> Dataset:
     nn_dataset = Dataset(batch_size=256)
     nn_dataset.set(jnp_states, jnp_values, jnp_policies)
     return nn_dataset
+
+def train_model_on_selfplay_states_and_mcts(fn: str, model_name: str, mcts_type: str = "NN", error_rate: float = 0.2):
+    '''
+    Gets the states from existing self-play data,
+    then generates a dataset using MCTS (either with a trained model or ground truth model),
+    then trains/tests a model on it with a 90/10 split.
+    Uses a validation dataset and seen dataset for evaluation after training.
+    '''
+    trained_model = load_model(config.training_dir + model_name)
+    player = A0Player(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        model=trained_model,
+        exploit=True,
+        mcts_samples=64,
+        no_reverse_moves=True,
+        no_side_moves=False
+    )
+
+    # create a dataset from self-play data.
+    _, sp_boards, _ = create_dataset_from_selfplay(remove_trivial=True)
+    #sp_boards = get_n_random_states(10, remove_trivial=True, remove_terminal=True)
+
+    # create the nn dataset from the self-play boards with the trained model
+    nn_dataset = generate_nn_dataset(sp_boards, player, mcts_type=mcts_type, error_rate=error_rate)
+    # train/test split
+    nn_dataset_test = nn_dataset.split_off_test(len(nn_dataset) // 10, shuffle=True)
+
+    # create a ground truth dataset with random states for validation
+    gtv_dataset = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
+    logger.info("Validation dataset created.")
+
+    # create a seen gt dataset from the sp boards
+    seen_gt_dataset = create_gtd_from_states(sp_boards)
+
+    # train a model on the nn dataset + plot metrics
+    train_and_plot_datasets(
+        fn,
+        nn_dataset,
+        {
+            "nn_test": nn_dataset_test,
+            "seen_gt": seen_gt_dataset,
+            "random_gt": gtv_dataset
+        },
+        num_epochs=10
+    )
+
+def train_model_on_random_states_and_mcts(fn: str, n: int, model_name: str, mcts_type: str = "NN", error_rate: float = 0.2):
+    '''
+    Gets random states,
+    then generates a dataset using MCTS (either with a trained model or ground truth model),
+    then trains/tests a model on it with a 90/10 split.
+    Uses a validation dataset and seen dataset for evaluation after training.
+    '''
+    trained_model = load_model(config.training_dir + model_name)
+    player = A0Player(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        model=trained_model,
+        exploit=True,
+        mcts_samples=64,
+        no_reverse_moves=True,
+        no_side_moves=False
+    )
+
+    # create a dataset from random data.
+    random_boards = get_n_random_states(n, remove_trivial=True, remove_terminal=True)
+
+    # create the nn dataset from the random boards with the trained model
+    nn_dataset = generate_nn_dataset(random_boards, player, mcts_type=mcts_type, error_rate=error_rate)
+    # train/test split
+    nn_dataset_test = nn_dataset.split_off_test(len(nn_dataset) // 10, shuffle=True)
+
+    # create a ground truth dataset with random states for validation
+    gtv_dataset = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
+    logger.info("Validation dataset created.")
+
+    # train a model on the nn dataset + plot metrics
+    train_and_plot_datasets(
+        fn,
+        nn_dataset,
+        {
+            "nn_test": nn_dataset_test,
+            "random_gt": gtv_dataset
+        },
+        num_epochs=10
+    )
 
 def main():
     '''
@@ -672,6 +764,58 @@ def main7():
         num_epochs=10
     )
 
+def main8():
+    '''
+    Six tests with different datasets:
+    - selfplay states + a0 model mcts
+    - selfplay states + gt 0.2 err mcts
+    - selfplay states + sl 80% acc model mcts
+    - random states + a0 model mcts
+    - random states + gt 0.2 err mcts
+    - random states + sl 80% acc model mcts
+    Each trained for 10 epochs.
+    '''
+    train_model_on_selfplay_states_and_mcts(
+        "selfplay_states_w_a0_model_450_mcts",
+        "model_450.pkl",
+        mcts_type="NN"
+    )
+
+    train_model_on_selfplay_states_and_mcts(
+        "selfplay_states_w_gt02err_mcts",
+        "model_450.pkl",
+        mcts_type="GT",
+        error_rate=0.2
+    )
+
+    train_model_on_selfplay_states_and_mcts(
+        "selfplay_states_w_sl_80acc_model_mcts",
+        f"model_value_acc_{0.80:.2f}.pkl",
+        mcts_type="NN"
+    )
+
+    train_model_on_random_states_and_mcts(
+        "random_states_50k_w_a0_model_450_mcts",
+        50000,
+        "model_450.pkl",
+        mcts_type="NN"
+    )
+
+    train_model_on_random_states_and_mcts(
+        "random_states_50k_w_gt02err_mcts",
+        50000,
+        "model_450.pkl",
+        mcts_type="GT",
+        error_rate=0.2
+    )
+
+    train_model_on_random_states_and_mcts(
+        "random_states_50k_w_sl_80acc_model_mcts",
+        50000,
+        f"model_value_acc_{0.80:.2f}.pkl",
+        mcts_type="NN"
+    )
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
@@ -679,4 +823,4 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    main7()
+    main8()

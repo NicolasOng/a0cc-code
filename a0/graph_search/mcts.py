@@ -22,7 +22,7 @@ class MCTSProblem(Protocol):
         '''
         ...
 
-    def get_successors(self, state: Any) -> tuple[list[Any], Optional[list[float]]]:
+    def get_successors(self, state: Any, is_root: bool) -> tuple[list[Any], Optional[list[float]]]:
         '''
         Returns a list of successor states for the given state.
         Optionally, returns a list of prior probabilities for each successor.
@@ -98,7 +98,7 @@ class MCTS:
             # if the node is not terminal, yet has no children,
             # expand it by generating its successors
             if not self.problem.is_terminal(node.state) and not node.children:
-                successors, priors = self.problem.get_successors(node.state)
+                successors, priors = self.problem.get_successors(node.state, node is self.root)
                 maximizing = self.problem.is_maximizing(node.state)
                 if priors is None:
                     default_prior = 1.0 / len(successors) if successors else 0.0

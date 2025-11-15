@@ -1,6 +1,6 @@
 import random
 
-from cc.core import Board, Game
+from cc.core import Board, Game, Move
 from cc.ground_truth import GroundTruth
 
 def random_number(n: int) -> float:
@@ -8,8 +8,9 @@ def random_number(n: int) -> float:
     return random.random()
 
 class MCTS_GT:
-    def __init__(self, initial_state: Board, game: Game, error_rate: float = 0.0):
+    def __init__(self, initial_state: Board, game: Game, error_rate: float = 0.0, initial_moves: list[Move] | None = None):
         self._initial_state = initial_state
+        self.initial_moves = initial_moves
         self.game = game
         self.gt = GroundTruth()
         self.error_rate = error_rate
@@ -27,12 +28,15 @@ class MCTS_GT:
         '''
         return self.game.get_done(state)
 
-    def get_successors(self, state: Board) -> tuple[list[Board], None]:
+    def get_successors(self, state: Board, is_root: bool) -> tuple[list[Board], None]:
         '''
         Returns a list of successor states for the given state.
         '''
         # get all possible moves for the current player
         moves = self.game.generate_moves_for_given_board(state)
+
+        if is_root and self.initial_moves is not None:
+            moves = self.initial_moves
 
         # create a list of successor states by applying each move
         successors: list[Board] = []

@@ -58,7 +58,7 @@ def main():
     g = Game(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
-        no_reverse_moves=False,
+        no_reverse_moves=True,
         no_illegal_moves=False,
         no_side_moves=False
     )
