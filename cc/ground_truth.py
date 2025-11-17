@@ -3,7 +3,7 @@ import random
 from cc.core import Game, Board, Player, Move
 from cc.lookups import CCBaselineSolver
 from cc.ranking import CCDefaultRank, CCState
-from a0.players.a0 import Policy
+from a0.model_utils import Policy
 
 from config import config
 

@@ -61,6 +61,7 @@ def train_model_to_value_acc(fn: str, target_acc: float, et: float, max_attempts
     train_n = 524416
     test_n = 10000
     validation_n = 100000
+    logger.info(f"Training model '{fn}' to reach value accuracy of {target_acc:.2%} +/- {et:.2%}...")
     training_dataset = create_gtd_from_states(get_n_random_states(train_n, remove_trivial=False, remove_terminal=True))
     test_dataset = create_gtd_from_states(get_n_random_states(test_n, remove_trivial=False, remove_terminal=True))
     validation_dataset = create_gtd_from_states(get_n_random_states(validation_n, remove_trivial=False, remove_terminal=True))
