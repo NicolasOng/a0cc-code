@@ -454,12 +454,16 @@ def train_model_on_random_states_and_mcts(fn: str, n: int, model_name: str, mcts
     gtv_dataset = create_gtd_from_states(get_n_random_states(10000, remove_trivial=True))
     logger.info("Validation dataset created.")
 
+    # create a seen gt dataset from the sp boards
+    seen_gt_dataset = create_gtd_from_states(random_boards)
+
     # train a model on the nn dataset + plot metrics
     train_and_plot_datasets(
         fn,
         nn_dataset,
         {
             "nn_test": nn_dataset_test,
+            "seen_gt": seen_gt_dataset,
             "random_gt": gtv_dataset
         },
         num_epochs=10
@@ -766,13 +770,11 @@ def main7():
 
 def main8():
     '''
-    Six tests with different datasets:
+    Four tests with different datasets:
     - selfplay states + a0 model mcts
     - selfplay states + gt 0.2 err mcts
-    - selfplay states + sl 80% acc model mcts
     - random states + a0 model mcts
     - random states + gt 0.2 err mcts
-    - random states + sl 80% acc model mcts
     Each trained for 10 epochs.
     '''
     train_model_on_selfplay_states_and_mcts(
@@ -786,12 +788,6 @@ def main8():
         "model_450.pkl",
         mcts_type="GT",
         error_rate=0.2
-    )
-
-    train_model_on_selfplay_states_and_mcts(
-        "selfplay_states_w_sl_80acc_model_mcts",
-        f"model_value_acc_{0.80:.2f}.pkl",
-        mcts_type="NN"
     )
 
     train_model_on_random_states_and_mcts(
@@ -809,6 +805,19 @@ def main8():
         error_rate=0.2
     )
 
+def main9():
+    '''
+    Two tests with different datasets:
+    - selfplay states + sl 80% acc model mcts
+    - random states + sl 80% acc model mcts
+    Each trained for 10 epochs.
+    '''
+    train_model_on_selfplay_states_and_mcts(
+        "selfplay_states_w_sl_80acc_model_mcts",
+        f"model_value_acc_{0.80:.2f}.pkl",
+        mcts_type="NN"
+    )
+
     train_model_on_random_states_and_mcts(
         "random_states_50k_w_sl_80acc_model_mcts",
         50000,
@@ -824,3 +833,4 @@ if __name__ == "__main__":
     )
 
     main8()
+    #main9()
