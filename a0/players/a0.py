@@ -38,7 +38,7 @@ class A0Player:
         p = Policy(len(state.board))
 
         # perform mcts and get the root's children
-        mcts = MCTS(MCTS_NN(state, self.game, self.model))
+        mcts = MCTS(MCTS_NN(state, self.game, self.model, initial_moves=moves), selection_policy="uct")
         mcts.run(iterations=self.mcts_iterations)
         children = mcts.get_root_children()
         assert len(children) > 0, "No children found in MCTS root node."
