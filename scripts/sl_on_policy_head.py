@@ -1,4 +1,8 @@
 import random
+import multiprocessing
+import concurrent.futures
+from concurrent.futures import Future, wait, FIRST_COMPLETED
+import os
 
 from cc.core import Board, Game, Player
 from cc.ground_truth import GroundTruth
@@ -18,6 +22,8 @@ from numpy.typing import NDArray
 from tqdm import tqdm
 from flax import nnx
 import jax
+
+import dill
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -378,6 +384,109 @@ def generate_nn_dataset(boards: list[Board], player: A0Player, mcts_type: str = 
     nn_dataset.set(jnp_states, jnp_values, jnp_policies)
     return nn_dataset
 
+def _generate_sample(serialized_player: bytes, game: Game, board: Board, mcts_type: str, error_rate: float, selection: str) -> tuple[Board, NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]]:
+    '''
+    Uses the given player to generate a value/policy sample for the given state.
+    '''
+    # first, set up logging (since this is a separate process)
+    setup_logging(
+        level=20,
+        log_dir=config.log_dir,
+        process_name="sl_on_policy_head"
+    )
+    # convert the board
+    state = np.array(board_to_input(board))
+    # then generate the sample
+    player: A0Player = dill.loads(serialized_player)
+    legal_moves = game.generate_moves_for_given_board(board)
+    value, policy = player.get_value_and_policy(
+        board,
+        legal_moves,
+        mcts_type=mcts_type,
+        error_rate=error_rate,
+        mcts_key=selection
+    )
+    return board, state, value, policy
+
+def generate_nn_dataset_parallel(boards: list[Board], player: A0Player, mcts_type: str = "NN", error_rate: float = 0.2, selection: str = "uct") -> Dataset:
+    '''
+    Generates a dataset using the given A0Player on the given boards.
+    '''
+    gt = GroundTruth()
+    gt_game = gt.cc
+
+    # serialize the player model (JAX models cannot be pickled directly + serialization is needed for multiprocessing)
+    player_serialized: bytes = dill.dumps(player)
+
+    states: list[jnp.ndarray] = []
+    values: list[float] = []
+    policies: list[jnp.ndarray] = []
+
+    total_boards = 0
+    acc_count = 0
+
+    num_cores = os.cpu_count() or 4
+    logger.info(f"Using {num_cores} cores for self-play.")
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        # create a list to hold the futures
+        futures: list[Future[tuple[Board, NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]]]] = []
+
+        # create a function to start a process that generates a sample
+        def spawn_gen_sample_process(board: Board) -> None:
+            future = executor.submit(
+                _generate_sample,
+                serialized_player=player_serialized,
+                game=gt_game,
+                board=board,
+                mcts_type=mcts_type,
+                error_rate=error_rate,
+                selection=selection
+            )
+            futures.append(future)
+        
+        # start a game for each board
+        for board in boards:
+            spawn_gen_sample_process(board)
+
+        while True:
+            # when a game (or games) finish(es),
+            done, _ = wait(futures, return_when=FIRST_COMPLETED)
+
+            # for each finished sample,
+            for future in done:
+                # remove it from the list of futures
+                futures.remove(future)
+                # get the value and policy for the board
+                board, state, value, policy = future.result()
+                # add these to the dataset lists
+                states.append(jnp.array(state)) # (1, board_size, board_size, 2)
+                values.append(jnp.array(value)) # (1, 1)
+                policies.append(jnp.array(policy)) # (1, board_size ** 4)
+                # check the accuracy
+                gt_policy = gt.get_1ply_policy_prob_dist_list(board, for_model=True)
+                acc = policy_accuracy_function(policy[0], np.array(gt_policy))
+                total_boards += 1
+                if acc:
+                    acc_count += 1
+            
+            # stop when all samples are generated
+            if not futures:
+                break
+
+    logger.info(f"NN dataset generation complete.")
+    logger.log(25, f"mcts_type: {mcts_type}, error_rate: {error_rate}")
+    logger.log(25, f"NN Policy accuracy against ground truth on generated data (NT Boards): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
+
+    # load all this into a Dataset object
+    logger.info("Creating Dataset object with NN-generated values...")
+    jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
+    jnp_values = jnp.concatenate(values, axis=0)  # (N, 1)
+    jnp_policies = jnp.concatenate(policies, axis=0) # (N, board_size ** 4)
+    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
+    nn_dataset = Dataset(batch_size=256)
+    nn_dataset.set(jnp_states, jnp_values, jnp_policies)
+    return nn_dataset
+
 def train_model_on_selfplay_states_and_mcts(fn: str, model_name: str, mcts_type: str = "NN", error_rate: float = 0.2):
     '''
     Gets the states from existing self-play data,
@@ -424,7 +533,7 @@ def train_model_on_selfplay_states_and_mcts(fn: str, model_name: str, mcts_type:
         num_epochs=10
     )
 
-def train_model_on_random_states_and_mcts(fn: str, n: int, model_name: str, mcts_type: str = "NN", error_rate: float = 0.2):
+def train_model_on_random_states_and_mcts(fn: str, n: int, model_name: str, mcts_type: str = "NN", error_rate: float = 0.2, mcts_key: str = "puct"):
     '''
     Gets random states,
     then generates a dataset using MCTS (either with a trained model or ground truth model),
@@ -446,7 +555,7 @@ def train_model_on_random_states_and_mcts(fn: str, n: int, model_name: str, mcts
     random_boards = get_n_random_states(n, remove_trivial=True, remove_terminal=True)
 
     # create the nn dataset from the random boards with the trained model
-    nn_dataset = generate_nn_dataset(random_boards, player, mcts_type=mcts_type, error_rate=error_rate)
+    nn_dataset = generate_nn_dataset_parallel(random_boards, player, mcts_type=mcts_type, error_rate=error_rate, selection=mcts_key)
     # train/test split
     nn_dataset_test = nn_dataset.split_off_test(len(nn_dataset) // 10, shuffle=True)
 
@@ -825,6 +934,30 @@ def main9():
         mcts_type="NN"
     )
 
+def main10():
+    '''
+    Two tests:
+    - random states + a0 model mcts + puct
+    - random states + gt 0.2 err mcts + puct
+    Each trained for 10 epochs.
+    '''
+    train_model_on_random_states_and_mcts(
+        "random_states_50k_w_a0_model_450_mcts_puct",
+        50000,
+        "model_450.pkl",
+        mcts_type="NN",
+        mcts_key="puct"
+    )
+
+    train_model_on_random_states_and_mcts(
+        "random_states_50k_w_gt02err_mcts_puct",
+        50000,
+        "model_450.pkl",
+        mcts_type="GT",
+        error_rate=0.2,
+        mcts_key="puct"
+    )
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
@@ -832,5 +965,9 @@ if __name__ == "__main__":
         process_name="sl_on_policy_head"
     )
 
-    #main8()
-    main9()
+    try:
+        multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass
+
+    main10()
