@@ -58,7 +58,7 @@ def combined_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move],
     combined_policy = blend * php + (1 - blend) * vhp
     return np.array(combined_policy / np.sum(combined_policy), dtype=np.float32)
 
-def test_accuracies():
+def test_accuracies(n: int):
     gt = GroundTruth()
     model = load_model(config.training_dir + "model_450.pkl")
     game = Game(
@@ -69,7 +69,7 @@ def test_accuracies():
         no_side_moves=False
     )
     print("Generating random states...")
-    states = get_n_random_states(100, remove_trivial=True, remove_terminal=True)
+    states = get_n_random_states(n, remove_trivial=True, remove_terminal=True)
 
     total_boards = 0
     ph_acc_count = 0
@@ -103,8 +103,8 @@ def test_accuracies():
         #if ch_acc:
         #    ch_acc_count += 1
     
-    logger.info(f"Policy Head Accuracy: {ph_acc_count}/{total_boards} = {ph_acc_count / total_boards:.2%}")
-    logger.info(f"Value Head Accuracy: {vh_acc_count}/{total_boards} = {vh_acc_count / total_boards:.2%}")
+    logger.log(25, f"Policy Head Accuracy: {ph_acc_count}/{total_boards} = {ph_acc_count / total_boards:.2%}")
+    logger.log(25, f"Value Head Accuracy: {vh_acc_count}/{total_boards} = {vh_acc_count / total_boards:.2%}")
     #logger.info(f"Combined Head Accuracy: {ch_acc_count}/{total_boards} = {ch_acc_count / total_boards:.2%}")
 
 if __name__ == "__main__":
@@ -114,4 +114,4 @@ if __name__ == "__main__":
         process_name="new_policy_functions"
     )
 
-    test_accuracies()
+    test_accuracies(100000)

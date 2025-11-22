@@ -534,7 +534,7 @@ def train_model_on_selfplay_states_and_mcts(fn: str, model_name: str, mcts_type:
         num_epochs=10
     )
 
-def train_model_on_random_states_and_mcts(fn: str, n: int, model_name: str, mcts_type: str = "NN", error_rate: float = 0.2, mcts_key: str = "puct"):
+def train_model_on_random_states_and_mcts(fn: str, n: int, model_name: str, mcts_type: str = "NN", error_rate: float = 0.2, mcts_key: str = "puct", rollout_type: str = "none", policy_type: str = "policy"):
     '''
     Gets random states,
     then generates a dataset using MCTS (either with a trained model or ground truth model),
@@ -549,7 +549,10 @@ def train_model_on_random_states_and_mcts(fn: str, n: int, model_name: str, mcts
         exploit=True,
         mcts_samples=64,
         no_reverse_moves=True,
-        no_side_moves=False
+        no_side_moves=False,
+        rollout_type=rollout_type,
+        rollout_depth=20,
+        policy_type=policy_type
     )
 
     # create a dataset from random data.
@@ -971,6 +974,44 @@ def main11():
         mcts_key="puct"
     )
 
+def main12():
+    '''
+    Three tests with random states + a0 model mcts + puct
+    - rollout type: random
+    - rollout type: policy, policy_type: policy
+    - rollout type: policy, policy_type: value
+    Each trained for 10 epochs.
+    '''
+    train_model_on_random_states_and_mcts(
+        "random_states_50k_w_a0_model_450_puct_random_rollout",
+        50000,
+        "model_450.pkl",
+        mcts_type="NN",
+        mcts_key="puct",
+        rollout_type='random'
+    )
+
+    train_model_on_random_states_and_mcts(
+        "random_states_50k_w_a0_model_450_puct_policy_rollout",
+        50000,
+        "model_450.pkl",
+        mcts_type="NN",
+        mcts_key="puct",
+        rollout_type='policy',
+        policy_type='policy'
+    )
+
+    train_model_on_random_states_and_mcts(
+        "random_states_50k_w_a0_model_450_puct_value_rollout",
+        50000,
+        "model_450.pkl",
+        mcts_type="NN",
+        mcts_key="puct",
+        rollout_type='policy',
+        policy_type='value'
+    )
+
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
@@ -983,4 +1024,4 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    main11()
+    main10()

@@ -15,7 +15,7 @@ from a0.mcts.nn import MCTS_NN
 from a0.mcts.gt import MCTS_GT
 
 class A0Player:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False):
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False, rollout_type: str = "none", rollout_depth: int = -1, policy_type: str = "policy") -> None:
         self.model = model
         self.game = Game(
             board_size=board_size,
@@ -29,6 +29,9 @@ class A0Player:
         self.random_selection_prob = 0  # Probability of selecting a random move
         self.mcts_iterations = mcts_samples
         self.exploit = exploit
+        self.rollout_type = rollout_type
+        self.rollout_depth = rollout_depth
+        self.policy_type = policy_type
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         '''
@@ -99,7 +102,7 @@ class A0Player:
         # perform mcts and get the root's children
         mcts_problem_object = None
         if mcts_type == "NN":
-            mcts_problem_object = MCTS_NN(state, self.game, self.model, initial_moves=legal_moves)
+            mcts_problem_object = MCTS_NN(state, self.game, self.model, initial_moves=legal_moves, rollout_type=self.rollout_type, rollout_depth=self.rollout_depth, policy_type=self.policy_type)
         elif mcts_type == "GT":
             mcts_problem_object = MCTS_GT(state, self.game, error_rate=error_rate, initial_moves=legal_moves)
         
