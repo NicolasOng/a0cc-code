@@ -340,7 +340,7 @@ def mcts_function(error_rate: float, mcts_iterations: int, validation_dataset: D
     # train a model on the mcts dataset + evaluate
     train_and_plot(f"sl_on_policy_head_mcts_er{error_rate}_it{mcts_iterations}", mcts_dataset, validation_dataset, num_epochs=10)
 
-def generate_nn_dataset(boards: list[Board], player: A0Player, mcts_type: str = "NN", error_rate: float = 0.2) -> Dataset:
+def generate_nn_dataset(boards: list[Board], player: A0Player, mcts_type: str = "NN", error_rate: float = 0.2, selection: str = "uct") -> Dataset:
     '''
     Generates a dataset using the given A0Player on the given boards.
     '''
@@ -358,7 +358,8 @@ def generate_nn_dataset(boards: list[Board], player: A0Player, mcts_type: str = 
             board,
             legal_moves,
             mcts_type=mcts_type,
-            error_rate=error_rate
+            error_rate=error_rate,
+            mcts_key=selection
         )
 
         states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
@@ -426,7 +427,7 @@ def generate_nn_dataset_parallel(boards: list[Board], player: A0Player, mcts_typ
     acc_count = 0
 
     num_cores = os.cpu_count() or 4
-    logger.info(f"Using {num_cores} cores for self-play.")
+    logger.info(f"Using {num_cores} cores for mcts sample generation.")
     with concurrent.futures.ProcessPoolExecutor() as executor:
         # create a list to hold the futures
         futures: list[Future[tuple[Board, NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]]]] = []
@@ -958,6 +959,18 @@ def main10():
         mcts_key="puct"
     )
 
+def main11():
+    '''
+    local tests
+    '''
+    train_model_on_random_states_and_mcts(
+        "random_states_10_w_a0_model_450_mcts_puct",
+        10,
+        "model_450.pkl",
+        mcts_type="NN",
+        mcts_key="puct"
+    )
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
@@ -970,4 +983,4 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    main10()
+    main11()

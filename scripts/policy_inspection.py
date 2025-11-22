@@ -41,12 +41,13 @@ def get_player(model_no: int) -> A0Player:
     )
     return player
 
-def print_policy(policy, board: Board, moves: list[Move]) -> None:
+def print_policy(policy: list[float], board: Board, moves: list[Move], policy_is_for_model: bool = True) -> None:
     '''
     Prints the policy distribution
     '''
+    rotate = board.current_player == Player.PLAYER_O if policy_is_for_model else False
     p = Policy(len(board.board))
-    p.set_logits(np.array(policy), rotate_180=board.current_player == Player.PLAYER_O)
+    p.set_logits(np.array(policy), rotate_180=rotate)
     move_probs = p.get_move_probabilities(moves)
     for prob in move_probs:
         print(f"{prob:.2%}", end=" ")
@@ -79,4 +80,5 @@ def main():
     print_policy(mcts_gt_policy, random_board, moves)
     print(policy_accuracy_function(mcts_gt_policy, np.array(gt_policy)))
 
-main()
+if __name__ == "__main__":
+    main()
