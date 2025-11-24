@@ -52,7 +52,7 @@ def print_policy(policy: list[float], board: Board, moves: list[Move], policy_is
     for prob in move_probs:
         print(f"{prob:.2%}", end=" ")
     #print(move_probs)
-    print(f"\n{sum(move_probs):.2f}")  # should be 1.0
+    print(f", sum={sum(move_probs):.2f}")  # should be 1.0
 
 def main():
     gt = GroundTruth()

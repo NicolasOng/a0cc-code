@@ -16,7 +16,7 @@ def get_value_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move]
     for move in moves:
         state.apply_move(move)
         value, _ = model(jnp.array(board_to_input(state)))
-        values.append(float(value[0][0]))
+        values.append(-float(value[0][0]))
         state.undo_move(move)
 
     p = Policy(len(state.board))

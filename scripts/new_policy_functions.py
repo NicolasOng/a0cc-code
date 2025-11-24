@@ -22,7 +22,7 @@ def get_value_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move]
     for move in moves:
         state.apply_move(move)
         value, _ = model(jnp.array(board_to_input(state)))
-        values.append(float(value[0][0]))
+        values.append(-float(value[0][0]))
         state.undo_move(move)
 
     p = Policy(len(state.board))
@@ -107,6 +107,41 @@ def test_accuracies(n: int):
     logger.log(25, f"Value Head Accuracy: {vh_acc_count}/{total_boards} = {vh_acc_count / total_boards:.2%}")
     #logger.info(f"Combined Head Accuracy: {ch_acc_count}/{total_boards} = {ch_acc_count / total_boards:.2%}")
 
+def inspect_new_policies():
+    gt = GroundTruth()
+    model = load_model(config.training_dir + "model_450.pkl")
+    game = Game(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        no_reverse_moves=False,
+        no_illegal_moves=False,
+        no_side_moves=False
+    )
+    states = get_n_random_states(10, remove_trivial=True, remove_terminal=True)
+
+    for state in states:
+        legal_moves = game.generate_moves_for_given_board(state)
+
+        gt_policy = gt.get_1ply_policy_prob_dist_list(state, for_model=False)
+
+        ph_policy, _ = get_policy_head_policy(model, state, legal_moves, for_model=False)
+        vh_policy, _ = get_value_head_policy(model, state, legal_moves, for_model=False)
+
+        ph_acc = policy_accuracy_function(ph_policy, np.array(gt_policy))
+        vh_acc = policy_accuracy_function(vh_policy, np.array(gt_policy))
+
+        print("State:")
+        print(state.board_view())
+        print(state.current_player)
+        print("Ground Truth Policy:")
+        print_policy(list(gt_policy), state, legal_moves, policy_is_for_model=False)
+        print("Policy Head Policy:")
+        print_policy(list(ph_policy), state, legal_moves, policy_is_for_model=False)
+        print(f"Policy Head Accuracy: {ph_acc:.2%}")
+        print("Value Head Policy:")
+        print_policy(list(vh_policy), state, legal_moves, policy_is_for_model=False)
+        print(f"Value Head Accuracy: {vh_acc:.2%}")
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
@@ -114,4 +149,5 @@ if __name__ == "__main__":
         process_name="new_policy_functions"
     )
 
+    #inspect_new_policies()
     test_accuracies(100000)
