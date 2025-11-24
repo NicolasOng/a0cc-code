@@ -3,51 +3,18 @@ import random
 from cc.core import Game, Board, Player, Move
 from a0.model import AlphaZeroModel
 from a0.model_utils import board_to_input, Policy
+from a0.model_utils import get_value_head_policy, get_policy_head_policy
 #from cc.ground_truth import GroundTruth
 
 import jax.numpy as jnp
 import numpy as np
 from numpy.typing import NDArray
 
-def get_value_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move], for_model: bool = False) -> tuple[NDArray[np.float32], Policy]:
-    rotate = state.current_player == Player.PLAYER_O if for_model else False
-
-    values: list[float] = []
-    for move in moves:
-        state.apply_move(move)
-        value, _ = model(jnp.array(board_to_input(state)))
-        values.append(-float(value[0][0]))
-        state.undo_move(move)
-
-    p = Policy(len(state.board))
-    p.set_logits_from_moves(moves, values, rotate_180=False)
-    p.set_legal_moves(moves)
-    p.apply_softmax(temperature=1.0, mask=True)
-    if rotate:
-        p.rotate_policy()
-    
-    return p.policy, p
-
-def get_policy_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move], for_model: bool = False) -> tuple[NDArray[np.float32], Policy]:
-    '''
-    Returns the policy distribution over the given moves for the given state using the model.
-    If for_model is True, the policy is rotated according to the model's perspective.
-    '''
-    rotate = state.current_player == Player.PLAYER_O if for_model else False
-
-    _, policy = model(jnp.array(board_to_input(state)))
-
-    p = Policy(len(state.board))
-    p.set_logits(np.array(policy[0]), rotate_180=False)
-    p.set_legal_moves(moves)
-    p.apply_softmax(temperature=1.0, mask=True)
-    if rotate:
-        p.rotate_policy()
-    
-    return p.policy, p
-
 def random_rollout(state: Board, game: Game, max_depth: int) -> tuple[bool, Player | None, Board]:
-    current_board = state
+    # Make a copy of the board to avoid modifying the original state
+    # could also do a series of undo moves afterwards, but this is simpler (unsure about performance impact)
+    current_board = Board()
+    current_board.copy_board(state)
     for _ in range(max_depth):
         # check if the current board is terminal
         is_done, winner = game.get_done_and_winner(current_board)
@@ -69,7 +36,9 @@ def random_rollout(state: Board, game: Game, max_depth: int) -> tuple[bool, Play
     return False, None, current_board
 
 def policy_max_rollout(state: Board, game: Game, model: AlphaZeroModel, max_depth: int, policy_type: str = "policy") -> tuple[bool, Player | None, Board]:
-    current_board = state
+    # Make a copy of the board to avoid modifying the original state
+    current_board = Board()
+    current_board.copy_board(state)
     for _ in range(max_depth):
         # check if the current board is terminal
         is_done, winner = game.get_done_and_winner(current_board)
@@ -127,11 +96,11 @@ class MCTS_NN:
         '''
         Returns a list of successor states for the given state.
         '''
-        # get all possible moves for the current player
-        moves = self.game.generate_moves_for_given_board(state)
-
         if is_root and self.initial_moves is not None:
             moves = self.initial_moves
+        else:
+            # get all possible moves for the current player
+            moves = self.game.generate_moves_for_given_board(state)
 
         # create a list of successor states by applying each move
         successors: list[Board] = []
@@ -147,15 +116,11 @@ class MCTS_NN:
         # get priors for the successors by using the model
         # useful if MCTS uses PUCT
         # these are in the perspective of the state's current player
-        _, policy = self.model(jnp.array(board_to_input(state)))
 
         # for testing purposes, we can also use the ground truth to get the policy
         #policy = [self.gt.get_1ply_policy_prob_dist_list(state, for_model=True)]
 
-        p = Policy(len(state.board))
-        p.set_logits(np.array(policy[0]), rotate_180=False)
-        p.set_legal_moves(moves)
-        p.apply_softmax(temperature=1.0, mask=True)
+        _, p = get_policy_head_policy(self.model, state, moves, for_model=False)
         successor_priors = p.get_move_probabilities(moves)
 
         return successors, successor_priors

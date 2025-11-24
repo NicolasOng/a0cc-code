@@ -7,6 +7,8 @@ import jax
 
 from cc.core import Board, Move, Player, player_to_tile, board_to_home_size
 
+from a0.model import AlphaZeroModel
+
 def board_to_input(board: Board) -> NDArray[np.float32]:
     '''
     Converts a Board object to a numpy array.
@@ -400,3 +402,40 @@ class Policy:
         np.random.seed(rng)
         index = np.random.choice(len(self.policy), p=self.policy)
         return self.policy_index_to_move(index)
+
+def get_value_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move], for_model: bool = False) -> tuple[NDArray[np.float32], Policy]:
+    rotate = state.current_player == Player.PLAYER_O if for_model else False
+
+    values: list[float] = []
+    for move in moves:
+        state.apply_move(move)
+        value, _ = model(jnp.array(board_to_input(state)))
+        values.append(-float(value[0][0]))
+        state.undo_move(move)
+
+    p = Policy(len(state.board))
+    p.set_logits_from_moves(moves, values, rotate_180=False)
+    p.set_legal_moves(moves)
+    p.apply_softmax(temperature=1.0, mask=True)
+    if rotate:
+        p.rotate_policy()
+    
+    return p.policy, p
+
+def get_policy_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move], for_model: bool = False) -> tuple[NDArray[np.float32], Policy]:
+    '''
+    Returns the policy distribution over the given moves for the given state using the model.
+    If for_model is True, the policy is rotated according to the model's perspective.
+    '''
+    rotate = state.current_player == Player.PLAYER_O if for_model else False
+
+    _, policy = model(jnp.array(board_to_input(state)))
+
+    p = Policy(len(state.board))
+    p.set_logits(np.array(policy[0]), rotate_180=False)
+    p.set_legal_moves(moves)
+    p.apply_softmax(temperature=1.0, mask=True)
+    if rotate:
+        p.rotate_policy()
+    
+    return p.policy, p

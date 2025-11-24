@@ -37,7 +37,10 @@ def get_player(model_no: int) -> A0Player:
         exploit=True,
         mcts_samples=64,
         no_reverse_moves=True,
-        no_side_moves=False
+        no_side_moves=False,
+        rollout_type="random",
+        rollout_depth=10,
+        policy_type="policy"
     )
     return player
 
@@ -72,7 +75,9 @@ def main():
     print_policy(gt_policy, random_board, moves)
 
     player = get_player(450)
-    _, policy = player.get_value_and_policy(random_board, moves)
+    _, policy = player.get_value_and_policy(
+        random_board,
+        moves)
     print_policy(policy[0], random_board, moves)
     print(policy_accuracy_function(policy[0], np.array(gt_policy)))
 

@@ -541,6 +541,8 @@ def train_model_on_random_states_and_mcts(fn: str, n: int, model_name: str, mcts
     then trains/tests a model on it with a 90/10 split.
     Uses a validation dataset and seen dataset for evaluation after training.
     '''
+    logger.log(25, f"{fn}:")
+    logger.log(25, f"n: {n}, model_name: {model_name}, mcts_type: {mcts_type}, error_rate: {error_rate}, mcts_key: {mcts_key}, rollout_type: {rollout_type}, policy_type: {policy_type}")
     trained_model = load_model(config.training_dir + model_name)
     player = A0Player(
         board_size=config.board_size,
@@ -1024,4 +1026,4 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    main10()
+    main12()

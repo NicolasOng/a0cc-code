@@ -32,11 +32,11 @@ class MCTS_GT:
         '''
         Returns a list of successor states for the given state.
         '''
-        # get all possible moves for the current player
-        moves = self.game.generate_moves_for_given_board(state)
-
         if is_root and self.initial_moves is not None:
             moves = self.initial_moves
+        else:
+            # get all possible moves for the current player
+            moves = self.game.generate_moves_for_given_board(state)
 
         # create a list of successor states by applying each move
         successors: list[Board] = []

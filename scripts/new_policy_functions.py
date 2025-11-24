@@ -3,8 +3,9 @@ from cc.core import Board, Move, Player, Game
 from a0.model_utils import board_to_input, Policy
 from a0.eval.dataset_evaluation import policy_accuracy_function
 from cc.ground_truth import GroundTruth
-from scripts.policy_inspection import print_policy
+from a0.model_utils import get_value_head_policy, get_policy_head_policy
 
+from scripts.policy_inspection import print_policy
 from scripts.sl_on_policy_head import get_n_random_states
 
 import jax.numpy as jnp
@@ -14,43 +15,6 @@ from numpy.typing import NDArray
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
-
-def get_value_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move], for_model: bool = False) -> tuple[NDArray[np.float32], Policy]:
-    rotate = state.current_player == Player.PLAYER_O if for_model else False
-
-    values: list[float] = []
-    for move in moves:
-        state.apply_move(move)
-        value, _ = model(jnp.array(board_to_input(state)))
-        values.append(-float(value[0][0]))
-        state.undo_move(move)
-
-    p = Policy(len(state.board))
-    p.set_logits_from_moves(moves, values, rotate_180=False)
-    p.set_legal_moves(moves)
-    p.apply_softmax(temperature=1.0, mask=True)
-    if rotate:
-        p.rotate_policy()
-    
-    return p.policy, p
-
-def get_policy_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move], for_model: bool = False) -> tuple[NDArray[np.float32], Policy]:
-    '''
-    Returns the policy distribution over the given moves for the given state using the model.
-    If for_model is True, the policy is rotated according to the model's perspective.
-    '''
-    rotate = state.current_player == Player.PLAYER_O if for_model else False
-
-    _, policy = model(jnp.array(board_to_input(state)))
-
-    p = Policy(len(state.board))
-    p.set_logits(np.array(policy[0]), rotate_180=False)
-    p.set_legal_moves(moves)
-    p.apply_softmax(temperature=1.0, mask=True)
-    if rotate:
-        p.rotate_policy()
-    
-    return p.policy, p
 
 def combined_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move], blend: float = 0.5, for_model: bool = False) -> NDArray[np.float32]:
     php, _ = get_policy_head_policy(model, state, moves, for_model=for_model)
