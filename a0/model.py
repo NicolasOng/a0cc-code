@@ -155,12 +155,12 @@ def save_model(filepath: str, model: AlphaZeroModel) -> None:
     with open(filepath, 'wb') as f:
         pickle.dump(state, f)
 
-def load_model(filepath: str) -> AlphaZeroModel:
+def load_model(filepath: str, training: bool = True) -> AlphaZeroModel:
     # create a new model instance with the same parameters
     model = AlphaZeroModel(
         board_size=config.board_size,
         num_filters=256,
-        training=True,
+        training=training,
         rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})
     )
     
