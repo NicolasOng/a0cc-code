@@ -9,14 +9,16 @@ class Dataset:
     states: jnp.ndarray
     values: jnp.ndarray
     policies: jnp.ndarray
+    masks: jnp.ndarray
 
     def __init__(self, batch_size: int) -> None:
         self.batch_size = batch_size
     
-    def set(self, states: jnp.ndarray, values: jnp.ndarray, policies: jnp.ndarray) -> None:
+    def set(self, states: jnp.ndarray, values: jnp.ndarray, policies: jnp.ndarray, masks: jnp.ndarray) -> None:
         self.states = states
         self.values = values
         self.policies = policies
+        self.masks = masks
     
     def set_batch_size(self, batch_size: int) -> None:
         self.batch_size = batch_size
@@ -29,6 +31,7 @@ class Dataset:
             self.states = self.states[:new_size]
             self.values = self.values[:new_size]
             self.policies = self.policies[:new_size]
+            self.masks = self.masks[:new_size]
     
     def split_off_test(self, test_size: int, shuffle: bool) -> Dataset:
         """Split off a test set of the specified size."""
@@ -42,7 +45,7 @@ class Dataset:
         test_dataset = Dataset(self.batch_size)
         
         # Split the data
-        test_dataset.set(self.states[-test_size:], self.values[-test_size:], self.policies[-test_size:])
+        test_dataset.set(self.states[-test_size:], self.values[-test_size:], self.policies[-test_size:], self.masks[-test_size:])
         
         # Trim the original dataset
         self.trim(len(self) - test_size, False)
@@ -56,13 +59,14 @@ class Dataset:
         self.states = self.states[perm]
         self.values = self.values[perm]
         self.policies = self.policies[perm]
+        self.masks = self.masks[perm]
 
-    def batches(self) -> Generator[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray], None, None]:
+    def batches(self) -> Generator[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray], None, None]:
         data_len = self.states.shape[0]
         for i in range(0, data_len, self.batch_size):
             if i + self.batch_size > data_len:
                 break
-            yield self.states[i:i + self.batch_size], self.values[i:i + self.batch_size], self.policies[i:i + self.batch_size]
+            yield self.states[i:i + self.batch_size], self.values[i:i + self.batch_size], self.policies[i:i + self.batch_size], self.masks[i:i + self.batch_size]
 
     def num_batches(self) -> int:
         """Return the number of complete batches that will be output by the batches method."""
@@ -142,6 +146,7 @@ class Dataset:
         self.states = self.states[indices_to_keep]
         self.values = self.values[indices_to_keep]
         self.policies = self.policies[indices_to_keep]
+        self.masks = self.masks[indices_to_keep]
         
         print(f"Balanced to {target_count} samples each ({len(self)} total)")
         self.print_distribution()

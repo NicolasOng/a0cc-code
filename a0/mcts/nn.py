@@ -120,7 +120,13 @@ class MCTS_NN:
         # for testing purposes, we can also use the ground truth to get the policy
         #policy = [self.gt.get_1ply_policy_prob_dist_list(state, for_model=True)]
 
-        _, p = get_policy_head_policy(self.model, state, moves, for_model=False)
+        if self.policy_type == "value":
+            _, p = get_value_head_policy(self.model, state, moves, for_model=False)
+        elif self.policy_type == "policy":
+            _, p = get_policy_head_policy(self.model, state, moves, for_model=False)
+        else:
+            raise ValueError(f"Unknown policy type: {self.policy_type}")
+        
         successor_priors = p.get_move_probabilities(moves)
 
         return successors, successor_priors

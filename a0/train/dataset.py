@@ -116,6 +116,7 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     board_input: jnp.ndarray = batch['board']  # (N, board_size, board_size, 2)
     value_label: jnp.ndarray = batch['value']
     policy_label: jnp.ndarray = batch['policy']
+    policy_mask: jnp.ndarray = batch['mask']
 
     # get the model's predictions
     value, policy = model(board_input)
@@ -125,8 +126,8 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     value_accuracy = value_accuracy_function(value, value_label)
 
     # get the mask for valid moves in the policy
-    mask_value = 0.0 # 0.0 for CE, -1.0 for BCE
-    policy_mask = get_policy_mask(policy_label, mask_value=mask_value)
+    # mask_value = 0.0 # 0.0 for CE, -1.0 for BCE
+    # policy_mask = get_policy_mask(policy_label, mask_value=mask_value)
     # mask both the predicted policy and the label policy
     # The mask value when using Softmax Cross Entropy loss should be -1e9
     # When using Binary Cross Entropy, it should be 0.0
@@ -182,11 +183,12 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
 
     for ts, batch in enumerate(batches):
         # convert the batch to a dictionary
-        board_batch, value_batch, policy_batch = batch
+        board_batch, value_batch, policy_batch, mask_batch = batch
         batch = {
             'board': board_batch,  # (N, board_size, board_size)
             'value': value_batch,  # (N, 1)
-            'policy': policy_batch  # (N, board_size ** 4)
+            'policy': policy_batch,  # (N, board_size ** 4)
+            'mask': mask_batch  # (N, board_size ** 4)
         }
         loss, value_loss, policy_loss, value_accuracy, policy_accuracy = train_step(model, optimizer, batch)
         logger.info(f"Training Step {ts}/{num_batches}, "

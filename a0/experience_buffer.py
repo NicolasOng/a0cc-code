@@ -7,10 +7,11 @@ import jax.numpy as jnp
 from a0.dataset import Dataset
 
 class ExperienceData:
-    def __init__(self, board: jnp.ndarray, value: float, policy: jnp.ndarray):
+    def __init__(self, board: jnp.ndarray, value: float, policy: jnp.ndarray, mask: jnp.ndarray) -> None:
         self.board: jnp.ndarray = board
         self.value: float = value
         self.policy: jnp.ndarray = policy
+        self.mask: jnp.ndarray = mask
 
 class ExperienceBuffer:
     def __init__(self, max_size: int) -> None:
@@ -25,7 +26,8 @@ class ExperienceBuffer:
         new_dataset.set(
             jnp.stack([d.board for d in self.data]), # (board_size, board_size) -> (N, board_size, board_size)
             jnp.array([d.value for d in self.data]) [:, None], # Add [:, None] to make its shape (N, 1)
-            jnp.stack([d.policy for d in self.data]) # (board_size ** 4) -> (N, board_size ** 4)
+            jnp.stack([d.policy for d in self.data]), # (board_size ** 4) -> (N, board_size ** 4)
+            jnp.stack([d.mask for d in self.data]) # (board_size ** 4) -> (N, board_size ** 4)
         )
         return new_dataset
 

@@ -25,6 +25,11 @@ class Config:
     sideways_moves: bool
     repeats_for_draw: int
 
+    root_game_has_all_moves: bool
+    rollout_type: str
+    rollout_depth: int
+    policy_type: str
+
     num_trials: int
 
     learning_rate: float

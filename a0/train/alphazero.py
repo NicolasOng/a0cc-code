@@ -15,7 +15,7 @@ from config import config
 
 from a0.game import play, GameData
 from a0.players.a0 import A0Player
-from a0.model_utils import board_to_input
+from a0.model_utils import board_to_input, get_legal_move_mask_from_state
 from a0.model import AlphaZeroModel, load_model, save_model
 from cc.core import Game
 from cc.ground_truth import GroundTruth
@@ -40,6 +40,9 @@ def game_data_to_training_set(game_data: GameData) -> list[ExperienceData]:
         # get the board state
         board = turn.board
 
+        # get the mask for full legal moves
+        legal_move_mask = get_legal_move_mask_from_state(board, for_model=True)
+
         # get the outcome of the game for the current player
         current_player = board.current_player
         if game_winner is None:
@@ -57,7 +60,8 @@ def game_data_to_training_set(game_data: GameData) -> list[ExperienceData]:
         training_example: ExperienceData = ExperienceData(
             board=jnp.array(board_to_input(board)),
             value=value,
-            policy=mcts_policy
+            policy=mcts_policy,
+            mask=jnp.array(legal_move_mask, dtype=jnp.float32)
         )
         
         # add it to the training set
@@ -80,6 +84,9 @@ def game_data_to_gt_training_set(game_data: GameData) -> list[ExperienceData]:
         # get the board state
         board = turn.board
 
+        # get the mask for full legal moves
+        legal_move_mask = get_legal_move_mask_from_state(board, for_model=True)
+
         # get the gt outcome of the board for the current player
         value = gt.get_outcome(board)
         
@@ -90,7 +97,8 @@ def game_data_to_gt_training_set(game_data: GameData) -> list[ExperienceData]:
         training_example: ExperienceData = ExperienceData(
             board=jnp.array(board_to_input(board)),
             value=value,
-            policy=mcts_policy
+            policy=mcts_policy,
+            mask=jnp.array(legal_move_mask, dtype=jnp.float32)
         )
         
         # add it to the training set
@@ -111,13 +119,18 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
         process_name="training_alphazero"
     )
     # then play the game
+    game_has_reverse_moves = config.backwards_moves
+    game_has_side_moves = config.sideways_moves
+    if config.root_game_has_all_moves:
+        game_has_reverse_moves = True
+        game_has_side_moves = True
     game = Game(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
         repeats_for_draw=config.repeats_for_draw,
-        no_reverse_moves=False,
+        no_reverse_moves=not game_has_reverse_moves,
         no_illegal_moves=False,
-        no_side_moves=False
+        no_side_moves=not game_has_side_moves
     )
     player: A0Player = dill.loads(serialized_player)
     game_data = play(game, [player, player], config.turn_limit)
@@ -227,7 +240,10 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
             model,
             mcts_samples=config.mcts_samples,
             no_reverse_moves=not config.backwards_moves,
-            no_side_moves=not config.sideways_moves
+            no_side_moves=not config.sideways_moves,
+            rollout_type=config.rollout_type,
+            rollout_depth=config.rollout_depth,
+            policy_type=config.policy_type
         )
 
         # generate training data with self-play

@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 import jax.numpy as jnp
 import jax
 
-from cc.core import Board, Move, Player, player_to_tile, board_to_home_size
+from cc.core import Game, Board, Move, Player, player_to_tile, board_to_home_size
 
 from a0.model import AlphaZeroModel
 
@@ -445,3 +445,29 @@ def get_policy_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move
         p.rotate_policy()
     
     return p.policy, p
+
+def get_legal_move_mask_from_state(state: Board, for_model: bool) -> NDArray[np.float32]:
+    '''
+    Returns a boolean mask array for the given legal moves.
+    The mask has shape (board_size**4,), where True indicates a legal move.
+    '''
+    rotate = state.current_player == Player.PLAYER_O if for_model else False
+    board_size = len(state.board)
+    num_pieces, _ = state.num_pieces()
+    game_full = Game(
+        board_size=board_size,
+        num_pieces=num_pieces,
+        repeats_for_draw=-1,
+        no_reverse_moves=False,
+        no_illegal_moves=False,
+        no_side_moves=False
+    )
+    full_legal_moves = game_full.generate_moves_for_given_board(state)
+
+    policy_helper = Policy(board_size)
+    policy_helper.set_legal_moves(full_legal_moves)
+    if rotate:
+        policy_helper.rotate_policy()
+    
+    return np.array(policy_helper.mask, dtype=np.float32)
+
