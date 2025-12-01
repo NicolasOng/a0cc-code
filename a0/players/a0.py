@@ -15,7 +15,7 @@ from a0.mcts.nn import MCTS_NN
 from a0.mcts.gt import MCTS_GT
 
 class A0Player:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False, rollout_type: str = "none", rollout_depth: int = -1, policy_type: str = "policy") -> None:
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False, rollout_type: str = "none", rollout_depth: int = -1, policy_type: str = "policy", epsilon: float = 0.1) -> None:
         self.model = model
         self.game = Game(
             board_size=board_size,
@@ -26,7 +26,7 @@ class A0Player:
             no_side_moves=no_side_moves
         )
         self.temperature = 1.0  # Temperature for exploration in MCTS
-        self.random_selection_prob = 0  # Probability of selecting a random move
+        self.random_selection_prob = epsilon  # Probability of selecting a random move
         self.mcts_iterations = mcts_samples
         self.exploit = exploit
         self.rollout_type = rollout_type

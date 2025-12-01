@@ -56,19 +56,22 @@ def create_gtd_from_states(boards: list[Board]) -> Dataset:
     states: list[jnp.ndarray] = []
     values: list[float] = []
     policies: list[jnp.ndarray] = []
+    masks: list[jnp.ndarray] = []
     gt = GroundTruth()
     for board in tqdm(boards):
         states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
         values.append(gt.get_outcome(board)) # float
         policies.append(jnp.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))) # (board_size ** 4,)
+        masks.append(jnp.array(get_legal_move_mask_from_state(board, for_model=True), dtype=jnp.float32)) # (board_size ** 4,)
     # load all this into a Dataset object
     logger.info("Creating Dataset object with ground truth values...")
     jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
     jnp_values = jnp.array(values).reshape(-1, 1)  # (N, 1)
     jnp_policies = jnp.stack(policies) # (N, board_size ** 4)
-    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
+    jnp_masks = jnp.stack(masks) # (N, board_size ** 4)
+    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}, masks.shape: {jnp_masks.shape}")
     gtv_dataset = Dataset(batch_size=256)
-    gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
+    gtv_dataset.set(jnp_states, jnp_values, jnp_policies, jnp_masks)
     return gtv_dataset
 
 def create_random_gtd_from_states(boards: list[Board]) -> Dataset:

@@ -29,6 +29,7 @@ class Config:
     rollout_type: str
     rollout_depth: int
     policy_type: str
+    epsilon: float
 
     num_trials: int
 

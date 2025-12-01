@@ -243,7 +243,8 @@ def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> Non
             no_side_moves=not config.sideways_moves,
             rollout_type=config.rollout_type,
             rollout_depth=config.rollout_depth,
-            policy_type=config.policy_type
+            policy_type=config.policy_type,
+            epsilon=config.epsilon
         )
 
         # generate training data with self-play
