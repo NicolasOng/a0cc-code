@@ -258,6 +258,17 @@ def main():
                     ("Training Data Accuracy NT", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy NT"]),
                     ("Overall Training Data Accuracy NT", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy Accuracy NT"])
                ],
+               "Iteration", "Accuracy", "full_full_accuracy_policy")
+    
+    plot_given("Policy Head Model Performance on Ground Truth of States and Training Data Accuracy",
+               [
+                    ("Seen Accuracy NT", train_nt_gt_series.x, train_nt_gt_series.ys["policy_accuracy"]),
+                    ("Neighbor 1 Accuracy NT", n_neighbor_nt_gt_series[0].x, n_neighbor_nt_gt_series[0].ys["policy_accuracy"]),
+                    ("Neighbor 2 Accuracy NT", n_neighbor_nt_gt_series[1].x, n_neighbor_nt_gt_series[1].ys["policy_accuracy"]),
+                    ("Random Accuracy NT", random_nt_gt_series.x, random_nt_gt_series.ys["policy_accuracy"]),
+                    ("Training Data Accuracy NT", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy NT"]),
+                    ("Overall Training Data Accuracy NT", gd_overall_accuracy_series.x, gd_overall_accuracy_series.ys["Overall Policy Accuracy NT"])
+               ],
                "Iteration", "Accuracy", "full_accuracy_policy")
     
     plot_given("Training Data Accuracy by Iteration",

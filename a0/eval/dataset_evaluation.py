@@ -165,7 +165,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[
     
     for ts, batch in tqdm(enumerate(batches)):
         # get the board input, value label, and policy label from the batch
-        board_input, value_label, policy_label = batch
+        board_input, value_label, policy_label, policy_mask = batch
 
         # get the model's predictions, and convert them to numpy arrays
         value, policy = model(board_input)
@@ -181,8 +181,8 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[
         value_accuracy = value_accuracy_function(pred_value, value_label)
 
         # get the mask for valid moves in the policy
-        mask_value = 0.0 # 0.0 for CE, -1.0 for BCE
-        policy_mask = get_policy_mask(policy_label, mask_value=mask_value)
+        #mask_value = 0.0 # 0.0 for CE, -1.0 for BCE
+        #policy_mask = get_policy_mask(policy_label, mask_value=mask_value)
         # Apply the mask to the predicted policy and label policy
         # The mask value when using Softmax Cross Entropy loss should be -1e9
         # When using Binary Cross Entropy, it should be 0.0
@@ -294,7 +294,7 @@ def evaluate_on_all_datasets(model: AlphaZeroModel, datasets: dict[int, Dataset]
     for bin_key in sorted(datasets.keys()):
         dataset = datasets[bin_key]
         dataset.batch_size = 1
-        if len(dataset) < dataset.batch_size:
+        if len(dataset) < dataset.batch_size + 1:
             logger.info(f"Skipping small dataset with progress bin {bin_key}")
             continue
         logger.info(f"Evaluating dataset with progress bin {bin_key}")

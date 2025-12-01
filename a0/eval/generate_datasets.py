@@ -10,7 +10,7 @@ from cc.core import Board, Game
 from cc.ground_truth import GroundTruth
 from a0.dataset import Dataset
 from a0.experience_buffer import ExperienceData
-from a0.model_utils import board_to_input, input_to_board, Policy
+from a0.model_utils import board_to_input, input_to_board, Policy, get_legal_move_mask_from_state
 from a0.eval.training_data import game_data_generator
 from a0.eval.dataset_evaluation import Series, save_series
 
@@ -113,7 +113,8 @@ def training_experienced_values(n: int | None = None, gen_non_trivial: bool = Tr
                 board = turn.board
                 experienced_outcome = 0.0 if game_winner is None else 1.0 if game_winner == board.current_player else -1.0
                 experienced_policy = turn.player_data
-                experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, experienced_policy)
+                mask = jnp.array(get_legal_move_mask_from_state(board, for_model=True)) # (board_size ** 4,)
+                experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, experienced_policy, mask)
 
                 # add this to a set
                 boards_set.add(experience)
@@ -134,8 +135,9 @@ def training_experienced_values(n: int | None = None, gen_non_trivial: bool = Tr
     e_board = jnp.concatenate([d.board for d in boards], axis=0) # (1, board_size, board_size, 2) -> (N, board_size, board_size, 2)
     e_value = jnp.array([d.value for d in boards]).reshape(-1, 1) # list[float] -> (N, 1)
     e_policy = jnp.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
+    e_mask = jnp.stack([d.mask for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
     logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
-    ev_dataset.set(e_board, e_value, e_policy)
+    ev_dataset.set(e_board, e_value, e_policy, e_mask)
     if remove_bias:
         #ev_dataset = balance_dataset(ev_dataset)
         ev_dataset.balance_values()
@@ -154,8 +156,9 @@ def training_experienced_values(n: int | None = None, gen_non_trivial: bool = Tr
         e_board = jnp.concatenate([d.board for d in boards], axis=0) # (1, board_size, board_size, 2) -> (N, board_size, board_size, 2)
         e_value = jnp.array([d.value for d in boards]).reshape(-1, 1) # list[float] -> (N, 1)
         e_policy = jnp.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
+        e_mask = jnp.stack([d.mask for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
         logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
-        ev_dataset_non_trivial.set(e_board, e_value, e_policy)
+        ev_dataset_non_trivial.set(e_board, e_value, e_policy, e_mask)
         if n is not None:
             ev_dataset_non_trivial.trim(new_size=n, shuffle=True)
         output_path = f"{config.dataset_out_dir}/training_nt_ev.pkl"
@@ -175,20 +178,23 @@ def create_gtv_dataset_from_board_list(boards: list[Board]):
     states: list[jnp.ndarray] = []
     values: list[float] = []
     policies: list[jnp.ndarray] = []
+    masks: list[jnp.ndarray] = []
     gt = GroundTruth()
     for board in tqdm(boards):
         states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
         values.append(gt.get_outcome(board)) # float
         policies.append(jnp.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))) # (board_size ** 4,)
+        masks.append(jnp.array(get_legal_move_mask_from_state(board, for_model=True))) # (board_size ** 4,)
     
     # load all this into a Dataset object
     logger.info("Creating Dataset object with ground truth values...")
     jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
     jnp_values = jnp.array(values).reshape(-1, 1)  # (N, 1)
     jnp_policies = jnp.stack(policies) # (N, board_size ** 4)
+    jnp_masks = jnp.stack(masks) # (N, board_size ** 4)
     logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
     gtv_dataset = Dataset(batch_size=256)
-    gtv_dataset.set(jnp_states, jnp_values, jnp_policies)
+    gtv_dataset.set(jnp_states, jnp_values, jnp_policies, jnp_masks)
     return gtv_dataset
 
 def save_dataset(fn: str, dataset: Dataset) -> None:

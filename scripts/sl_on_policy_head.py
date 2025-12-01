@@ -7,7 +7,7 @@ import os
 from cc.core import Board, Game, Player
 from cc.ground_truth import GroundTruth
 from a0.dataset import Dataset
-from a0.model_utils import board_to_input, Policy
+from a0.model_utils import board_to_input, Policy, get_legal_move_mask_from_state
 from a0.eval.training_data import game_data_generator
 from a0.train.dataset import train_model_epochs, plot_model_performance
 from a0.model import AlphaZeroModel, load_model
@@ -124,9 +124,13 @@ def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, 
     gt = GroundTruth()
     total_boards = 0
     acc_count = 0
+    random_policy_acc = 0
+    value_acc_count = 0
+    value_total_boards = 0
     states: list[jnp.ndarray] = []
     values: list[float] = []
     policies: list[jnp.ndarray] = []
+    masks: list[jnp.ndarray] = []
     boards: list[Board] = []
     logger.info("Getting unique boards from training data, with their experienced outcome...")
     game_data_lists = game_data_generator(config.training_dir, config.training_iterations)
@@ -141,31 +145,48 @@ def create_dataset_from_selfplay(remove_trivial: bool = True) -> tuple[Dataset, 
                 experienced_outcome = 0.0 if game_winner is None else 1.0 if game_winner == board.current_player else -1.0
                 experienced_policy = turn.player_data
 
+                # for value acc, ignore draws
+                if experienced_outcome != 0.0:
+                    gt_value = gt.get_outcome(board)
+                    value_total_boards += 1
+                    if experienced_outcome == gt_value:
+                        value_acc_count += 1
+                
                 if remove_trivial and gt.is_trivial(board):
                     continue
 
                 gt_policy = gt.get_1ply_policy_prob_dist_list(board, for_model=True)
+                gt_random_policy = gt.get_random_valid_move_prob_dist_list(board, for_model=True)
                 acc = policy_accuracy_function(np.array(experienced_policy), np.array(gt_policy))
+                random_acc = policy_accuracy_function(np.array(gt_random_policy), np.array(gt_policy))
                 total_boards += 1
                 if acc:
                     acc_count += 1
+                if random_acc:
+                    random_policy_acc += 1
+                
+                mask = jnp.array(get_legal_move_mask_from_state(board, for_model=True)) # (board_size ** 4,)
 
                 states.append(experienced_board)
                 values.append(experienced_outcome)
                 policies.append(experienced_policy)
+                masks.append(mask)
                 boards.append(board)
             
     # load all this into a Dataset object
     jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
     jnp_values = jnp.array(values).reshape(-1, 1)  # (N, 1)
     jnp_policies = jnp.stack(policies) # (N, board_size ** 4)
-    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
+    jnp_masks = jnp.stack(masks) # (N, board_size ** 4)
+    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}, masks.shape: {jnp_masks.shape}")
     sp_dataset = Dataset(batch_size=256)
-    sp_dataset.set(jnp_states, jnp_values, jnp_policies)
+    sp_dataset.set(jnp_states, jnp_values, jnp_policies, jnp_masks)
 
     unique_boards = list(set(boards))
 
     logger.log(25, f"Policy accuracy against ground truth on self-play data (NT Boards: {remove_trivial}): {acc_count / total_boards if total_boards > 0 else 0.0:.2%} ({acc_count} / {total_boards})")
+    logger.log(25, f"Random Policy accuracy against ground truth on self-play data (NT Boards: {remove_trivial}): {random_policy_acc / total_boards if total_boards > 0 else 0.0:.2%} ({random_policy_acc} / {total_boards})")
+    logger.log(25, f"Value accuracy against ground truth on self-play data (ND Boards): {value_acc_count / value_total_boards if value_total_boards > 0 else 0.0:.2%} ({value_acc_count} / {value_total_boards})")
     logger.log(25, f"Total unique boards from self-play data (NT Boards: {remove_trivial}): {len(unique_boards) / len(boards) if len(boards) > 0 else 0.0:.2%} ({len(unique_boards)} / {len(boards)})")
 
     return sp_dataset, unique_boards, boards
