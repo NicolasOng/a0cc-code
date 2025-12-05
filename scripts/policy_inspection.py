@@ -19,9 +19,11 @@ def get_random_board(gt: GroundTruth, cc: Game) -> Board:
     while True:
         max_rank = gt.get_max_rank()
         rank = random.randint(0, max_rank - 1)
+        rank = 2175897167
         random_board = gt.unrank(rank)
         if not gt.is_trivial(random_board) and not cc.get_done(random_board):
             break
+    #print(f"Generated random board with rank {rank}")
     return random_board
 
 def print_board(board: Board) -> None:
@@ -34,7 +36,7 @@ def get_player(model_no: int) -> A0Player:
         board_size=config.board_size,
         num_pieces=config.num_pieces,
         model=trained_model,
-        exploit=True,
+        exploit=False,
         mcts_samples=64,
         no_reverse_moves=True,
         no_side_moves=False,
@@ -74,16 +76,16 @@ def main():
     gt_policy = gt.get_1ply_policy_prob_dist_list(random_board, for_model=True)
     print_policy(gt_policy, random_board, moves)
 
-    player = get_player(450)
+    player = get_player(100)
     _, policy = player.get_value_and_policy(
         random_board,
         moves)
     print_policy(policy[0], random_board, moves)
     print(policy_accuracy_function(policy[0], np.array(gt_policy)))
 
-    mcts_gt_policy, _ = generate_mcts_policy(random_board, g, 0.2, 64)
-    print_policy(mcts_gt_policy, random_board, moves)
-    print(policy_accuracy_function(mcts_gt_policy, np.array(gt_policy)))
+    #mcts_gt_policy, _ = generate_mcts_policy(random_board, g, 0.2, 64)
+    #print_policy(mcts_gt_policy, random_board, moves)
+    #print(policy_accuracy_function(mcts_gt_policy, np.array(gt_policy)))
 
 if __name__ == "__main__":
     main()
