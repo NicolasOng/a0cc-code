@@ -57,7 +57,6 @@ def create_gtd_from_states(boards: list[Board]) -> Dataset:
     values: list[float] = []
     policies: list[jnp.ndarray] = []
     masks: list[jnp.ndarray] = []
-    gt = GroundTruth()
     for board in tqdm(boards):
         states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
         values.append(gt.get_outcome(board)) # float

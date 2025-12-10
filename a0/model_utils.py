@@ -399,7 +399,6 @@ class Policy:
         Assumes that the policy has been normalized to sum to 1.
         TODO: Can also implement other sampling strategies, like epsilon-greedy or top-k
         '''
-        np.random.seed(rng)
         index = np.random.choice(len(self.policy), p=self.policy)
         return self.policy_index_to_move(index)
 

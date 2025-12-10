@@ -59,6 +59,19 @@ def print_policy(policy: list[float], board: Board, moves: list[Move], policy_is
     #print(move_probs)
     print(f", sum={sum(move_probs):.2f}")  # should be 1.0
 
+def print_policy_with_moves(policy: list[float], board: Board, moves: list[Move], policy_is_for_model: bool = True) -> None:
+    '''
+    Prints the policy distribution
+    '''
+    rotate = board.current_player == Player.PLAYER_O if policy_is_for_model else False
+    p = Policy(len(board.board))
+    p.set_logits(np.array(policy), rotate_180=rotate)
+    move_probs = p.get_move_probabilities(moves)
+    for move, prob in zip(moves, move_probs):
+        print(f"{move}, {prob:.2%}")
+    #print(move_probs)
+    #print(f", sum={sum(move_probs):.2f}")  # should be 1.0
+
 def main():
     gt = GroundTruth()
     g = Game(
@@ -77,11 +90,19 @@ def main():
     print_policy(gt_policy, random_board, moves)
 
     player = get_player(100)
-    _, policy = player.get_value_and_policy(
-        random_board,
-        moves)
-    print_policy(policy[0], random_board, moves)
-    print(policy_accuracy_function(policy[0], np.array(gt_policy)))
+    for i in range(5):
+        # _, policy = player.get_value_and_policy(
+        #     random_board,
+        #     moves)
+        # print_policy(policy[0], random_board, moves)
+        # print(policy_accuracy_function(policy[0], np.array(gt_policy)))
+
+        move, policy1 = player.select_move(
+            random_board,
+            moves)
+        print_policy_with_moves(policy1, random_board, moves)
+        print(policy_accuracy_function(policy1, np.array(gt_policy)))
+        print(move)
 
     #mcts_gt_policy, _ = generate_mcts_policy(random_board, g, 0.2, 64)
     #print_policy(mcts_gt_policy, random_board, moves)
