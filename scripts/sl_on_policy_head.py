@@ -244,7 +244,7 @@ def train_and_plot(fn: str, dataset: Dataset, eval_dataset: Dataset, num_epochs:
     return trained_model
 
 
-def train_and_plot_datasets(fn: str, dataset: Dataset, eval_datasets: dict[str, Dataset], num_epochs: int = 10) -> AlphaZeroModel:
+def train_and_plot_datasets(fn: str, dataset: Dataset, eval_datasets: dict[str, Dataset], num_epochs: int = 10, res_blocks: int = 3) -> AlphaZeroModel:
     '''
     Trains a model on the given dataset for num_epochs epochs,
     then evaluates it on the eval_dataset.
@@ -256,7 +256,8 @@ def train_and_plot_datasets(fn: str, dataset: Dataset, eval_datasets: dict[str, 
         board_size=config.board_size,
         num_filters=256,
         training=True,
-        rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})
+        rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)}),
+        num_resblocks=res_blocks
     )
 
     trained_model, dsd = train_model_epochs(model, dataset, num_epochs, save="None", plot=False, test_datasets=eval_datasets)

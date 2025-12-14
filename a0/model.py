@@ -109,7 +109,7 @@ class ValueHead(nnx.Module):
 
 # class for the AlphaZero model
 class AlphaZeroModel(nnx.Module):
-    def __init__(self, board_size: int, training: bool, rngs: nnx.Rngs, num_filters: int=256):
+    def __init__(self, board_size: int, training: bool, rngs: nnx.Rngs, num_filters: int=256, num_resblocks: int=3):
         '''
         Initializes the AlphaZero model.
         Args:
@@ -121,7 +121,7 @@ class AlphaZeroModel(nnx.Module):
         super().__init__()
         self.conv = nnx.Conv(in_features=2, out_features=num_filters, kernel_size=(3, 3), strides=(1, 1), padding='SAME', use_bias=False, rngs=rngs)
         self.bn = nnx.BatchNorm(num_features=num_filters, use_running_average=not training, momentum=0.9, epsilon=1e-5, rngs=rngs)
-        self.resblocks = [ResidualBlock(num_filters, training, rngs=rngs) for _ in range(3)]
+        self.resblocks = [ResidualBlock(num_filters, training, rngs=rngs) for _ in range(num_resblocks)]
         self.policy_head = PolicyHead(board_size, num_filters, num_filters, training, rngs=rngs)
         self.value_head = ValueHead(board_size * board_size * num_filters, training, rngs=rngs)
         self.training = training
