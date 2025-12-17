@@ -366,6 +366,7 @@ def plot_model_performance(fn: str, dataset_datas: list[DatasetData]):
             plt.plot(test_x, test_total_losses[test_dataset_name], label=f"Total Loss ({test_dataset_name})", linestyle='--')
 
     # Label and style
+    #plt.ylim(0, 1)
     plt.xlabel("Batch")
     plt.ylabel("Performance")
     plt.title("Model Performance over Batches")
@@ -409,6 +410,8 @@ def plot_single_metric(x_train: list[int], metric_train: list[float],
             plt.plot(x_test, metric_test, label=f"Test {label} ({test_dataset_name})", linestyle='--')
 
     # Label and style
+    if "Accuracy" in label:
+        plt.ylim(0, 1)
     plt.xlabel("Batch")
     plt.ylabel(label)
     plt.title(f"{label} over Batches")
