@@ -24,5 +24,7 @@
     "weight_decay": 1e-4,
     "eval_neighbors": 2,
     "eval_mcts_samples": [64, 128],
-    "model_training": true
+    "model_training": true,
+    "coprime_stepping_a": 6406769569,
+    "coprime_stepping_b": 4397420414
 }

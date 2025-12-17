@@ -41,6 +41,9 @@ class Config:
 
     model_training: bool
 
+    coprime_stepping_a: int
+    coprime_stepping_b: int
+
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
         Initialize the configuration from a JSON file.
