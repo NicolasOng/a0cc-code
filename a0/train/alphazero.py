@@ -208,26 +208,63 @@ def self_play(player: A0Player) -> tuple[list[ExperienceData], list[GameData]]:
     logger.info(f"Generated training set of size: {len(training_set)}/{config.training_samples}")
     return training_set, game_data_list
 
-def train_alphazero(model_path: Optional[str], starting_iteration: int=0) -> None:
+def get_most_recent_model_path() -> Optional[tuple[str, int]]:
+    '''
+    Returns the path to the most recent model in the training directory,
+    along with its iteration number.
+    If no models are found, returns None.
+    '''
+    if not config.training_dir:
+        return None
+    model_files = [
+        f for f in os.listdir(config.training_dir)
+        if f.startswith("model_") and f.endswith(".pkl")
+    ]
+    if not model_files:
+        return None
+    # get the model with the highest iteration number
+    max_iteration = -1
+    most_recent_model_file = ""
+    for f in model_files:
+        iteration_str = f[len("model_"):-len(".pkl")]
+        try:
+            iteration = int(iteration_str)
+            if iteration > max_iteration:
+                max_iteration = iteration
+                most_recent_model_file = f
+        except ValueError:
+            continue
+    if max_iteration == -1:
+        return None
+    return (os.path.join(config.training_dir, most_recent_model_file), max_iteration)
+
+def train_alphazero() -> None:
     os.makedirs(config.plot_dir + "training_plots", exist_ok=True)
+
+    most_recent_model = get_most_recent_model_path()
+    if most_recent_model is not None:
+        model_path, starting_iteration = most_recent_model
+        logger.info(f"Resuming training from model: {model_path} at iteration {starting_iteration}")
+    else:
+        model_path = None
+        starting_iteration = 0
+        logger.info("Starting new training from scratch.")
     
-    iterations = config.training_iterations
-    # create/load a model
-    model = AlphaZeroModel(
-        config.board_size,
-        training=config.model_training,
-        rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
-    )
     if model_path:
-        model = load_model(model_path)
-    
-    if config.training_dir:
+        model = load_model(config.training_dir + model_path)
+    else:
+        model = AlphaZeroModel(
+            config.board_size,
+            training=config.model_training,
+            rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
+        )
         save_model(config.training_dir + f'/model_{0}.pkl', model)
     
     experience_buffer = ExperienceBuffer(
         config.replay_buffer_size
     )
 
+    iterations = config.training_iterations
     train_datas: list[DatasetData] = []
     logger.log(25, GameDataStats.get_header())
     for i in range(starting_iteration, iterations):

@@ -5,6 +5,7 @@
 #SBATCH --mem-per-cpu=4G
 
 module load python/3.10
+# for GPU: module load cuda/12.6 and SBATCH --gpus-per-node=1
 virtualenv --no-download $SLURM_TMPDIR/env
 source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
@@ -24,3 +25,6 @@ time python -m a0.eval.dataset_evaluation "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.training_data "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.plotting "$CONFIG_FILE" "$TRIAL_NO"
 #time python -m a0.eval.player "$CONFIG_FILE" "$TRIAL_NO"
+
+sbatch drac_job2.sh "$CONFIG_FILE" "$TRIAL_NO"
+echo "AlphaZero training and evaluation job submitted."
