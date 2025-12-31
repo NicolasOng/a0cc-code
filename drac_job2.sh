@@ -26,5 +26,7 @@ time python -m a0.eval.training_data "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.plotting "$CONFIG_FILE" "$TRIAL_NO"
 #time python -m a0.eval.player "$CONFIG_FILE" "$TRIAL_NO"
 
+sleep 342000
+
 sbatch drac_job2.sh "$CONFIG_FILE" "$TRIAL_NO"
 echo "AlphaZero training and evaluation job submitted."

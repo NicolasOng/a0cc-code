@@ -343,6 +343,4 @@ if __name__ == "__main__":
         pass
 
     # Example usage
-    train_alphazero(
-        model_path=None
-    )
+    train_alphazero()
