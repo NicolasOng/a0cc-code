@@ -130,20 +130,20 @@ def train_with_checkpointing(epochs_per_checkpoint: int = 1, states_per_epoch: i
         # add the training data to the checkpointed
         datasetdata.epoch_data.extend(dsd.epoch_data)
 
-    # plot the model performance so far
-    logger.info("Plotting model performance...")
-    plot_model_performance("checkpointed_model", [datasetdata])
-    # save the checkpointed data and model to disk
-    logger.info("Saving checkpointed model and dataset data...")
-    with open(config.training_dir + "datasetdata.pkl", "wb") as f:
-        pickle.dump(datasetdata, f)
-    
-    save_model(config.training_dir + "model_checkpoint.pkl", trained_model)
+        # plot the model performance so far
+        logger.info("Plotting model performance...")
+        plot_model_performance("checkpointed_model", [datasetdata])
+        # save the checkpointed data and model to disk
+        logger.info("Saving checkpointed model and dataset data...")
+        with open(config.training_dir + "datasetdata.pkl", "wb") as f:
+            pickle.dump(datasetdata, f)
+        
+        save_model(config.training_dir + "model_checkpoint.pkl", trained_model)
 
-    # save the current index to disk
-    logger.info("Saving current index...")
-    with open(config.training_dir + "current_index.txt", "w") as f:
-        f.write(str(current_index))
+        # save the current index to disk
+        logger.info("Saving current index...")
+        with open(config.training_dir + "current_index.txt", "w") as f:
+            f.write(str(current_index))
 
 def main(epochs_per_checkpoint: int = 1, states_per_epoch: int = 1000) -> None:
     start_time = time.time()

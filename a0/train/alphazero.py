@@ -251,7 +251,7 @@ def train_alphazero() -> None:
         logger.info("Starting new training from scratch.")
     
     if model_path:
-        model = load_model(config.training_dir + model_path)
+        model = load_model(model_path)
     else:
         model = AlphaZeroModel(
             config.board_size,
