@@ -15,17 +15,28 @@ from config import config
 
 def main():
     human_player = HumanPlayer()
-    human_player = RandomPlayer()
+    #human_player = RandomPlayer()
 
     # other_player = MCTSRolloutPlayer(board_size=config.board_size, num_pieces=config.num_pieces, no_reverse_moves=False)
 
     # other_player = GroundTruthPlayer(mistake_rate=0.1, print_info=True)
 
-    # model_filename = "..."
-    # model = load_model(model_filename)
+    model_filename = "/home/nicolas/Downloads/2026-01-05 output-byrrp/output-byrrp2/training/model_50.pkl"
+    model = load_model(model_filename)
     # other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
-    #other_player = A0Player(board_size=config.board_size, num_pieces=config.num_pieces, model=model, exploit=True)
-    other_player = RandomPlayer()
+    other_player = A0Player(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        model=model,
+        exploit=True,
+        mcts_samples=config.mcts_samples,
+        rollout_type=config.rollout_type,
+        rollout_depth=config.rollout_depth,
+        policy_type=config.policy_type,
+        epsilon=0.0)
+    #other_player = RandomPlayer()
+
+    human_player = other_player
 
     results = play(
         Game(config.board_size, config.num_pieces, True, False, False),
@@ -57,4 +68,4 @@ def main2():
     print(f"Out of 100 games, {not_draws} were not draws.")
 
 if __name__ == "__main__":
-    main2()
+    main()

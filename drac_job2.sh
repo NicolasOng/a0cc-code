@@ -18,6 +18,7 @@ TRIAL_NO="${2}"
 echo "Using configuration file: $CONFIG_FILE"
 echo "Using trial number: $TRIAL_NO"
 
+#time python -m a0.eval.combine "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.train.alphazero "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.generate_datasets "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.dataset_evaluation "$CONFIG_FILE" "$TRIAL_NO"
@@ -26,7 +27,6 @@ time python -m a0.eval.training_data "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.plotting "$CONFIG_FILE" "$TRIAL_NO"
 #time python -m a0.eval.player "$CONFIG_FILE" "$TRIAL_NO"
 
-sleep 342000
+sleep 60 * 60
 
-sbatch drac_job2.sh "$CONFIG_FILE" "$TRIAL_NO"
-echo "AlphaZero training and evaluation job submitted."
+#sbatch drac_job2.sh "$CONFIG_FILE" "$TRIAL_NO"
