@@ -36,13 +36,13 @@ def main():
         epsilon=0.0)
     #other_player = RandomPlayer()
 
-    human_player = other_player
+    #human_player = other_player
 
     results = play(
         Game(config.board_size, config.num_pieces, True, False, False),
         players=[
-            other_player,
-            human_player
+            human_player,
+            other_player
         ],
         turn_limit=80
     )

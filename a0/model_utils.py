@@ -258,7 +258,14 @@ class Policy:
         # rotate if necessary
         if rotate_180:
             self.rotate_policy()
-
+    
+    def set_logit_from_move(self, move: Move, value: float) -> None:
+        '''
+        Sets the logit value for a specific move in the policy distribution.
+        '''
+        index = self.move_to_policy_index(move)
+        self.policy[index] = value
+    
     def set_logits_from_moves(self, moves: list[Move], values: list[float], rotate_180: bool) -> None:
         '''
         Initializes the policy distribution with the given moves and their corresponding values.

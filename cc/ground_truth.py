@@ -19,7 +19,7 @@ class GroundTruth:
         self.cc = Game(board_size=config.board_size,
                         num_pieces=config.num_pieces,
                         repeats_for_draw=-1,
-                        no_reverse_moves=False,
+                        no_reverse_moves=not config.backwards_moves,
                         no_illegal_moves=False)
         self.l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
     
