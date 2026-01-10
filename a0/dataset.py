@@ -51,6 +51,22 @@ class Dataset:
         self.trim(len(self) - test_size, False)
         
         return test_dataset
+    
+    def split_off_first_n(self, n: int, shuffle: bool) -> Dataset:
+        """Split off a dataset of the specified size."""
+        assert n < self.states.shape[0], "Dataset size must be less than the dataset size."
+
+        # shuffle the dataset before splitting
+        if shuffle:
+            self.shuffle()
+        
+        # Create a new dataset for the test set
+        test_dataset = Dataset(self.batch_size)
+        
+        # Split the data
+        test_dataset.set(self.states[:n], self.values[:n], self.policies[:n], self.masks[:n])
+        
+        return test_dataset
 
     def shuffle(self) -> None:
         # shuffle the data

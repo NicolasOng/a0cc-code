@@ -62,8 +62,8 @@ def main():
     total_states = 0
     total_acc = 0
 
-    ins_it = None
-    ins_g = None
+    ins_it = 0
+    ins_g = 0
 
     for it, gdl in gd_gen:
         #logger.info(f"Iteration {it}, number of games: {len(gdl)}")
@@ -109,6 +109,7 @@ def main():
                 p.set_logits(np.array(mcts_policy), rotate_180=current_player == Player.PLAYER_O)
                 # get the gt policy
                 gt_policy = gt.get_1ply_policy_outcomes_list(board, for_model=False)
+                #gt_policy = gt.get_1ply_policy_prob_dist_list(board, for_model=False)
                 gtp = Policy(config.board_size)
                 gtp.set_logits(np.array(gt_policy), rotate_180=False)
 
