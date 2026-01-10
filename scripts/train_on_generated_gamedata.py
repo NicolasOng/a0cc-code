@@ -70,9 +70,9 @@ def get_generated_gamedata_dataset(n: int | None = None, simulated: bool = False
                 legal_move_mask = get_legal_move_mask_from_state(board, for_model=True)
 
                 if simulated:
-                    experience = ExperienceData(jnp.array(board_to_input(board)), simulated_outcome, jnp.zeros_like(experienced_policy), jnp.array(legal_move_mask))
+                    experience = ExperienceData(jnp.array(board_to_input(board)), simulated_outcome, jnp.array(experienced_policy), jnp.array(legal_move_mask))
                 else:
-                    experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, jnp.zeros_like(experienced_policy), jnp.array(legal_move_mask))
+                    experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, jnp.array(experienced_policy), jnp.array(legal_move_mask))
                 
                 # add this to a set
                 boards_set.add(experience)
