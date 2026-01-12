@@ -32,12 +32,48 @@ def main():
             "seen_gt": seen_gt,
             "random_gt": random_gt
         },
-        num_epochs=10,
+        num_epochs=1,
         res_blocks=3
     )
 
     save_model(
         config.training_dir + "/sl_on_gamedata_model",
+        trained_model
+    )
+
+def main2():
+    _, eboards = get_generated_gamedata_dataset(
+        n=None,
+        simulated=False,
+    )
+    eboards = list(eboards)[:100000]
+    random.shuffle(eboards)
+
+    train_eboards = eboards[:80000]
+    test_eboards = eboards[80000:]
+    
+    random_states = get_n_random_states(5000)
+
+    train_ds = create_gtd_from_states(train_eboards)
+    test_ds = create_gtd_from_states(test_eboards)
+
+    seen_gt = create_gtd_from_states(train_eboards[:5000])
+    random_gt = create_gtd_from_states(random_states)
+
+    trained_model = train_and_plot_datasets(
+        fn="sl_on_gamedata_gt",
+        dataset=train_ds,
+        eval_datasets={
+            "test_gt": test_ds,
+            "seen_gt": seen_gt,
+            "random_gt": random_gt
+        },
+        num_epochs=1,
+        res_blocks=3
+    )
+
+    save_model(
+        config.training_dir + "/sl_on_gamedata_gt_model",
         trained_model
     )
 
@@ -48,4 +84,4 @@ if __name__ == "__main__":
         process_name="sl_on_gamedata"
     )
 
-    main()
+    main2()
