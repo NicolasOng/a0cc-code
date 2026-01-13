@@ -17,6 +17,12 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
+def ci_for_binary_data(p: float, total: int):
+    se = np.sqrt(p * (1 - p) / total) if total > 0 else 0
+    ci_lower = max(0, p - 1.96 * se)  # Clamp to [0, 1]
+    ci_upper = min(1, p + 1.96 * se)
+    logger.info(f"{p:.2%} (95% CI: {ci_lower:.2%} - {ci_upper:.2%})")
+
 def get_random_board(gt: GroundTruth, cc: Game) -> Board:
     while True:
         max_rank = gt.get_max_rank()
@@ -63,6 +69,7 @@ def inspect_player_policy(player: PlayerClass, board: Board, gt: GroundTruth, cc
 def inspect_player_policy_on_random_boards(player: PlayerClass, gt: GroundTruth, cc: Game, num_boards: int = 5) -> None:
     num_total = 0
     num_acc = 0
+    acc_list: list[float] = []
     for i in range(num_boards):
         board = get_random_board(gt, cc)
         print(f"Inspecting player policy on random board {i+1}:")
@@ -72,7 +79,14 @@ def inspect_player_policy_on_random_boards(player: PlayerClass, gt: GroundTruth,
         num_total += 1
         if acc:
             num_acc += 1
+        acc_list.append(float(acc))
         logger.info(f"Player policy accuracy on {num_boards} random boards: {num_acc}/{num_total} = {num_acc/num_total:.2%}")
+    mean_acc = np.mean(acc_list)
+    std_acc = np.std(acc_list, ddof=1)  # Sample std
+    se = std_acc / np.sqrt(len(acc_list))
+    ci_lower = mean_acc - 1.96 * se
+    ci_upper = mean_acc + 1.96 * se
+    logger.info(f"Mean accuracy: {mean_acc:.2%} (95% CI: {ci_lower:.2%} - {ci_upper:.2%})")
 
 def inspect_player_policy_on_random_board(player: PlayerClass, gt: GroundTruth, cc: Game):
     board = get_random_board(gt, cc)
@@ -85,6 +99,7 @@ def inspect_player_policy_on_given_boards(player: PlayerClass, gt: GroundTruth, 
     num_boards = len(boards)
     num_total = 0
     num_acc = 0
+    acc_list: list[float] = []
     for i, board in enumerate(boards):
         print(f"Inspecting player policy on given board {i+1}:")
         logger.info("\n" + board.board_view())
@@ -93,7 +108,21 @@ def inspect_player_policy_on_given_boards(player: PlayerClass, gt: GroundTruth, 
         num_total += 1
         if acc:
             num_acc += 1
+        acc_list.append(float(acc))
         logger.info(f"Player policy accuracy on {num_boards} given boards: {num_acc}/{num_total} = {num_acc/num_total:.2%}")
+    mean_acc = np.mean(acc_list)
+    std_acc = np.std(acc_list, ddof=1)  # Sample std
+    se = std_acc / np.sqrt(len(acc_list))
+    ci_lower = mean_acc - 1.96 * se
+    ci_upper = mean_acc + 1.96 * se
+    '''
+    for binary acc lists, can also use:
+    p = num_acc / num_total
+    se = np.sqrt(p * (1 - p) / num_total) if num_total > 0 else 0
+    ci_lower = max(0, p - 1.96 * se)  # Clamp to [0, 1]
+    ci_upper = min(1, p + 1.96 * se)
+    '''
+    logger.info(f"Mean accuracy: {mean_acc:.2%} (95% CI: {ci_lower:.2%} - {ci_upper:.2%})")
 
 def inspect_player_policy_on_seen_boards(player: PlayerClass, gt: GroundTruth, cc: Game, num_boards: int = 5) -> None:
     logger.info("Getting unique boards from training data...")
@@ -130,8 +159,8 @@ def main():
         random_percent=1.0
     )
     #inspect_player_policy_on_random_board(player, gt, cc)
-    #inspect_player_policy_on_random_boards(random_player, gt, cc, num_boards=1000)
-    inspect_player_policy_on_seen_boards(random_player, gt, cc, num_boards=1000)
+    #inspect_player_policy_on_random_boards(random_player, gt, cc, num_boards=10000)
+    inspect_player_policy_on_seen_boards(random_player, gt, cc, num_boards=10000)
 
 if __name__ == "__main__":
     setup_logging(
@@ -140,4 +169,5 @@ if __name__ == "__main__":
         process_name="ipp"
     )
 
+    #ci_for_binary_data(0.7872, 5000)
     main()
