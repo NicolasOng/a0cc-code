@@ -134,7 +134,11 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
     )
     player: A0Player = dill.loads(serialized_player)
     game_data = play(game, [player, player], config.turn_limit)
-    return game_data_to_training_set(game_data), game_data
+
+    if config.use_gt:
+        return game_data_to_gt_training_set(game_data), game_data
+    else:
+        return game_data_to_training_set(game_data), game_data
 
 def self_play(player: A0Player) -> tuple[list[ExperienceData], list[GameData]]:
     '''
@@ -281,7 +285,8 @@ def train_alphazero() -> None:
             rollout_type=config.rollout_type,
             rollout_depth=config.rollout_depth,
             policy_type=config.policy_type,
-            epsilon=config.epsilon
+            epsilon=config.epsilon,
+            dirichlet_epsilon=config.dirichlet_epsilon
         )
 
         # generate training data with self-play

@@ -15,7 +15,7 @@ from a0.mcts.nn import MCTS_NN
 from a0.mcts.gt import MCTS_GT
 
 class A0Player:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False, rollout_type: str = "none", rollout_depth: int = -1, policy_type: str = "policy", epsilon: float = 0.1) -> None:
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False, rollout_type: str = "none", rollout_depth: int = -1, policy_type: str = "policy", epsilon: float = 0.1, dirichlet_epsilon: float = 0.25) -> None:
         self.model = model
         self.game = Game(
             board_size=board_size,
@@ -32,7 +32,8 @@ class A0Player:
         self.rollout_type = rollout_type
         self.rollout_depth = rollout_depth
         self.policy_type = policy_type
-    
+        self.dirichlet_epsilon = dirichlet_epsilon
+
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         '''
         Selects a move using MCTS and returns the selected move along with the policy distribution.
@@ -86,7 +87,7 @@ class A0Player:
             return selected_move, mcts_policy
 
         # apply dirichlet noise for exploration
-        p.add_dirichlet_noise(alpha=None, epsilon=0.25)
+        p.add_dirichlet_noise(alpha=None, epsilon=self.dirichlet_epsilon)
 
         # select a move based on the policy distribution
         # sampling instead of argmax to allow exploration
