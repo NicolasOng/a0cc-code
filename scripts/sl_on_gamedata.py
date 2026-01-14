@@ -18,23 +18,32 @@ def remove_trivial_boards(boards: list[Board], gt: GroundTruth) -> list[Board]:
             non_trivial_boards.append(board)
     return non_trivial_boards
 
-def main():
+def sl_on_gamedata_with_experienced_values(fn: str, train_on: int | None = None, test_on: int | None = None, include_trivial: bool = True):
     ev_dataset, _, eboards_nt = get_generated_gamedata_dataset(
         n=None,
         simulated=False,
+        include_trivial=include_trivial
     )
+
+    if train_on is not None:
+        assert test_on is not None, "If train_on is specified, test_on must also be specified."
+        ev_dataset.trim(train_on + test_on, shuffle=True)
+    
     eboards_nt = list(eboards_nt)[:5000]
     random.shuffle(eboards_nt)
     
     random_states = get_n_random_states(5000)
 
-    test_ds = ev_dataset.split_off_test(10000, shuffle=True)
+    test_size = 10000
+    if test_on is not None:
+        test_size = test_on
+    test_ds = ev_dataset.split_off_test(test_size, shuffle=True)
 
     seen_gt = create_gtd_from_states(eboards_nt)
     random_gt = create_gtd_from_states(random_states)
 
     trained_model = train_and_plot_datasets(
-        fn="sl_on_gamedata",
+        fn=fn,
         dataset=ev_dataset,
         eval_datasets={
             "test": test_ds,
@@ -46,7 +55,7 @@ def main():
     )
 
     save_model(
-        config.training_dir + "/sl_on_gamedata_model",
+        config.training_dir + f"/{fn}_model",
         trained_model
     )
 
@@ -93,4 +102,6 @@ if __name__ == "__main__":
         process_name="sl_on_gamedata"
     )
 
-    main2()
+    sl_on_gamedata_with_experienced_values(fn="sl_on_gamedata_10k", train_on=10000, test_on=5000)
+    sl_on_gamedata_with_experienced_values(fn="sl_on_gamedata_100k", train_on=100000, test_on=5000)
+    sl_on_gamedata_with_experienced_values(fn="sl_on_gamedata__no_trivial", include_trivial=False)
