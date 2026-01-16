@@ -30,6 +30,7 @@ class Config:
     rollout_depth: int
     policy_type: str
     epsilon: float
+    dirichlet_epsilon: float
 
     num_trials: int
 
@@ -43,6 +44,8 @@ class Config:
 
     coprime_stepping_a: int
     coprime_stepping_b: int
+
+    use_gt: bool
 
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
