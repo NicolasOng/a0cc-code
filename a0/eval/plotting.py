@@ -59,6 +59,26 @@ def plot_given(title: str, series: list[tuple[str, list[int], list[float]]], x_l
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.close()
 
+def plot_given_groups(title: str, groups: list[list[tuple[str, list[int], list[float]]]], x_label: str, y_label: str, fn: str, use_log_y: bool = False) -> None:
+    plt.figure(figsize=(16, 9))
+    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']  # Add more if needed
+    line_styles = ['-', '--', '-.', ':']  # Solid, dashed, dash-dot, dotted
+    for group_idx, group in enumerate(groups):
+        color = colors[group_idx % len(colors)]
+        for series_idx, (label, x_values, y_values) in enumerate(group):
+            line_style = line_styles[series_idx % len(line_styles)]
+            plt.plot(x_values, y_values, label=label, color=color, linestyle=line_style)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, which='both')
+    if use_log_y:
+        plt.yscale('log')
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}{fn}.png")
+    plt.close()
+
 def plot_stacked(title: str, x: list[int], series: list[tuple[str, list[float]]], x_label: str, y_label: str, fn: str) -> None:
     plt.figure(figsize=(16, 9))
     plt.stackplot(x, *[y for _, y in series],
