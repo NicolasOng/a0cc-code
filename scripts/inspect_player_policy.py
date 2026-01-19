@@ -159,7 +159,7 @@ def main():
         random_percent=1.0
     )
     #inspect_player_policy_on_random_board(player, gt, cc)
-    #inspect_player_policy_on_random_boards(random_player, gt, cc, num_boards=10000)
+    inspect_player_policy_on_random_boards(random_player, gt, cc, num_boards=10000)
     inspect_player_policy_on_seen_boards(random_player, gt, cc, num_boards=10000)
 
 if __name__ == "__main__":
