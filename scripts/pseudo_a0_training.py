@@ -47,7 +47,7 @@ def psuedo_train_alphazero(use_gt: bool = False) -> None:
         training=config.model_training,
         rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
     )
-    save_model(config.training_dir + f'/psuedo_model_{0}.pkl', model)
+    save_model(config.training_dir + f'/model_{0}.pkl', model)
     
     experience_buffer = ExperienceBuffer(
         config.replay_buffer_size
@@ -85,7 +85,7 @@ def psuedo_train_alphazero(use_gt: bool = False) -> None:
         # plot, log, and save the model performance metrics in this iteration's training
         plot_model_performance(f"psuedo_training_plots/iteration_{i + 1}", [train_data])
         save_dataset_data(
-            f"{config.training_dir}/psuedo_iteration_stats_{i + 1}.pkl",
+            f"{config.training_dir}/iteration_stats_{i + 1}.pkl",
             train_data
         )
         total, value_loss, policy_loss, value_accuracy, policy_accuracy = stats_from_dataset_data(train_data)
@@ -93,7 +93,7 @@ def psuedo_train_alphazero(use_gt: bool = False) -> None:
 
         # save the model after each iteration
         if config.training_dir:
-            save_model(config.training_dir + f'psuedo_model_{i + 1}.pkl', model)
+            save_model(config.training_dir + f'model_{i + 1}.pkl', model)
     
     # after all iterations, plot all the training data
     plot_model_performance("psuedo_training_plots/full_a0", train_datas)
