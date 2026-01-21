@@ -59,16 +59,23 @@ def sl_on_gamedata_with_experienced_values(fn: str, train_on: int | None = None,
         trained_model
     )
 
-def main2():
+def sl_on_gamedata_with_gt_values(fn: str, train_on: int | None = None, test_on: int | None = None, include_trivial: bool = True):
     _, eboards, _ = get_generated_gamedata_dataset(
         n=None,
         simulated=False,
+        include_trivial=include_trivial
     )
-    eboards = list(eboards)[:100000]
+
+    if train_on is None:
+        train_on = len(eboards) - 5000
+    if test_on is None:
+        test_on = 5000
+    
+    eboards = list(eboards)[:train_on + test_on]
     random.shuffle(eboards)
 
-    train_eboards = eboards[:90000]
-    test_eboards = eboards[90000:]
+    train_eboards = eboards[:train_on]
+    test_eboards = eboards[train_on:]
     
     random_states = get_n_random_states(5000)
 
@@ -78,8 +85,12 @@ def main2():
     seen_gt = create_gtd_from_states(remove_trivial_boards(train_eboards[:5000], GroundTruth()))
     random_gt = create_gtd_from_states(random_states)
 
+    seen_gt.balance_values()
+    test_ds.balance_values()
+    random_gt.print_distribution()
+
     trained_model = train_and_plot_datasets(
-        fn="sl_on_gamedata_gt",
+        fn=fn,
         dataset=train_ds,
         eval_datasets={
             "test_gt": test_ds,
@@ -91,7 +102,7 @@ def main2():
     )
 
     save_model(
-        config.training_dir + "/sl_on_gamedata_gt_model",
+        config.training_dir + f"/{fn}_model",
         trained_model
     )
 
@@ -102,6 +113,4 @@ if __name__ == "__main__":
         process_name="sl_on_gamedata"
     )
 
-    sl_on_gamedata_with_experienced_values(fn="sl_on_gamedata_10k", train_on=10000, test_on=5000)
-    sl_on_gamedata_with_experienced_values(fn="sl_on_gamedata_100k", train_on=100000, test_on=5000)
-    sl_on_gamedata_with_experienced_values(fn="sl_on_gamedata__no_trivial", include_trivial=False)
+    sl_on_gamedata_with_gt_values(fn="sl_on_gamedata_gt_full")
