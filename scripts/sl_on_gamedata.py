@@ -50,7 +50,7 @@ def sl_on_gamedata_with_experienced_values(fn: str, train_on: int | None = None,
             "seen_gt": seen_gt,
             "random_gt": random_gt
         },
-        num_epochs=1,
+        num_epochs=10,
         res_blocks=3
     )
 
@@ -87,7 +87,7 @@ def sl_on_gamedata_with_gt_values(fn: str, train_on: int | None = None, test_on:
 
     seen_gt.balance_values()
     test_ds.balance_values()
-    random_gt.print_distribution()
+    random_gt.print_distribution() # TODO - instead of removing T, balance them.....
 
     trained_model = train_and_plot_datasets(
         fn=fn,
@@ -97,7 +97,7 @@ def sl_on_gamedata_with_gt_values(fn: str, train_on: int | None = None, test_on:
             "seen_gt": seen_gt,
             "random_gt": random_gt
         },
-        num_epochs=1,
+        num_epochs=10,
         res_blocks=3
     )
 
