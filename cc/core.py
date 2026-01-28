@@ -647,6 +647,16 @@ class Game:
         }
 
         self.initialize_game(num_pieces)
+    
+    def clear_game(self) -> None:
+        '''
+        Clears the game state and resets the board.
+        '''
+        self.board.clear_board()
+        self.board.current_player = Player.PLAYER_X
+        self.board_history = []
+        self.end = False
+        self.winner = None
 
     def generate_moves_for_given_board(self, board: Board) -> list[Move]:
         '''
