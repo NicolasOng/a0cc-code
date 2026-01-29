@@ -8,6 +8,8 @@ import os
 import pickle
 import dill
 
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+
 from a0_new.protocols import A0Game, A0Player, A0Model, A0State, A0Action
 
 import numpy as np

@@ -6,33 +6,42 @@ from __future__ import annotations
 
 from typing import Optional, Any
 
-from a0_new.protocols import A0Game, A0State, A0Action, Player
+from a0_new.protocols.game import A0Game, A0State, A0Action, Player
 from cc.core import Game, Board, Move, Player as CCPlayer
 
-class CC_Action(A0Action):
+class CCAction(A0Action):
     def __init__(self, start_x: int, start_y: int, end_x: int, end_y: int):
         self.move = Move(start_x, start_y, end_x, end_y)
 
-class CC_State(A0State[CC_Action]):
+class CCState(A0State[CCAction]):
     def __init__(self, board_size: int, home_size: int):
         self.board: Board = Board(board_size, home_size)
-        self._action = CC_Action(0,0,0,0)
+        self._action = CCAction(0,0,0,0)
+    
+    def __str__(self) -> str:
+        board_str = self.board.board_view()
+        current_player_str = f"Current player: {self.board.current_player}"
+        return f"{board_str}\n{current_player_str}"
     
     def init_from_board(self, board: Board) -> None:
         self.board = board
 
-    def clone(self) -> CC_State:
-        new_state = CC_State(len(self.board.board), self.board.home_size)
+    def clone(self) -> CCState:
+        new_state = CCState(len(self.board.board), self.board.home_size)
         new_state.board.copy_board(self.board)
         return new_state
     
-    def apply_action(self, action: CC_Action) -> None:
+    def apply_action(self, action: CCAction) -> None:
         self.board.apply_move(action.move)
     
-    def undo_action(self, action: CC_Action) -> None:
+    def undo_action(self, action: CCAction) -> None:
         self.board.undo_move(action.move)
+    
+    def get_current_player(self) -> Player:
+        current = self.board.current_player
+        return Player.X if current == CCPlayer.PLAYER_X else Player.O
 
-class CC_Game(A0Game[CC_State, CC_Action]):
+class CCGame(A0Game[CCState, CCAction]):
     def __init__(self, board_size: int, num_pieces: int, side_moves: bool, backwards_moves: bool, num_repeats_to_draw: int):
         self.board_size = board_size
         self.num_pieces = num_pieces
@@ -53,7 +62,7 @@ class CC_Game(A0Game[CC_State, CC_Action]):
         self.game.clear_game()
         self.game.initialize_game(self.num_pieces)
     
-    def step(self, action: CC_Action) -> tuple[CC_State, float, bool, bool, Any]:
+    def step(self, action: CCAction) -> tuple[CCState, float, bool, bool, Any]:
         assert self.game.end == False, "Cannot take a step in a finished game."
         # take the action
         self.game.end_turn(action.move)
@@ -61,13 +70,13 @@ class CC_Game(A0Game[CC_State, CC_Action]):
         next_state, reward, terminated, truncated, info = self.get_info()
         return next_state, reward, terminated, truncated, info
     
-    def get_info(self) -> tuple[CC_State, float, bool, bool, Any]:
+    def get_info(self) -> tuple[CCState, float, bool, bool, Any]:
         '''
         Gets the same data as the step method, but without changing the state.
         '''
         # get the next state
         # clone so it's independent
-        next_state = CC_State(self.board_size, self.game.board.home_size)
+        next_state = CCState(self.board_size, self.game.board.home_size)
         next_state.init_from_board(self.game.board)
         next_state = next_state.clone()
         # get reward
@@ -80,18 +89,18 @@ class CC_Game(A0Game[CC_State, CC_Action]):
         info = None
         return next_state, reward, terminated, truncated, info
     
-    def get_actions(self, state: CC_State | None) -> list[CC_Action]:
+    def get_actions(self, state: CCState | None) -> list[CCAction]:
         moves = self.game.generate_moves_for_given_board(state.board if state is not None else self.game.board)
-        actions = [CC_Action(move.start.x, move.start.y, move.end.x, move.end.y) for move in moves]
+        actions = [CCAction(move.start.x, move.start.y, move.end.x, move.end.y) for move in moves]
         return actions
     
-    def is_legal(self, state: CC_State) -> bool:
+    def is_legal(self, state: CCState) -> bool:
         return self.game.legal(state.board)
     
-    def is_terminal(self, state: CC_State) -> bool:
+    def is_terminal(self, state: CCState) -> bool:
         return self.game.get_done(state.board)
     
-    def get_winner(self, state: CC_State) -> Optional[Player]:
+    def get_winner(self, state: CCState) -> Optional[Player]:
         winner = self.game.get_winner(state.board)
         if winner is None:
             return None
