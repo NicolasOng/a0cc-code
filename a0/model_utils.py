@@ -175,6 +175,10 @@ class Policy:
         self.policy_flip_h_mapping = create_horizontally_flipped_policy_mapping(board_size)
         self.policy_flip_v_mapping = create_vertically_flipped_policy_mapping(board_size)
     
+    def clear(self) -> None:
+        self.policy = np.zeros((self.board_size ** 4), dtype=np.float32)
+        self.mask = np.full((self.board_size ** 4), False, dtype=np.bool)
+    
     def get_policy_list(self) -> list[float]:
         return self.policy.tolist()
     

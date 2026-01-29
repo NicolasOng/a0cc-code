@@ -11,7 +11,7 @@ class Policy:
     A simple policy class to hold action values,
     and perform operations on them.
     '''
-    def __init__(self, actions: list[A0Action], action_values: list[float]) -> None:
+    def __init__(self, actions: Sequence[A0Action], action_values: list[float]) -> None:
         self.actions = actions
         self.action_values = action_values
     
