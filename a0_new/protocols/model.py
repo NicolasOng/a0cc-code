@@ -18,6 +18,7 @@ class RawModel(Protocol):
     def evaluate(self, states: NDArray[np.float32]) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
         '''
         Given a batch of raw states, returns the predicted values and policy logits.
+        First dimension of states must be the batch dimension.
         '''
         ...
 
@@ -26,19 +27,15 @@ class NNModel(RawModel, Protocol):
     Protocol for a trainable model with weights.
     To train properly, it should inherit or contain a Flax nnx.Module.
     '''
-    def get_nn_model(self, training: bool) -> nnx.Module:
+    def get_nn_model(self) -> nnx.Module:
         '''
         Returns the underlying neural network model.
-        If training is True, it should return the model in training mode (e.g. batchnorm layers).
-        If training is False, it should return the model in inference mode.
         '''
         ...
     
-    def set_nn_model(self, model: nnx.Module, training: bool) -> None:
+    def set_nn_model(self, model: nnx.Module) -> None:
         '''
         Sets the underlying neural network model.
-        If training is True, it should set the model in training mode (e.g. batchnorm layers).
-        If training is False, it should set the model in inference mode.
         '''
         ...
 
