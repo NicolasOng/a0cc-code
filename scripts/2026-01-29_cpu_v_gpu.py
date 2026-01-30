@@ -39,12 +39,12 @@ def cpu_process(serialized_model: bytes, states: NDArray[np.float32]) -> None:
     end_time = time.time()
     print(f'CPU Process: Evaluated {batch_size} states in {end_time - start_time:.4f} seconds.')
 
-def cpu_test(n: int = 100, num_processes: int = 4) -> None:
+def cpu_test(n: int, num_processes: int) -> None:
     start_time = time.time()
     model = create_ccnn_model()
     serialized_model = dill.dumps(model)
 
-    num_states = 100
+    num_states = n
     board_size = 5
     states = np.random.rand(num_states, board_size, board_size, 2).astype(np.float32)
 
@@ -87,7 +87,7 @@ def gpu_test(n: int = 100, num_clients: int = 4) -> None:
     server_process = Process(target=gpu_server_process, args=(serialized_model, inference_queue, response_queues, num_clients))
     server_process.start()
 
-    num_states = 100
+    num_states = n
     board_size = 5
     states = np.random.rand(num_states, board_size, board_size, 2).astype(np.float32)
 
