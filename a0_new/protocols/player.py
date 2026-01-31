@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Protocol, TypeVar
 
 from a0_new.protocols.model import FullModel
-from a0_new.protocols.game import T_state, T_action
+from a0_new.protocols.game import T_game, T_state, T_action
 
 class PlayerProtocol(Protocol[T_state, T_action]):
     '''
@@ -18,12 +18,13 @@ class PlayerProtocol(Protocol[T_state, T_action]):
         ...
 
 T_model = TypeVar("T_model", bound=FullModel[Any, Any])
-class A0Player(PlayerProtocol[Any, Any], Protocol[T_model, T_state, T_action]):
+class A0Player(PlayerProtocol[Any, Any], Protocol[T_model, T_game, T_state, T_action]):
     '''
     Protocol for a player to be used with AlphaZero training.
     Methods are needed for self-play and training the model.
     '''
     _state: T_state
+    game: T_game
     def process_state(self, state: T_state, legal_actions: list[T_action]) -> tuple[T_action, float, Any]:
         '''
         Given a state and a list of legal actions, selects an action to take.
@@ -42,3 +43,10 @@ class A0Player(PlayerProtocol[Any, Any], Protocol[T_model, T_state, T_action]):
         Sets the player's model.
         '''
         ...
+
+    def clone(self) -> A0Player[T_model, T_game, T_state, T_action]:
+        '''
+        Returns a deep copy of the player.
+        '''
+        ...
+    

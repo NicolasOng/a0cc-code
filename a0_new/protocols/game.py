@@ -106,3 +106,5 @@ class A0Game(Protocol[T_state, T_action]):
         Returns the player to move in the current state.
         '''
         ...
+
+T_game = TypeVar("T_game", bound=A0Game[Any, Any])

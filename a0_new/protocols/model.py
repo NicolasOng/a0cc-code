@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from a0_new.protocols.game import T_state, T_action
 
@@ -22,18 +22,19 @@ class RawModel(Protocol):
         '''
         ...
 
-class NNModel(RawModel, Protocol):
+T_nnx = TypeVar("T_nnx", bound=nnx.Module)
+class NNModel(RawModel, Protocol[T_nnx]):
     '''
     Protocol for a trainable model with weights.
     To train properly, it should inherit or contain a Flax nnx.Module.
     '''
-    def get_nn_model(self) -> nnx.Module:
+    def get_nn_model(self) -> T_nnx:
         '''
         Returns the underlying neural network model.
         '''
         ...
     
-    def set_nn_model(self, model: nnx.Module) -> None:
+    def set_nn_model(self, model: T_nnx) -> None:
         '''
         Sets the underlying neural network model.
         '''
@@ -84,7 +85,7 @@ class FullModelOnRaw(FullModel[T_state, T_action], Protocol[T_state, T_action]):
         '''
         ...
 
-class A0Model(NNModel, FullModelOnRaw[T_state, T_action], Protocol[T_state, T_action]):
+class A0Model(NNModel[T_nnx], FullModelOnRaw[T_state, T_action], Protocol[T_nnx, T_state, T_action]):
     '''
     Protocol for a model to be used with AlphaZero training.
     Must implement both NNModel and FullModel protocols.
