@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
 
-module load python/3.10
+module load python/3.11
 # for GPU: module load cuda/12.6 and SBATCH --gpus-per-node=1
 virtualenv --no-download $SLURM_TMPDIR/env
 source $SLURM_TMPDIR/env/bin/activate

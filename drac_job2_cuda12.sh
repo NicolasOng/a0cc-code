@@ -5,7 +5,7 @@
 #SBATCH --mem-per-cpu=4G
 #SBATCH --gpus-per-node=1
 
-module load cuda/12.6 cudnn/9.10 python/3.10
+module load cuda/12.6 cudnn/9.10 python/3.11
 virtualenv --no-download $SLURM_TMPDIR/env
 source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
