@@ -89,7 +89,7 @@ class CCGame(A0Game[CCState, CCAction]):
         info = None
         return next_state, reward, terminated, truncated, info
     
-    def get_actions(self, state: CCState | None) -> list[CCAction]:
+    def get_actions(self, state: CCState | None = None) -> list[CCAction]:
         moves = self.game.generate_moves_for_given_board(state.board if state is not None else self.game.board)
         actions = [CCAction(move.start.x, move.start.y, move.end.x, move.end.y) for move in moves]
         return actions
@@ -100,8 +100,8 @@ class CCGame(A0Game[CCState, CCAction]):
     def is_terminal(self, state: CCState) -> bool:
         return self.game.get_done(state.board)
     
-    def get_winner(self, state: CCState) -> Optional[Player]:
-        winner = self.game.get_winner(state.board)
+    def get_winner(self, state: CCState | None = None) -> Optional[Player]:
+        winner = self.game.winner if state is None else self.game.get_winner(state.board)
         if winner is None:
             return None
         return Player.X if winner == CCPlayer.PLAYER_X else Player.O
@@ -109,3 +109,9 @@ class CCGame(A0Game[CCState, CCAction]):
     def get_current_player(self) -> Player:
         current = self.game.board.current_player
         return Player.X if current == CCPlayer.PLAYER_X else Player.O
+    
+    def get_current_state(self) -> CCState:
+        state = CCState(self.board_size, self.game.board.home_size)
+        state.init_from_board(self.game.board)
+        state = state.clone()
+        return state

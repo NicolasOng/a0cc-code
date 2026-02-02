@@ -76,7 +76,7 @@ class A0Game(Protocol[T_state, T_action]):
         '''
         ...
     
-    def get_actions(self, state: T_state | None) -> list[T_action]:
+    def get_actions(self, state: T_state | None = None) -> list[T_action]:
         '''
         Given a state, returns a list of legal actions.
         If state is None, returns legal actions for the current game state.
@@ -95,15 +95,22 @@ class A0Game(Protocol[T_state, T_action]):
         '''
         ...
     
-    def get_winner(self, state: T_state) -> Optional[Player]:
+    def get_winner(self, state: T_state | None = None) -> Optional[Player]:
         '''
         Given a terminal state, returns the winner (player index), or None for a draw.
+        If state is None, uses the results of the current game.
         '''
         ...
     
     def get_current_player(self) -> Player:
         '''
         Returns the player to move in the current state.
+        '''
+        ...
+    
+    def get_current_state(self) -> T_state:
+        '''
+        Returns the current state of the game.
         '''
         ...
 

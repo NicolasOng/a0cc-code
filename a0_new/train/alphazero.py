@@ -19,15 +19,15 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def train(player: A0Player[A0Model[Any, Any, Any], Any, Any, Any], iteration: int) -> None:
+def train(player: A0Player[A0Model[Any, Any, Any], Any, Any], iteration: int) -> None:
     pass
 
-def save_iteration_data(player: A0Player[A0Model[Any, Any, Any], Any, Any, Any], iteration: int) -> None:
+def save_iteration_data(player: A0Player[A0Model[Any, Any, Any], Any, Any], iteration: int) -> None:
     pass
 
 def alphazero(
         game: A0Game[Any, Any],
-        player: A0Player[Any, Any, Any, Any],
+        player: A0Player[Any, Any, Any],
         starting_iteration: int
     ) -> None:
     # loading/saving the initial model should be done outside this function
