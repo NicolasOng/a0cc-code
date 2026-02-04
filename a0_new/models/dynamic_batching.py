@@ -100,6 +100,7 @@ class DynamicBatchingModelServer():
             # TODO: also need to handle the case where requests recieved don't fill the batch before timeout.
             # might be best to pad with dummy requests if always running the same batch size is important for performance.
             # TODO: multiprocessing.Array might be better for sharing data between processes than Queue....
+            # TODO: what if shutdown signal is sent here?
             start_time = time.time()
             while self.req_list_batch_size(batch_requests) < self.max_batch_size:
                 try:
