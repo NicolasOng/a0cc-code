@@ -10,8 +10,11 @@ from a0_new.protocols.model import A0Model, RawModel
 from a0_new.protocols.game import A0Game
 from a0_new.protocols.player import A0Player
 
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Array, Event
+from multiprocessing.sharedctypes import SynchronizedArray
+from multiprocessing.synchronize import Event as EventType
 
+import pickle
 import dill
 
 import numpy as np
@@ -23,6 +26,8 @@ if TYPE_CHECKING:
     from multiprocessing.queues import Queue
 
 from a0_new.models.dynamic_batching import DynamicBatchingModelClient, InferenceRequest, InferenceResponse, DynamicBatchingModelServer
+from a0_new.experience_buffer import ExperienceBuffer, ExperienceData
+from a0_new.play import play, GameData
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -44,39 +49,50 @@ def _gpu_server_process(
 
 def _play_process(
         game: A0Game[Any, Any],
-        player: A0Player[A0Model[Any, Any, Any], Any, Any, Any],
+        player: A0Player[A0Model[Any, Any, Any], Any, Any],
+        state_counter: SynchronizedArray[int],
+        result_queue: Queue[Any],
+        shutdown_event: EventType
     ) -> None:
     # TODO: implement self-play logic
     pass
 
 def self_play(
         game: A0Game[Any, Any],
-        player: A0Player[A0Model[Any, Any, Any], Any, Any, Any],
+        player: A0Player[A0Model[Any, Any, Any], Any, Any],
+        experience_buffer: ExperienceBuffer,
         iteration: int
     ) -> None:
+    # gamedata list
+    gamedata_list: list[GameData] = []
+
     # get and serialize the model the player is using
     player_model = player.get_model()
     serialized_player_model = dill.dumps(player_model)
 
-    # get the number of clients to use, create the queues
-    num_clients = 4 # TODO: use config
-    inference_queue: Queue[InferenceRequest] = Queue(maxsize=num_clients)
+    # get the number of clients to use, create the queues and shared variables
+    num_workers = 4 # TODO: use config
+    inference_queue: Queue[InferenceRequest] = Queue(maxsize=num_workers)
     response_queues: dict[int, Queue[InferenceResponse]] = {
-        i: Queue(maxsize=1) for i in range(num_clients)
+        i: Queue(maxsize=1) for i in range(num_workers)
     }
+    result_queue: Queue[tuple[GameData, list[ExperienceData]]] = Queue(maxsize=num_workers)
+    state_counter: SynchronizedArray[int] = Array('i', [0] * num_workers)
+    shutdown_event = Event()
 
     # start the GPU server process,
     # which will use the given player model for inference
     server_process = Process(
         target=_gpu_server_process,
-        args=(serialized_player_model, inference_queue, response_queues, num_clients)
+        args=(serialized_player_model, inference_queue, response_queues, num_workers)
     )
     server_process.start()
 
     # start the play processes,
     # which will send inference requests to the server
+    # and game results back to the main process
     processes: list[Process] = []
-    for i in range(num_clients):
+    for i in range(num_workers):
         res_q = response_queues[i]
         # first, create the raw model client for the player
         client = DynamicBatchingModelClient(
@@ -91,15 +107,36 @@ def self_play(
         # start the play process with the player using the client model
         p = Process(
             target=_play_process,
-            args=(game, new_player)
+            args=(game, new_player, state_counter, result_queue, shutdown_event)
         )
         p.start()
         processes.append(p)
     
-    # TODO: keep track of how many states have been seen so far.
-    # shutdown the processes when enough states have been played.
-    # maybe a shared counter variable or shutdown signal...
-
+    # process results and coordinate shutdown
+    while True:
+        # process self-play results as they come in,
+        # add to gamedata list and experience buffer
+        gamedata, experience_data_list = result_queue.get()
+        gamedata_list.append(gamedata)
+        for experience_data in experience_data_list:
+            experience_buffer.add(experience_data)
+        
+        # check for shutdown condition
+        with state_counter.get_lock():
+            # get the total number of states played so far
+            total_states = sum(list(state_counter))
+            # if enough, set the shutdown event
+            if total_states >= config.training_samples:
+                shutdown_event.set()
+            # log state counts
+            for count in state_counter:
+                # TODO: log each process's state count
+                pass
+            # break the loop if shutdown event is set
+            if shutdown_event.is_set():
+                break
+    
+    # wait for all play processes to finish
     for p in processes:
         p.join()
     
@@ -110,4 +147,14 @@ def self_play(
     )
     inference_queue.put(shutdown_request)
 
+    # save the game data to disk
+    if config.training_dir:
+        with open(config.training_dir + f"gamedata_{iteration + 1}.pkl", 'wb') as f:
+            pickle.dump(gamedata_list, f)
+    
+    # put the original model back to the player
+    original_model: A0Model[Any, Any, Any] = dill.loads(serialized_player_model)
+    player.set_model(original_model)
+
+    # wait for the server process to finish
     server_process.join()

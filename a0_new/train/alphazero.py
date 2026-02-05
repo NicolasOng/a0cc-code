@@ -14,15 +14,14 @@ import multiprocessing
 
 from a0_new.train.self_play.dynamic_batching import self_play
 
+from a0_new.experience_buffer import ExperienceBuffer, ExperienceData
+
 from config import config
 
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def train(player: A0Player[A0Model[Any, Any, Any], Any, Any], iteration: int) -> None:
-    pass
-
-def save_iteration_data(player: A0Player[A0Model[Any, Any, Any], Any, Any], iteration: int) -> None:
+def train(player: A0Player[A0Model[Any, Any, Any], Any, Any], experience_buffer: ExperienceBuffer, iteration: int) -> None:
     pass
 
 def alphazero(
@@ -31,20 +30,17 @@ def alphazero(
         starting_iteration: int
     ) -> None:
     # loading/saving the initial model should be done outside this function
+    experience_buffer = ExperienceBuffer(config.replay_buffer_size)
 
     for iteration in range(starting_iteration, config.training_iterations):
         logger.info(f"Starting training iteration {iteration}")
 
-        # self-play to generate training data
-        self_play(game, player, iteration)
+        # self-play to generate + save data
+        self_play(game, player, experience_buffer, iteration)
 
-        # train the model on the generated data
-        train(player, iteration)
-
-        # save the model + other data
-        save_iteration_data(player, iteration)
-
-
+        # train the model on the generated data + save model/data
+        train(player, experience_buffer, iteration)
+    
 if __name__ == "__main__":
     setup_logging(
         level=20,

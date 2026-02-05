@@ -82,6 +82,15 @@ class CCBaselineSolver:
         # get the raw result from the solve data (this is in Player X's perspective)
         solve_data_outcome = self.board_lookup(board)
 
+        if solve_data_outcome == 3:
+            # instead of None, make it a win for the current player,
+            # as the other player made an illegal move
+            # aligns with cc/core/Game.cpp logic
+            if board.current_player == Player.PLAYER_X:
+                return Player.PLAYER_X
+            else:
+                return Player.PLAYER_O
+
         # convert the result to a Player
         if solve_data_outcome == 0 or solve_data_outcome == 3: # Draw or Illegal
             sd_winner = None
