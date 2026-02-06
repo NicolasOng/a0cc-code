@@ -3,26 +3,33 @@ import time
 from a0_new.protocols.game import A0Game, A0State, A0Action, T_state, T_action, Player
 from a0_new.protocols.player import PlayerProtocol
 
-from typing import Optional, Any, Sequence
+from typing import Optional, Any, Protocol, Sequence
 
 from a0_new.policy import Policy
 
 import logging
 logger = logging.getLogger(__name__)
 
+class PlayStopSignal(Protocol):
+    '''
+    Protocol for a stop signal to be used during gameplay.
+    The signal should be thread-safe and allow checking if a stop has been requested.
+    '''
+    def is_set(self) -> bool:
+        ...
 class TurnData:
     def __init__(self,
                  state: A0State[Any],
                  actions: Sequence[A0Action],
                  action: A0Action,
                  value: float,
-                 policy: Policy
+                 policy: Policy[Any]
                 ):
         self.state: A0State[Any] = state
         self.actions: Sequence[A0Action] = actions
         self.action: A0Action = action
         self.value: float = value
-        self.policy: Policy = policy
+        self.policy: Policy[Any] = policy
 
 class GameData:
     def __init__(self, game: A0Game[Any, Any], turn_limit: Optional[int] = None):
@@ -37,7 +44,8 @@ class GameData:
 def play(
         game: A0Game[T_state, T_action],
         players: list[PlayerProtocol[T_state, T_action]],
-        turn_limit: Optional[int] = None
+        turn_limit: Optional[int] = None,
+        stop_signal: Optional[PlayStopSignal] = None
     ) -> GameData:
     '''
     Plays the given game with the given players.
@@ -57,7 +65,11 @@ def play(
     game.reset()
     next_state = game.get_current_state()
 
-    while not ended and (turn_limit is None or turn < turn_limit):
+    while (
+            not ended and
+            (turn_limit is None or turn < turn_limit) and
+            (stop_signal is None or not stop_signal.is_set())
+        ):
         player = players[turn % len(players)]
 
         state = next_state

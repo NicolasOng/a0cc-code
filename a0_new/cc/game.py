@@ -41,6 +41,10 @@ class CCState(A0State[CCAction]):
         current = self.board.current_player
         return Player.X if current == CCPlayer.PLAYER_X else Player.O
 
+    def child_board_to_action(self, child_state: CCState) -> CCAction:
+        move = self.board.child_board_to_move(child_state.board)
+        return CCAction(move.start.x, move.start.y, move.end.x, move.end.y)
+
 class CCGame(A0Game[CCState, CCAction]):
     def __init__(self, board_size: int, num_pieces: int, side_moves: bool, backwards_moves: bool, num_repeats_to_draw: int):
         self.board_size = board_size

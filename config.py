@@ -47,6 +47,8 @@ class Config:
 
     use_gt: bool
 
+    num_workers: int
+
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
         Initialize the configuration from a JSON file.
@@ -63,6 +65,7 @@ class Config:
         - turn_limit: int or None, limit on the number of turns in a game
         - replay_buffer_size: int, size of the replay buffer
         - training_batch_size: int, batch size for training
+        - num_workers: int, number of worker threads
         '''
         self.path = config_fn
 

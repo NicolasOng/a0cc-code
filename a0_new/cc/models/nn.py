@@ -14,7 +14,7 @@ from config import config
 def inference_step(model: AlphaZeroModel, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
     return model(x, train=False)
 
-class CCNNModel(NNModel):
+class CCNNModel(NNModel[AlphaZeroModel]):
     def __init__(self):
         self.model: AlphaZeroModel = AlphaZeroModel(
             board_size=config.board_size,
@@ -25,12 +25,12 @@ class CCNNModel(NNModel):
     def evaluate(self, states: NDArray[np.float32]) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
         # converts to and from jax arrays
         # more efficient methods should just use the Flax model directly
-        values, policies = inference_step(self.model, jnp.asarray(states, dtype=jnp.float32))
+        jnp_states = jnp.asarray(states, dtype=jnp.float32)
+        values, policies = inference_step(self.model, jnp_states)
         return np.array(values, dtype=np.float32), np.array(policies, dtype=np.float32)
     
     def get_nn_model(self) -> AlphaZeroModel:
         return self.model
     
-    def set_nn_model(self, model: nnx.Module) -> None:
-        # TODO: NNModel protocol should be conditioned on a TypeVar model.
-        self.model: AlphaZeroModel = model
+    def set_nn_model(self, model: AlphaZeroModel) -> None:
+        self.model = model

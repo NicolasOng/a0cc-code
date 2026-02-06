@@ -2,8 +2,9 @@ from typing import Generic
 
 from a0_new.protocols.game import A0Game, T_state, T_action
 from a0_new.protocols.model import FullModel
+from a0_new.protocols.mcts import MCTSProblem
 
-class MCTS_Model(Generic[T_state, T_action]):
+class GenericMCTSProblem(MCTSProblem[T_state], Generic[T_state, T_action]):
     def __init__(self,
                  initial_state: T_state,
                  game: A0Game[T_state, T_action],

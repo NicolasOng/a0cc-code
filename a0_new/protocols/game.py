@@ -47,6 +47,13 @@ class A0State(Protocol[T_action]):
         Returns the player to move in this state.
         '''
         ...
+    
+    def child_board_to_action(self, child_state: Self) -> T_action:
+        '''
+        Given a child board representation, returns the corresponding action.
+        Used in MCTS to map child states to actions.
+        '''
+        ...
 
 T_state = TypeVar("T_state", bound=A0State[Any])
 class A0Game(Protocol[T_state, T_action]):

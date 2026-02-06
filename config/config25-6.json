@@ -28,5 +28,6 @@
     "model_training": true,
     "coprime_stepping_a": 6406769569,
     "coprime_stepping_b": 4397420414,
-    "use_gt": false
+    "use_gt": false,
+    "num_workers": 32
 }

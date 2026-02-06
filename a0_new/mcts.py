@@ -2,18 +2,18 @@ from __future__ import annotations
 import random
 import math
 
-from typing import Optional, Any
+from typing import Generic, Optional, Any, Self
 
-from a0_new.protocols.game import A0State
+from a0_new.protocols.game import T_state
 from a0_new.protocols.mcts import MCTSProblem, GTProtocol
 
 from collections import deque
 
-class MCTSNode:
-    def __init__(self, state: A0State[Any], prior: float, parent: Optional[MCTSNode]=None, is_maximizing: bool=True):
+class MCTSNode(Generic[T_state]):
+    def __init__(self, state: T_state, prior: float, parent: Optional[Self]=None, is_maximizing: bool=True):
         self.state = state
         self.parent = parent
-        self.children: list[MCTSNode] = []
+        self.children: list[MCTSNode[T_state]] = []
         self.visits = 0
         self.reward = 0.0
         self.prior = prior
@@ -26,14 +26,14 @@ class MCTSNode:
         '''
         return bool(self.children) and all(child.visits > 0 for child in self.children)
 
-class MCTS:
+class MCTS(Generic[T_state]):
     '''
     Monte Carlo Tree Search (MCTS) implementation for a generic graph problem.
     Based on https://int8.io/monte-carlo-tree-search-beginners-guide/#Policy_network_training_in_Alpha_Go_and_Alpha_Zero
     '''
-    def __init__(self, problem: MCTSProblem[Any], selection_policy: str = 'uct'):
+    def __init__(self, problem: MCTSProblem[T_state], selection_policy: str = 'uct'):
         self.problem = problem
-        self.root = MCTSNode(problem.initial_state(), 1.0)
+        self.root = MCTSNode[T_state](problem.initial_state(), 1.0)
 
         # set the selection policy
         if selection_policy == 'uct':
@@ -66,7 +66,7 @@ class MCTS:
                     default_prior = 1.0 / len(successors) if successors else 0.0
                     priors = [default_prior] * len(successors)
                 for succ, prior in zip(successors, priors):
-                    child = MCTSNode(succ, prior, parent=node, is_maximizing=maximizing)
+                    child = MCTSNode[T_state](succ, prior, parent=node, is_maximizing=maximizing)
                     node.children.append(child)
             
             # 1.2
@@ -91,7 +91,7 @@ class MCTS:
                 # reward = 0.9 * reward
     
     @staticmethod
-    def uct(node: MCTSNode) -> float:
+    def uct(node: MCTSNode[Any]) -> float:
         assert node.parent is not None, "UCT called on root node"
         # prioritize unvisited nodes
         if node.visits == 0:
@@ -105,7 +105,7 @@ class MCTS:
         return exploit + explore
     
     @staticmethod
-    def puct(node: MCTSNode) -> float:
+    def puct(node: MCTSNode[Any]) -> float:
         assert node.parent is not None, "PUCT called on root node"
         # prioritize unvisited nodes
         if node.visits == 0:
@@ -118,7 +118,7 @@ class MCTS:
         explore = 1.0 * node.prior * (math.sqrt(node.parent.visits) / (1 + node.visits))
         return exploit + explore
 
-    def get_best_root_child(self) -> Optional[MCTSNode]:
+    def get_best_root_child(self) -> Optional[MCTSNode[T_state]]:
         '''
         Returns the child of the root node with the highest visit count.
         If there are no children, returns None.
@@ -126,7 +126,7 @@ class MCTS:
         # best_child = max(self.root.children, key=lambda c: c.reward / c.visits if c.visits > 0 else float('-inf'))
         return max(self.root.children, key=lambda c: c.visits) if self.root.children else None
     
-    def get_root_children(self) -> list[MCTSNode]:
+    def get_root_children(self) -> list[MCTSNode[T_state]]:
         return self.root.children
     
     def print_children(self) -> None:
@@ -139,7 +139,7 @@ class MCTS:
         for child in self.root.children:
             print(f"\t{child.visits}, {child.reward:.2f}, {child.reward / child.visits if child.visits > 0 else 0.0:.2f}, {child.prior:.2f}")
 
-    def remove_unvisited_nodes(self, node: MCTSNode | None) -> None:
+    def remove_unvisited_nodes(self, node: MCTSNode[T_state] | None) -> None:
         '''
         Removes all nodes from the tree that have not been visited.
         This is useful to clean up the tree after a search.
@@ -210,7 +210,7 @@ class MCTS:
         print(f"  Branching factor - Max: {max_branching}, Min: {min_branching}, Avg: {avg_branching:.2f}")
 
     @staticmethod
-    def print_tree_compact(node: MCTSNode, to_depth: int | None = None, prefix: str = "", is_last: bool = True) -> None:
+    def print_tree_compact(node: MCTSNode[Any], to_depth: int | None = None, prefix: str = "", is_last: bool = True) -> None:
         '''
         Prints the tree with multi-line states formatted compactly.
         '''
@@ -231,7 +231,7 @@ class MCTS:
             MCTS.print_tree_compact(child, to_depth - 1 if to_depth is not None else None, child_prefix, is_child_last)
 
     @staticmethod 
-    def print_tree_full(node: MCTSNode, to_depth: int | None = None, prefix: str = "", is_last: bool = True, gt: GTProtocol[Any] | None = None) -> None:
+    def print_tree_full(node: MCTSNode[Any], to_depth: int | None = None, prefix: str = "", is_last: bool = True, gt: GTProtocol[T_state] | None = None) -> None:
         '''
         Prints the tree with multi-line states formatted compactly.
         '''

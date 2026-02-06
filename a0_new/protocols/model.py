@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, TypeAlias, Union
 
 from a0_new.protocols.game import T_state, T_action
 
@@ -17,7 +17,7 @@ class RawModel(Protocol):
     '''
     def evaluate(self, states: NDArray[np.float32]) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
         '''
-        Given a batch of raw states, returns the predicted values and policy logits.
+        Given a batch of raw states, returns the predicted values and policy logits (not probabilities).
         First dimension of states must be the batch dimension.
         '''
         ...
@@ -45,13 +45,13 @@ class FullModel(Protocol[T_state, T_action]):
     Protocol for a model that can generate values/policies
     from full game states.
     '''
-    def evaluate_state(self, state: T_state, actions: list[T_action] | None = None) -> tuple[float, Policy]:
+    def evaluate_state(self, state: T_state, actions: list[T_action] | None = None) -> tuple[float, Policy[T_action]]:
         '''
         Given a full game state, returns the predicted value and policy logits.
         '''
         ...
     
-    def evaluate_states(self, states: list[T_state], actions: list[list[T_action] | None]) -> list[tuple[float, Policy]]:
+    def evaluate_states(self, states: list[T_state], actions: list[list[T_action] | None]) -> list[tuple[float, Policy[T_action]]]:
         '''
         Given a full game states, returns the predicted values and policy logits.
         '''
@@ -63,32 +63,67 @@ class FullModel(Protocol[T_state, T_action]):
         '''
         ...
     
-    def get_state_policy(self, state: T_state, actions: list[T_action] | None = None) -> Policy:
+    def get_state_policy(self, state: T_state, actions: list[T_action] | None = None) -> Policy[T_action]:
         '''
         Given a full game state, returns the predicted policy logits.
         '''
         ...
 
-class FullModelOnRaw(FullModel[T_state, T_action], Protocol[T_state, T_action]):
+T_full_model = TypeVar("T_full_model", bound=FullModel[Any, Any])
+class FullModelOnFull(FullModel[T_state, T_action], Protocol[T_full_model, T_state, T_action]):
+    '''
+    Protocol for a FullModel that uses a FullModel for evaluations.
+    '''
+    def get_full_model(self) -> T_full_model:
+        '''
+        Returns the underlying full model.
+        '''
+        ...
+    
+    def set_full_model(self, model: T_full_model) -> None:
+        '''
+        Sets the underlying full model.
+        '''
+        ...
+
+T_nn_model = TypeVar("T_nn_model", bound=NNModel[Any])
+T_raw_model = TypeVar("T_raw_model", bound=RawModel)
+class FullModelOnRaw(FullModel[T_state, T_action], Protocol[T_raw_model, T_state, T_action]):
     '''
     Protocol for a FullModel that uses a RawModel for evaluations.
     '''
-    def get_raw_model(self) -> RawModel:
+    def get_raw_model(self) -> T_raw_model:
         '''
         Returns the underlying raw model.
         '''
         ...
     
-    def set_raw_model(self, model: RawModel) -> None:
+    def set_raw_model(self, model: T_raw_model) -> None:
         '''
         Sets the underlying raw model.
         '''
         ...
+    
+    def get_raw_state(self, state: T_state) -> NDArray[np.float32]:
+        '''
+        Given a full game state, returns the corresponding raw state representation.
+        '''
+        ...
+    
+    def get_legal_actions_mask(self, state: T_state, actions: list[T_action] | None, for_model: bool = True) -> NDArray[np.float32]:
+        '''
+        Given a full game state, returns a mask of legal actions.
+        If for_model is True, the mask is formatted for use with the model's policy output.
+        '''
+        ...
+    
+    def get_raw_policy(self, state: T_state, policy: Policy[T_action], for_model: bool = True) -> NDArray[np.float32]:
+        '''
+        Given a full game state and a policy, returns the raw policy logits as an array.
+        '''
+        ...
 
-class A0Model(NNModel[T_nnx], FullModelOnRaw[T_state, T_action], Protocol[T_nnx, T_state, T_action]):
-    '''
-    Protocol for a model to be used with AlphaZero training.
-    Must implement both NNModel and FullModel protocols.
-    Get/set model methods allow the NN model to be swapped with a dynamic batching model.
-    '''
-    ...
+RecursiveFullOnRawModel: TypeAlias = Union[
+    FullModelOnRaw[T_raw_model, Any, Any],
+    FullModelOnFull['RecursiveFullOnRawModel', Any, Any]
+]

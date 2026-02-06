@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Union, TypeVar, TypeAlias
 
 import os
 
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
-from a0_new.protocols.model import A0Model
-from a0_new.protocols.game import A0Game
-from a0_new.protocols.player import A0Player
+from a0_new.protocols.model import RecursiveFullOnRawModel, T_nn_model
+from a0_new.protocols.game import A0Game, T_state, T_action
+from a0_new.protocols.player import FullModelPlayer
 
 import multiprocessing
 
@@ -21,12 +21,12 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def train(player: A0Player[A0Model[Any, Any, Any], Any, Any], experience_buffer: ExperienceBuffer, iteration: int) -> None:
+def train(player: FullModelPlayer[RecursiveFullOnRawModel[T_nn_model], Any, Any], experience_buffer: ExperienceBuffer, iteration: int) -> None:
     pass
 
 def alphazero(
         game: A0Game[Any, Any],
-        player: A0Player[Any, Any, Any],
+        player: FullModelPlayer[RecursiveFullOnRawModel[T_nn_model], Any, Any],
         starting_iteration: int
     ) -> None:
     # loading/saving the initial model should be done outside this function

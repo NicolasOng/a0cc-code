@@ -5,7 +5,7 @@ from a0_new.policy import Policy
 
 import random
 
-class ModelRollout(FullModel[T_state, T_action]):
+class RolloutModel(FullModel[T_state, T_action]):
     '''
     Model to be used with MCTS for:
     - state reward estimations (using e.g. rollouts)
@@ -26,13 +26,13 @@ class ModelRollout(FullModel[T_state, T_action]):
         self.rollout_depth = rollout_depth
         self.policy_type = policy_type
 
-    def evaluate_state(self, state: T_state, actions: list[T_action] | None = None) -> tuple[float, Policy]:
+    def evaluate_state(self, state: T_state, actions: list[T_action] | None = None) -> tuple[float, Policy[T_action]]:
         value = self.get_state_value(state)
         policy = self.get_state_policy(state, actions)
         return value, policy
     
-    def evaluate_states(self, states: list[T_state], actions: list[list[T_action] | None]) -> list[tuple[float, Policy]]:
-        results: list[tuple[float, Policy]] = []
+    def evaluate_states(self, states: list[T_state], actions: list[list[T_action] | None]) -> list[tuple[float, Policy[T_action]]]:
+        results: list[tuple[float, Policy[T_action]]] = []
         for state, action_list in zip(states, actions):
             value = self.get_state_value(state)
             policy = self.get_state_policy(state, action_list)
@@ -83,7 +83,7 @@ class ModelRollout(FullModel[T_state, T_action]):
         
         return value
 
-    def get_state_policy(self, state: T_state, actions: list[T_action] | None = None) -> Policy:
+    def get_state_policy(self, state: T_state, actions: list[T_action] | None = None) -> Policy[T_action]:
         if self.policy_type == 'policy':
             return self.model.get_state_policy(state, actions)
         
@@ -148,7 +148,7 @@ class ModelRollout(FullModel[T_state, T_action]):
         return False, None, current_state
     
     @staticmethod
-    def value_head_policy(model: FullModel[T_state, T_action], state: T_state, actions: list[T_action]) -> Policy:
+    def value_head_policy(model: FullModel[T_state, T_action], state: T_state, actions: list[T_action]) -> Policy[T_action]:
         # create a list of child states by applying each action
         children: list[T_state] = []
         for action in actions:
