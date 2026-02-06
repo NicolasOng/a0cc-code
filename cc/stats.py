@@ -20,7 +20,13 @@ def num_children_per_state(num_ranks: int | None):
     '''
     r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
     s = CCState(config.num_spots, config.num_pieces, config.num_players)
-    cc = Game(config.board_size, config.num_pieces, False, False, False)
+    cc = Game(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        repeats_for_draw=-1,
+        no_reverse_moves=False,
+        no_illegal_moves=True,
+        no_side_moves=False)
 
     num_children_list: list[tuple[int, int]] = []
 
@@ -92,12 +98,37 @@ def do_binning_for_pwc(percent_winning_children_array: npt.NDArray[np.float64], 
 
     return counts, normalized_counts, bin_edges, bin_centers
 
+def print_board_moves(moves, board, gt, current_player):
+    for move in moves:
+        # apply the move to the state
+        board.apply_move(move)
+        # get the winner of the state based on the solve data
+        move_winner = gt.get_winner(board)
+        # ignore illegal and draw moves
+        if move_winner is None:
+            board.undo_move(move)
+            continue
+        # if the winner is the current player, increment the count
+        # if move_winner == Player.PLAYER_X: # (to do everything from Player X's perspective)
+        if move_winner == current_player:
+            num_winners += 1
+        # un-apply the move
+        board.undo_move(move)
+        # print the move and the winner of the move
+        print(f'Move: {move}, Move Winner: {move_winner}')
+
 def percent_winning_children_per_state(num_ranks: int | None):
     '''
     Generates an np array with the percent of winning children per state
     from the perspective of the current player.
     '''
-    cc = Game(config.board_size, config.num_pieces, False, False, False)
+    cc = Game(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        repeats_for_draw=-1,
+        no_reverse_moves=False,
+        no_illegal_moves=True,
+        no_side_moves=False)
     gt = GroundTruth()
 
     # full list of ranks and percent winning children
@@ -171,6 +202,11 @@ def percent_winning_children_per_state(num_ranks: int | None):
         elif board_winner == other_player:
             losing_ranks.append(cur_rank)
             pwc_on_losing_ranks.append(percent_winners)
+            # if percent_winners > 0.0:
+            #     print(f'Found a losing state with winning children! Rank: {cur_rank}, Percent Winning Children: {percent_winners:.2%}')
+            #     print(board.board_view())
+            #     print(board.current_player)
+            #     print_board_moves(moves, board, gt, current_player)
     
     # convert the lists to numpy arrays of shape (n,)
     percent_winning_children_array = np.array(percent_winning_children_list, dtype=float)
@@ -246,7 +282,13 @@ def count_num_winning_states(num_ranks: int | None = None):
     '''
     r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
     s = CCState(config.num_spots, config.num_pieces, config.num_players)
-    cc = Game(config.board_size, config.num_pieces, False, False, False)
+    cc = Game(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        repeats_for_draw=-1,
+        no_reverse_moves=False,
+        no_illegal_moves=True,
+        no_side_moves=False)
     l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
 
     px_wins = 0
@@ -351,7 +393,7 @@ def main():
     Main function to run the script.
     Generates the number of children per state and graphs it.
     '''
-    num_ranks = 100000
+    num_ranks = 10000
     count_children = True
     count_percent_winning_children = True
     count_winning_states = True

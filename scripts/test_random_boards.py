@@ -31,8 +31,6 @@ for i in range(1):
     print(p.get_move_probabilities(moves))
     p.move_to_policy_index(moves[0])
 
-    exit()
-
     board.flip_vertical()
     print(board.board_view())
     print(f"trivial: {gt.is_trivial(board)}")

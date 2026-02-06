@@ -152,7 +152,6 @@ def load_model(filepath: str, training: bool = True) -> AlphaZeroModel:
     model = AlphaZeroModel(
         board_size=config.board_size,
         num_filters=256,
-        training=training,
         rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})
     )
     
@@ -172,7 +171,7 @@ def example_usage() -> None:
     board_size = 4
     filepath = "alphazero_model.pkl"
     x = jnp.ones((1, board_size, board_size, 2), dtype=jnp.float32)
-    model = AlphaZeroModel(board_size=board_size, num_filters=256, training=True, rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)}))
+    model = AlphaZeroModel(board_size=board_size, num_filters=256, rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)}))
     value, policy = model(x)
     print("Value output shape:", value.shape) # (1, 1)
     print("Policy output shape:", policy.shape) # (1, BOARD_SIZE**4)

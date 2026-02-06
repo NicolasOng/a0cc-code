@@ -14,7 +14,7 @@ moves_list = [
 moves_list_rotated = [Move(3 - move.start.x, 3 - move.start.y, 3 - move.end.x, 3 - move.end.y) for move in moves_list]
 
 p = Policy(4)
-p.set_logits_from_moves(moves_list, [0.1, 0.2, 0.3])
+p.set_logits_from_moves(moves_list, [0.1, 0.2, 0.3], rotate_180=False)
 
 print("Original moves:")
 board = Board(4)

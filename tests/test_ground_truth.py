@@ -14,7 +14,7 @@ def test_ground_truth():
     # get a board with 6/14 winning children
     board = gt.unrank(297232)
     
-    p = gt.get_1ply_policy(board)
+    p = gt.get_1ply_policy_prob_dist_list(board, for_model=False)
 
     print(p)
 
