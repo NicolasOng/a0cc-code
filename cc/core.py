@@ -127,7 +127,7 @@ class Board:
         Applies the given move to the board.
         '''
         player_tile = player_to_tile[self.current_player]
-        logging.debug(f"Applying move: {move} for player {self.current_player}")
+        #logging.debug(f"Applying move: {move} for player {self.current_player}")
         assert self.position_on_main_board(move.start.x, move.start.y) and self.board[move.start.x][move.start.y] == player_tile, f"Invalid move {move}: {move.start} is not occupied by the current player. {self.board_view()} {self.current_player}"
         if move.start.x != move.end.x or move.start.y != move.end.y:
             assert self.position_on_main_board(move.end.x, move.end.y) and self.board[move.end.x][move.end.y] == Tile.EMPTY, f"Invalid move {move}: {move.end} is occupied. {self.board_view()} {self.current_player}"
@@ -143,7 +143,7 @@ class Board:
         Assumes that the move given is the last move made by the previous player.
         '''
         player_tile = player_to_tile[Player.PLAYER_O if self.current_player == Player.PLAYER_X else Player.PLAYER_X]
-        logging.debug(f"Undoing move: {move} for player {self.current_player}")
+        #logging.debug(f"Undoing move: {move} for player {self.current_player}")
         assert self.position_on_main_board(move.end.x, move.end.y) and self.board[move.end.x][move.end.y] == player_tile, f"Invalid undo: {move.end} is not occupied by the current player."
         if move.start.x != move.end.x or move.start.y != move.end.y:
             assert self.position_on_main_board(move.start.x, move.start.y) and self.board[move.start.x][move.start.y] == Tile.EMPTY, f"Invalid undo: {move.start} is occupied."
@@ -666,8 +666,8 @@ class Game:
         x_positions, o_positions = board.get_player_positions()
         player_positions = x_positions if board.current_player == Player.PLAYER_X else o_positions
 
-        for pos in player_positions:
-            logging.debug(f"Player {board.current_player} has piece at {pos}")
+        # for pos in player_positions:
+        #     logging.debug(f"Player {board.current_player} has piece at {pos}")
 
         # generate all on-board non-blocked moves for each piece
         moves: list[Move] = []
@@ -693,7 +693,7 @@ class Game:
         if self.no_illegal_moves:
             valid_moves: list[Move] = []
             for move in moves:
-                logging.debug(f"Checking if move {move} leads to an illegal state. Current player: {self.board.current_player}")
+                # logging.debug(f"Checking if move {move} leads to an illegal state. Current player: {self.board.current_player}")
                 # apply the move to the current board
                 board.apply_move(move)
                 # check if the move doesn't lead to an illegal state
@@ -772,7 +772,7 @@ class Game:
         if (self.draw_on_repeated_state and
             not self.no_draw_moves and
             self.board.check_for_draw(self.board_history, self.repeats_for_draw)):
-            logging.debug(f"Game ended in a draw.")
+            #logging.debug(f"Game ended in a draw.")
             self.end = True
             self.winner = None
             return self.end
@@ -781,7 +781,7 @@ class Game:
         if not self.pass_moves:
             moves = self.generate_moves()
             if len(moves) == 0:
-                logging.debug(f"Player {self.board.current_player} has no moves left.")
+                #logging.debug(f"Player {self.board.current_player} has no moves left.")
                 self.end = True
                 if self.draw_on_no_moves:
                     self.winner = None
@@ -827,7 +827,7 @@ class Game:
         
         # generate all possible moves for the current player
         moves = self.generate_moves()
-        logging.debug(f"Player {self.board.current_player} has {len(moves)} moves.")
+        #logging.debug(f"Player {self.board.current_player} has {len(moves)} moves.")
 
         # moves is not empty - that check is done in the game_end_check method.
         
