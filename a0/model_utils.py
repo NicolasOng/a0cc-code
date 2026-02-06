@@ -424,7 +424,7 @@ def get_value_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move]
         state.undo_move(move)
     
     states_batch = jnp.concatenate(states_array, axis=0)
-    model_values, _ = model(states_batch)
+    model_values, _ = model(states_batch, train=False)
     values: list[float] = []
     for i in range(len(moves)):
         values.append(-float(model_values[i][0]))        
@@ -445,7 +445,7 @@ def get_policy_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move
     '''
     rotate = state.current_player == Player.PLAYER_O if for_model else False
 
-    _, policy = model(jnp.array(board_to_input(state)))
+    _, policy = model(jnp.array(board_to_input(state)), train=False)
 
     p = Policy(len(state.board))
     p.set_logits(np.array(policy[0]), rotate_180=False)

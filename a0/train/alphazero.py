@@ -259,7 +259,6 @@ def train_alphazero() -> None:
     else:
         model = AlphaZeroModel(
             config.board_size,
-            training=config.model_training,
             rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
         )
         save_model(config.training_dir + f'/model_{0}.pkl', model)
