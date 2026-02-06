@@ -231,9 +231,10 @@ def self_play(
             if total_states >= config.training_samples:
                 shutdown_event.set()
             # log state counts
-            for count in state_counter:
-                # TODO: log each process's state count
-                pass
+            state_str = f"Total states played: {total_states}: "
+            for _, count in enumerate(state_counter):
+                state_str += f"{count} "
+            logger.info(state_str)
             # break the loop if shutdown event is set
             if shutdown_event.is_set():
                 break

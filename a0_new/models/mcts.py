@@ -1,17 +1,17 @@
 from a0_new.protocols.game import A0Game, T_state, T_action
-from a0_new.protocols.model import FullModel
+from a0_new.protocols.model import FullModel, FullModelOnFull, T_full_model
 
 from a0_new.policy import Policy
 from a0_new.mcts import MCTS
 from a0_new.mcts_problems.generic import GenericMCTSProblem
 
-class MCTSModel(FullModel[T_state, T_action]):
+class MCTSModel(FullModelOnFull[T_full_model, T_state, T_action]):
     '''
     Model that uses MCTS to evaluate states for a given game and model.
     '''
     def __init__(self,
                  game: A0Game[T_state, T_action],
-                 model: FullModel[T_state, T_action],
+                 model: T_full_model,
                  iterations: int,
                  selection_policy: str = 'puct',
                  temperature: float = 1.0
@@ -66,3 +66,9 @@ class MCTSModel(FullModel[T_state, T_action]):
     def get_state_policy(self, state: T_state, actions: list[T_action] | None = None) -> Policy[T_action]:
         _, policy = self.evaluate_state(state, actions)
         return policy
+    
+    def get_full_model(self) -> T_full_model:
+        return self.model
+    
+    def set_full_model(self, model: T_full_model) -> None:
+        self.model = model

@@ -1,11 +1,11 @@
 from a0_new.protocols.game import A0Game, Player, T_state, T_action
-from a0_new.protocols.model import FullModel
+from a0_new.protocols.model import FullModel, FullModelOnFull, T_full_model
 
 from a0_new.policy import Policy
 
 import random
 
-class RolloutModel(FullModel[T_state, T_action]):
+class RolloutModel(FullModelOnFull[T_full_model, T_state, T_action]):
     '''
     Model to be used with MCTS for:
     - state reward estimations (using e.g. rollouts)
@@ -15,7 +15,7 @@ class RolloutModel(FullModel[T_state, T_action]):
     '''
     def __init__(self,
                  game: A0Game[T_state, T_action],
-                 model: FullModel[T_state, T_action],
+                 model: T_full_model,
                  rollout_type: str = 'none',
                  rollout_depth: int = -1,
                  policy_type: str = 'policy'
@@ -92,6 +92,12 @@ class RolloutModel(FullModel[T_state, T_action]):
     
         raise ValueError(f"Unknown policy type: {self.policy_type}")
     
+    def get_full_model(self) -> T_full_model:
+        return self.model
+    
+    def set_full_model(self, model: T_full_model) -> None:
+        self.model = model
+
     @staticmethod
     def random_rollout(state: T_state, game: A0Game[T_state, T_action], max_depth: int) -> tuple[bool, Player | None, T_state]:
         # Make a copy of the board to avoid modifying the original state
