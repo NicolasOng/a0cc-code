@@ -1,17 +1,28 @@
+from __future__ import annotations
+
 from a0_new.protocols.model import RawModel
 
 import time
 import random
 
 from multiprocessing import Queue
+from multiprocessing.sharedctypes import Synchronized
 
 from typing import TYPE_CHECKING
-
 if TYPE_CHECKING:
-    # This class exists specifically for type hinting
-    from multiprocessing.queues import Queue
+    QueueRes = Queue["InferenceResponse"]
+    QueueReq = Queue["InferenceRequest"]
+    SynchronizedInt = Synchronized[int]
+else:
+    QueueRes = Queue
+    QueueReq = Queue
+    SynchronizedInt = Synchronized
+
 import numpy as np
 from numpy.typing import NDArray
+
+from utils.log import get_logger
+logger = get_logger(__name__)
 
 class InferenceResponse:
     def __init__(self,
@@ -43,8 +54,8 @@ class DynamicBatchingModelClient(RawModel):
     Max size of the response queue should be 1.
     '''
     def __init__(self,
-                 inference_queue,
-                 response_queue,
+                 inference_queue: QueueReq,
+                 response_queue: QueueRes,
                  qid: int,
                  req_timeout: float,
                  res_timeout: float
@@ -59,6 +70,7 @@ class DynamicBatchingModelClient(RawModel):
         # create an inference request and submit it to the inference queue
         # Queue.Full exception if the queue is full for too long
         nonce = random.randint(0, 2**31 - 1)
+        #logger.log(10, f"Client {self.qid} sending request with nonce {nonce}")
         request = InferenceRequest(states, self.qid, nonce)
         self.inference_queue.put(request, block=True, timeout=self.req_timeout)
 
@@ -67,6 +79,7 @@ class DynamicBatchingModelClient(RawModel):
         response = self.response_queue.get(block=True, timeout=self.res_timeout)
         # return the response if the nonce matches,
         # else raise an error
+        #logger.log(10, f"Client {self.qid} received response with nonce {response.nonce}")
         if response.nonce == nonce:
             return response.values, response.policies
         else:
@@ -78,42 +91,68 @@ class DynamicBatchingModelServer():
     and shut down after all clients are done.
     Max size of inference queue should be the number of clients.
     '''
-    def __init__(self, model: RawModel, inference_queue, response_queues, max_batch_size: int = 32, timeout: float = 0.01):
+    def __init__(
+            self,
+            model: RawModel,
+            inference_queue: QueueReq,
+            response_queues: dict[int, QueueRes],
+            num_active_clients: SynchronizedInt,
+            max_batch_size: int,
+            timeout: float = 0.05
+        ):
         self.model = model
         self.inference_queue = inference_queue
         self.response_queues = response_queues
+        self.num_active_clients = num_active_clients
         self.max_batch_size = max_batch_size
         self.timeout = timeout
     
     def serve(self) -> None:
         while True:
+            #logger.log(10, "Server waiting for requests...")
             batch_requests: list[InferenceRequest] = []
             
             # 1. Wait for the first request (blocking)
             req = self.inference_queue.get() 
             if req.shutdown: break # Shutdown signal
             batch_requests.append(req)
+            #logger.log(10, f"Server received first request from client {req.qid} with nonce {req.nonce}, starting batch collection...")
             
             # 2. Try to fill the rest of the batch (non-blocking)
+            # stop when any of the following conditions are met:
+            #   - max batch size is reached
+            #   - all clients have submitted requests
+            #   - timeout is reached
+            # TODOs when I get around to variable batch sizes.
+            # for now, assume num_clients == max_batch_size and that all clients submit batch sizes of 1
             # TODO: since clients can submit variable batch sizes,
             # this may exceed max_batch_size if a large request is submitted - need to handle this case
             # TODO: also need to handle the case where requests recieved don't fill the batch before timeout.
             # might be best to pad with dummy requests if always running the same batch size is important for performance.
-            # TODO: multiprocessing.Array might be better for sharing data between processes than Queue....
-            # TODO: what if shutdown signal is sent here?
             start_time = time.time()
-            while self.req_list_batch_size(batch_requests) < self.max_batch_size:
+            while not (
+                self.req_list_batch_size(batch_requests) >= self.max_batch_size or
+                len(batch_requests) >= self.num_active_clients.value
+            ):
                 try:
                     # Check for more items until the timeout expires
                     remaining_time = self.timeout - (time.time() - start_time)
                     if remaining_time <= 0:
                         break
                     req = self.inference_queue.get(timeout=remaining_time)
-                    batch_requests.append(req)
+                    if req.shutdown:
+                        break
+                    else:
+                        batch_requests.append(req)
+                    #logger.log(10, f"Server received additional request from client {req.qid} with nonce {req.nonce}, batch size now {self.req_list_batch_size(batch_requests)}")
                 except: # Queue.Empty
+                    # logger.log(15, f"Server batch collection timeout reached, proceeding with batch of size {self.req_list_batch_size(batch_requests)}")
+                    # logger.log(15, f"Batch requests from clients {[r.qid for r in batch_requests]}")
+                    # logger.log(15, f"Number of active clients: {self.num_active_clients.value}")
                     break
             
             # 3. Prepare and run inference
+            #logger.log(10, f"Server starting inference for batch of size {self.req_list_batch_size(batch_requests)}")
             inputs = np.concatenate([r.states for r in batch_requests])
             results = self.model.evaluate(inputs) 
             
@@ -127,6 +166,7 @@ class DynamicBatchingModelServer():
                     nonce=req.nonce
                 )
                 self.response_queues[req.qid].put(res)
+                #logger.log(10, f"Server sent response to client {req.qid} with nonce {req.nonce}")
     
     @staticmethod
     def req_list_batch_size(req_list: list[InferenceRequest]) -> int:

@@ -10,8 +10,8 @@ from a0_new.protocols.model import RecursiveFullOnRawModel, T_nn_model, RawModel
 from a0_new.protocols.game import A0Game
 from a0_new.protocols.player import FullModelPlayer
 
-from multiprocessing import Process, Queue, Array, Event
-from multiprocessing.sharedctypes import SynchronizedArray
+from multiprocessing import Process, Queue, Array, Event, Value
+from multiprocessing.sharedctypes import Synchronized, SynchronizedArray
 from multiprocessing.synchronize import Event as EventType
 
 import pickle
@@ -83,27 +83,48 @@ def _gpu_server_process(
         serialized_model: bytes,
         inference_queue: Queue[InferenceRequest],
         response_queues: dict[int, Queue[InferenceResponse]],
+        num_active_clients: Synchronized[int],
         num_clients: int
     ) -> None:
+    setup_logging(
+        level=20,
+        log_dir=config.log_dir,
+        process_name="gpu_server"
+    )
+    logger.info("GPU server process started")
     # deserialize the model the server will use for inference
     model: RawModel = dill.loads(serialized_model)
     # create and start the dynamic batching server
     server = DynamicBatchingModelServer(
-        model, inference_queue, response_queues, max_batch_size=num_clients, timeout=1
+        model,
+        inference_queue,
+        response_queues,
+        num_active_clients=num_active_clients,
+        max_batch_size=num_clients
     )
     server.serve()
+    logger.info("GPU server process shutting down")
 
 def _play_process(
         game: A0Game[Any, Any],
         player: FullModelPlayer[RecursiveFullOnRawModel[Any], Any, Any],
         state_counter: SynchronizedArray[int],
         result_queue: Queue[tuple[GameData, list[ExperienceData]]],
+        num_active_workers: Synchronized[int],
         shutdown_event: EventType,
         pid: int
     ) -> None:
-    while True:
-        player_for_model = get_full_on_raw_from_player(player)
+    setup_logging(
+        level=20,
+        log_dir=config.log_dir,
+        process_name="play_process_" + str(pid)
+    )
+    logger.info(f"Play process {pid} started")
 
+    # get the full model on raw from the player,
+    # to use its methods for processing gamedata into experience data
+    player_for_model = get_full_on_raw_from_player(player)
+    while True:
         # play a game
         gamedata = play(
             game,
@@ -115,19 +136,26 @@ def _play_process(
         # don't proceed if shutdown event is set
         # we don't want games that didn't finish because of the shutdown signal
         if shutdown_event.is_set():
+            logger.info(f"Play process {pid} received shutdown signal, stopping...")
             break
 
         # update the state counter
+        logger.info(f"Play process {pid} finished a game, processing results...")
         num_states = len(gamedata.turn_data)
         with state_counter.get_lock():
             state_counter[pid] += num_states
-        
         # get experience data from gamedata
         experience_data_list = gamedata_to_experiencedata(gamedata, player_for_model)
+        logger.info(f"Play process {pid} generated {len(experience_data_list)} experience data entries")
 
         # send the results back to the main process
         # blocking
+        logger.info(f"Play process {pid} sending results to main process...")
         result_queue.put((gamedata, experience_data_list))
+    
+    with num_active_workers.get_lock():
+        num_active_workers.value -= 1
+    logger.info(f"Play process {pid} shutting down, active workers remaining: {num_active_workers.value}")
 
 def get_full_on_raw_from_player(
         player: FullModelPlayer[RecursiveFullOnRawModel[Any], Any, Any]
@@ -173,32 +201,38 @@ def self_play(
     gamedata_list: list[GameData] = []
 
     # get and serialize the raw nn model the player is using
+    logger.info("Serializing player model for GPU server...")
     player_nn_model = get_nn_model_from_player(player)
     serialized_nn_model = dill.dumps(player_nn_model)
 
     # get the number of clients to use, create the queues and shared variables
+    logger.info(f"Setting up multiprocessing IPC with {config.num_workers} workers...")
     num_workers = config.num_workers
     inference_queue: Queue[InferenceRequest] = Queue(maxsize=num_workers)
     response_queues: dict[int, Queue[InferenceResponse]] = {
         i: Queue(maxsize=1) for i in range(num_workers)
     }
     result_queue: Queue[tuple[GameData, list[ExperienceData]]] = Queue(maxsize=num_workers)
+    num_active_workers: Synchronized[int] = Value('i', 0)
     state_counter: SynchronizedArray[int] = Array('i', [0] * num_workers)
     shutdown_event = Event()
 
     # start the GPU server process,
     # which will use the given player model for inference
+    logger.info("Starting GPU server...")
     server_process = Process(
         target=_gpu_server_process,
-        args=(serialized_nn_model, inference_queue, response_queues, num_workers)
+        args=(serialized_nn_model, inference_queue, response_queues, num_active_workers, num_workers)
     )
     server_process.start()
 
     # start the play processes,
     # which will send inference requests to the server
     # and game results back to the main process
+    logger.info("Starting play processes...")
     processes: list[Process] = []
     for i in range(num_workers):
+        logger.info(f"Setting up and starting play process {i}...")
         res_q = response_queues[i]
         # first, create the raw model client for the player
         client = DynamicBatchingModelClient(
@@ -207,14 +241,17 @@ def self_play(
         # replace the raw model in the player with the client
         set_raw_model_to_player(player, client)
         # start the play process with the player using the client model
+        with num_active_workers.get_lock():
+            num_active_workers.value += 1
         p = Process(
             target=_play_process,
-            args=(game, player, state_counter, result_queue, shutdown_event, i)
+            args=(game, player, state_counter, result_queue, num_active_workers, shutdown_event, i)
         )
         p.start()
         processes.append(p)
     
     # process results and coordinate shutdown
+    logger.info("Main process entering result processing loop...")
     while True:
         # process self-play results as they come in,
         # add to gamedata list and experience buffer
@@ -229,21 +266,29 @@ def self_play(
             total_states = sum(list(state_counter))
             # if enough, set the shutdown event
             if total_states >= config.training_samples:
+                logger.info(f"Total states played {total_states} reached the training sample target {config.training_samples}, sending shutdown signal to play processes...")
                 shutdown_event.set()
             # log state counts
-            state_str = f"Total states played: {total_states}: "
+            state_str = f"Num States Played ({total_states}/{config.training_samples}): "
             for _, count in enumerate(state_counter):
-                state_str += f"{count} "
+                state_str += f"{count} | "
             logger.info(state_str)
             # break the loop if shutdown event is set
             if shutdown_event.is_set():
                 break
+        
+    logger.info("Main process finished result processing loop, waiting for play processes to shut down...")
     
     # wait for all play processes to finish
     for p in processes:
+        # note: join() is blocking,
+        # and waits for the processes in order
+        # can't decrement num_active_workers here.
         p.join()
+        logger.info(f"Play process {p.pid} has shut down.")
     
     # Send shutdown signal to server
+    logger.info("Sending shutdown signal to GPU server...")
     shutdown_request = InferenceRequest(
         states=np.empty((0, config.board_size, config.board_size, 2), dtype=np.float32),
         qid=0, nonce=0, shutdown=True
@@ -251,12 +296,15 @@ def self_play(
     inference_queue.put(shutdown_request)
 
     # save the game data to disk
+    logger.info("Saving game data to disk...")
     if config.training_dir:
         with open(config.training_dir + f"gamedata_{iteration + 1}.pkl", 'wb') as f:
             pickle.dump(gamedata_list, f)
     
     # put the original model back to the player
     set_raw_model_to_player(player, player_nn_model)
+    logger.info("Original model restored to player.")
 
     # wait for the server process to finish
+    logger.info("Waiting for GPU server process to shut down...")
     server_process.join()

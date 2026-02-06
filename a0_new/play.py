@@ -92,9 +92,9 @@ def play(
     
     winner = game.get_winner()
     if winner is None:
-        logger.info("It's a draw!")
+        logger.info("Draw!")
     else:
-        logger.info(f"Player {winner} wins!")
+        logger.info(f"{winner} wins!")
     
     data.final_board = next_state
     

@@ -29,6 +29,7 @@ def alphazero(
         player: FullModelPlayer[RecursiveFullOnRawModel[T_nn_model], Any, Any],
         starting_iteration: int
     ) -> None:
+    logger.info("Starting AlphaZero training")
     # loading/saving the initial model should be done outside this function
     experience_buffer = ExperienceBuffer(config.replay_buffer_size)
 
@@ -37,6 +38,8 @@ def alphazero(
 
         # self-play to generate + save data
         self_play(game, player, experience_buffer, iteration)
+
+        exit()
 
         # train the model on the generated data + save model/data
         train(player, experience_buffer, iteration)
