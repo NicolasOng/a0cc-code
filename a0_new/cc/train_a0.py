@@ -44,6 +44,9 @@ def train_from_zero():
         temperature=1.0
     )
     cc_player = CCPlayer(cc_game, mcts_model)
+
+    ccnn_model.get_nn_model().save_to_file(config.training_dir + f'model_{0}.pkl')
+
     alphazero(cc_game, cc_player, starting_iteration=0)
 
 if __name__ == "__main__":
