@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 from a0_new.models.dynamic_batching import DynamicBatchingModelClient, InferenceRequest, InferenceResponse, DynamicBatchingModelServer
 from a0_new.experience_buffer import ExperienceBuffer, ExperienceData
 from a0_new.play import play, GameData
+from a0_new.utils.model import get_full_on_raw_from_player, get_nn_model_from_player, set_raw_model_to_player
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -156,40 +157,6 @@ def _play_process(
     with num_active_workers.get_lock():
         num_active_workers.value -= 1
     logger.info(f"Play process {pid} shutting down, active workers remaining: {num_active_workers.value}")
-
-def get_full_on_raw_from_player(
-        player: FullModelPlayer[RecursiveFullOnRawModel[Any], Any, Any]
-    ) -> FullModelOnRaw[Any, Any, Any]:
-    # get the full model from the player
-    model: RecursiveFullOnRawModel[Any] = player.get_model()
-    # Navigate through FullModelOnFull wrappers to reach the FullModelOnRaw
-    while hasattr(model, 'get_full_model'):
-        model = cast(FullModelOnFull[RecursiveFullOnRawModel[Any], Any, Any], model).get_full_model()
-    # Now model is a FullModelOnRaw, return it
-    return cast(FullModelOnRaw[Any, Any, Any], model)
-
-def get_nn_model_from_player(
-        player: FullModelPlayer[RecursiveFullOnRawModel[T_nn_model], Any, Any]
-    ) -> T_nn_model:
-    # get the full model from the player
-    model: RecursiveFullOnRawModel[T_nn_model] = player.get_model()
-    # Navigate through FullModelOnFull wrappers to reach the FullModelOnRaw
-    while hasattr(model, 'get_full_model'):
-        model = cast(FullModelOnFull[RecursiveFullOnRawModel[T_nn_model], Any, Any], model).get_full_model()
-    # Now model is a FullModelOnRaw, return its raw model (the NNModel)
-    return cast(FullModelOnRaw[T_nn_model, Any, Any], model).get_raw_model()
-
-def set_raw_model_to_player(
-        player: FullModelPlayer[RecursiveFullOnRawModel[Any], Any, Any],
-        raw_model: RawModel
-    ) -> None:
-    # get the full model from the player
-    model: RecursiveFullOnRawModel[Any] = player.get_model()
-    # Navigate through FullModelOnFull wrappers to reach the FullModelOnRaw
-    while hasattr(model, 'get_full_model'):
-        model = cast(FullModelOnFull[RecursiveFullOnRawModel[Any], Any, Any], model).get_full_model()
-    # Now model is a FullModelOnRaw, set its raw model
-    cast(FullModelOnRaw[Any, Any, Any], model).set_raw_model(raw_model)
 
 def self_play(
         game: A0Game[Any, Any],

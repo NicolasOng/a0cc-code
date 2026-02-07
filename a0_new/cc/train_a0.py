@@ -1,19 +1,11 @@
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
-from a0_new.train.alphazero import alphazero
-
-from typing import Any
-
-from a0_new.protocols.game import A0Game
-from a0_new.protocols.player import FullModelPlayer
-from a0_new.protocols.model import FullModel, T_full_model
-
 import multiprocessing
 
-from a0_new.train.self_play.dynamic_batching import self_play
+from a0_new.train.alphazero import alphazero
 
-from a0_new.experience_buffer import ExperienceBuffer, ExperienceData
+from a0_new.protocols.model import FullModel
 
 from a0_new.cc.game import CCGame, CCState, CCAction
 from a0_new.cc.models.nn import CCNNModel
@@ -71,5 +63,3 @@ if __name__ == "__main__":
         pass
 
     train_from_zero()
-
-    

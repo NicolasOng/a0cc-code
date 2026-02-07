@@ -4,6 +4,7 @@ from typing import Generator
 
 import numpy as np
 from numpy.typing import NDArray
+import jax.numpy as jnp
 
 class Dataset:
     states: NDArray[np.float32]
@@ -88,6 +89,17 @@ class Dataset:
             if i + self.batch_size > data_len:
                 break
             yield self.states[i:i + self.batch_size], self.values[i:i + self.batch_size], self.policies[i:i + self.batch_size], self.masks[i:i + self.batch_size]
+        
+    def jnp_batches(self) -> Generator[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray], None, None]:
+        jnp_states = jnp.asarray(self.states, dtype=jnp.float32)
+        jnp_values = jnp.asarray(self.values, dtype=jnp.float32)
+        jnp_policies = jnp.asarray(self.policies, dtype=jnp.float32)
+        jnp_masks = jnp.asarray(self.masks, dtype=jnp.float32)
+        data_len = jnp_states.shape[0]
+        for i in range(0, data_len, self.batch_size):
+            if i + self.batch_size > data_len:
+                break
+            yield jnp_states[i:i + self.batch_size], jnp_values[i:i + self.batch_size], jnp_policies[i:i + self.batch_size], jnp_masks[i:i + self.batch_size]
 
     def num_batches(self) -> int:
         """Return the number of complete batches that will be output by the batches method."""

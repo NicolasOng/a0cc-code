@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from typing import Any, Protocol, TypeVar, TypeAlias, Union
+from abc import abstractmethod
 
 from a0_new.protocols.game import T_state, T_action
 
 import numpy as np
 from numpy.typing import NDArray
 from flax import nnx
+import jax.numpy as jnp
 
 from a0_new.policy import Policy
 
@@ -22,11 +24,40 @@ class RawModel(Protocol):
         '''
         ...
 
-T_nnx = TypeVar("T_nnx", bound=nnx.Module)
+class TrainableModel(nnx.Module):
+    @abstractmethod
+    def inference(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+        '''
+        non-training inference.
+        Given a batch of raw states, returns the predicted values and policy logits (not probabilities).
+        Format of arrays should match that of the evaluate method.
+        Method should be JIT-compiled.
+        '''
+        ...
+    
+    @abstractmethod
+    def train_inference(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+        '''
+        training inference.
+        Given a batch of raw states, returns the predicted values and policy logits (not probabilities).
+        Format of arrays should match that of the evaluate method.
+        Method should not be JIT-compiled (training script will handle that).
+        '''
+        ...
+    
+    @abstractmethod
+    def save_to_file(self, path: str) -> None:
+        '''
+        Saves the model parameters to the given path.
+        '''
+        ...
+
+T_nnx = TypeVar("T_nnx", bound=TrainableModel)
 class NNModel(RawModel, Protocol[T_nnx]):
     '''
     Protocol for a trainable model with weights.
     To train properly, it should inherit or contain a Flax nnx.Module.
+    IMPORTANT: evaluate method is for inference, should be JIT-compiled, and not used for training.
     '''
     def get_nn_model(self) -> T_nnx:
         '''
@@ -86,7 +117,7 @@ class FullModelOnFull(FullModel[T_state, T_action], Protocol[T_full_model, T_sta
         '''
         ...
 
-T_nn_model = TypeVar("T_nn_model", bound=NNModel[Any])
+T_nn_model = TypeVar("T_nn_model", bound=NNModel[TrainableModel])
 T_raw_model = TypeVar("T_raw_model", bound=RawModel)
 class FullModelOnRaw(FullModel[T_state, T_action], Protocol[T_raw_model, T_state, T_action]):
     '''

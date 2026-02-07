@@ -2,7 +2,7 @@ from a0_new.protocols.model import FullModelOnRaw, T_raw_model
 from a0_new.cc.game import CCGame, CCState, CCAction, Player
 from a0_new.policy import Policy
 
-# utils from previous, should be moved to a0.cc.model_utils or similar
+# TODO: utils from previous, should be moved to a0.cc.model_utils or similar
 from a0.model_utils import board_to_input, Policy as PolicyUtil
 
 import numpy as np
