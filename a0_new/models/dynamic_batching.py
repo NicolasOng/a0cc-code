@@ -115,6 +115,7 @@ class DynamicBatchingModelServer():
         self.total_wait_time = 0.0
         self.num_timeouts = 0
         self.num_runs = 0
+        self.total_clients_on_timeout = 0
     
     def serve(self) -> None:
         while True:
@@ -173,6 +174,7 @@ batch_requests len: {len(batch_requests)}
             self.total_wait_time += wait_time
             if remaining_time <= 0:
                 self.num_timeouts += 1
+                self.total_clients_on_timeout += len(batch_requests)
             self.num_runs += 1
             
             # 3. Prepare and run inference
@@ -193,7 +195,7 @@ batch_requests len: {len(batch_requests)}
                 #logger.log(10, f"Server sent response to client {req.qid} with nonce {req.nonce}")
         
         logger.info("Server shutting down.")
-        logger.info(f"Average wait time: {self.total_wait_time / self.num_runs if self.num_runs > 0 else 0:.4f}, Timeouts: {self.num_timeouts}, Runs: {self.num_runs}")
+        logger.info(f"Average wait time: {self.total_wait_time / self.num_runs if self.num_runs > 0 else 0:.4f}, Timeouts: {self.num_timeouts}, Runs: {self.num_runs}, Average clients on timeout: {self.total_clients_on_timeout / self.num_timeouts if self.num_timeouts > 0 else 0:.2f}")
     
     @staticmethod
     def req_list_batch_size(req_list: list[InferenceRequest]) -> int:
