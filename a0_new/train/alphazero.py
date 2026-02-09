@@ -12,7 +12,8 @@ from a0_new.protocols.player import FullModelPlayer
 
 import multiprocessing
 
-from a0_new.train.self_play.dynamic_batching import self_play
+#from a0_new.train.self_play.dynamic_batching import self_play
+from a0_new.train.self_play.parallel_models import self_play
 from a0_new.experience_buffer import ExperienceBuffer, ExperienceData
 from a0_new.utils.model import get_full_on_raw_from_player, get_nn_model_from_player, set_raw_model_to_player
 from a0_new.train.dataset import train_model_epochs, save_dataset_data, plot_model_performance, stats_from_dataset_data
