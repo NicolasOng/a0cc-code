@@ -44,6 +44,7 @@ def train(
 
     # plot, log, and save the model performance metrics in this iteration's training
     i = iteration
+    os.makedirs(os.path.dirname(f"{config.plot_dir}/training_plots"), exist_ok=True)
     plot_model_performance(f"training_plots/iteration_{i + 1}", [train_data])
     save_dataset_data(
         f"{config.training_dir}/iteration_stats_{i + 1}.pkl",

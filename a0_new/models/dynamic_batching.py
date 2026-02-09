@@ -67,19 +67,25 @@ class DynamicBatchingModelClient(RawModel):
         self.res_timeout = res_timeout
     
     def evaluate(self, states: NDArray[np.float32]) -> tuple[NDArray[np.float32], NDArray[np.float32]]:
-        # create an inference request and submit it to the inference queue
-        # Queue.Full exception if the queue is full for too long
+        # create an inference request
         nonce = random.randint(0, 2**31 - 1)
-        #logger.log(10, f"Client {self.qid} sending request with nonce {nonce}")
         request = InferenceRequest(states, self.qid, nonce)
-        self.inference_queue.put(request, block=True, timeout=self.req_timeout)
-
-        # wait for the response with matching nonce
-        # Queue.Empty exception if no response in time
-        response = self.response_queue.get(block=True, timeout=self.res_timeout)
+        try:
+            # submit the request to the inference queue
+            # Queue.Full exception if the queue is full for too long
+            self.inference_queue.put(request, block=True, timeout=self.req_timeout)
+            # wait for the response with matching nonce
+            # Queue.Empty exception if no response in time
+            response = self.response_queue.get(block=True, timeout=self.res_timeout)
+        except Exception as e:
+            logger.error(f'''{time.time()}
+Error in client {self.qid} with nonce {nonce}: {type(e).__name__} {e}.
+States shape: {states.shape}, req_timeout: {self.req_timeout}, res_timeout: {self.res_timeout}
+size of inference queue: {self.inference_queue.qsize()}, size of response queue: {self.response_queue.qsize()}
+''')
+            raise
         # return the response if the nonce matches,
         # else raise an error
-        #logger.log(10, f"Client {self.qid} received response with nonce {response.nonce}")
         if response.nonce == nonce:
             return response.values, response.policies
         else:
@@ -106,14 +112,25 @@ class DynamicBatchingModelServer():
         self.num_active_clients = num_active_clients
         self.max_batch_size = max_batch_size
         self.timeout = timeout
+        self.total_wait_time = 0.0
+        self.num_timeouts = 0
+        self.num_runs = 0
     
     def serve(self) -> None:
         while True:
             #logger.log(10, "Server waiting for requests...")
             batch_requests: list[InferenceRequest] = []
             
-            # 1. Wait for the first request (blocking)
-            req = self.inference_queue.get() 
+            # 1. Wait for the first request (with timeout)
+            try:
+                req = self.inference_queue.get(timeout=60.0)
+            except:
+                logger.warning(f'''{time.time()}
+Server waited 60 seconds for first request, no request received.
+Inference queue size: {self.inference_queue.qsize()}, Number of active clients: {self.num_active_clients.value}
+batch_requests len: {len(batch_requests)}
+''')
+                continue
             if req.shutdown: break # Shutdown signal
             batch_requests.append(req)
             #logger.log(10, f"Server received first request from client {req.qid} with nonce {req.nonce}, starting batch collection...")
@@ -130,6 +147,7 @@ class DynamicBatchingModelServer():
             # TODO: also need to handle the case where requests recieved don't fill the batch before timeout.
             # might be best to pad with dummy requests if always running the same batch size is important for performance.
             start_time = time.time()
+            remaining_time = self.timeout
             while not (
                 self.req_list_batch_size(batch_requests) >= self.max_batch_size or
                 len(batch_requests) >= self.num_active_clients.value
@@ -151,6 +169,12 @@ class DynamicBatchingModelServer():
                     # logger.log(15, f"Number of active clients: {self.num_active_clients.value}")
                     break
             
+            wait_time = time.time() - start_time
+            self.total_wait_time += wait_time
+            if remaining_time <= 0:
+                self.num_timeouts += 1
+            self.num_runs += 1
+            
             # 3. Prepare and run inference
             #logger.log(10, f"Server starting inference for batch of size {self.req_list_batch_size(batch_requests)}")
             inputs = np.concatenate([r.states for r in batch_requests])
@@ -167,6 +191,9 @@ class DynamicBatchingModelServer():
                 )
                 self.response_queues[req.qid].put(res)
                 #logger.log(10, f"Server sent response to client {req.qid} with nonce {req.nonce}")
+        
+        logger.info("Server shutting down.")
+        logger.info(f"Average wait time: {self.total_wait_time / self.num_runs if self.num_runs > 0 else 0:.4f}, Timeouts: {self.num_timeouts}, Runs: {self.num_runs}")
     
     @staticmethod
     def req_list_batch_size(req_list: list[InferenceRequest]) -> int:
