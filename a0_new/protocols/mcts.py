@@ -2,15 +2,6 @@ from typing import Optional, Protocol
 
 from a0_new.protocols.game import T_state
 
-class GTProtocol(Protocol[T_state]):
-    _state: T_state
-    def get_outcome(self, state: T_state) -> float:
-        '''
-        Given a state, returns the ground truth outcome/reward for that state.
-        Useful for debugging and evaluating MCTS performance.
-        '''
-        ...
-
 class MCTSProblem(Protocol[T_state]):
     def initial_state(self) -> T_state:
         '''

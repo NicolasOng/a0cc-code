@@ -5,7 +5,8 @@ import math
 from typing import Generic, Optional, Any, Self
 
 from a0_new.protocols.game import T_state
-from a0_new.protocols.mcts import MCTSProblem, GTProtocol
+from a0_new.protocols.mcts import MCTSProblem
+from a0_new.protocols.ground_truth import GTProtocol
 
 from collections import deque
 
@@ -231,7 +232,7 @@ class MCTS(Generic[T_state]):
             MCTS.print_tree_compact(child, to_depth - 1 if to_depth is not None else None, child_prefix, is_child_last)
 
     @staticmethod 
-    def print_tree_full(node: MCTSNode[Any], to_depth: int | None = None, prefix: str = "", is_last: bool = True, gt: GTProtocol[T_state] | None = None) -> None:
+    def print_tree_full(node: MCTSNode[Any], to_depth: int | None = None, prefix: str = "", is_last: bool = True, gt: GTProtocol[T_state, Any] | None = None) -> None:
         '''
         Prints the tree with multi-line states formatted compactly.
         '''
