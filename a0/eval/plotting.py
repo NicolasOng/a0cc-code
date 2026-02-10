@@ -201,6 +201,19 @@ def main():
     # ["Num States", "Num States NT"]
     state_progress_state_nums = load_series(f"{config.eval_dir}/state_progress_state_nums.pkl")
 
+    num_bins_list = [10]
+    n_num_states_series: list[Series] = []
+    n_num_unique_states_series: list[Series] = []
+    n_baseline_acc_over_gp_series: list[Series] = []
+    n_acc_over_gp_series: list[Series] = []
+    n_branching_factor_series: list[Series] = []
+    for num_bins in num_bins_list:
+        n_num_states_series.append(load_series(f"{config.eval_dir}/num_states_over_game_progress_{num_bins}.pkl"))
+        n_num_unique_states_series.append(load_series(f"{config.eval_dir}/num_unique_states_over_game_progress_{num_bins}.pkl"))
+        n_baseline_acc_over_gp_series.append(load_series(f"{config.eval_dir}/baseline_accuracy_over_game_progress_{num_bins}.pkl"))
+        n_acc_over_gp_series.append(load_series(f"{config.eval_dir}/training_data_accuracy_over_game_progress_{num_bins}.pkl"))
+        n_branching_factor_series.append(load_series(f"{config.eval_dir}/branching_factor_over_game_progress_{num_bins}.pkl"))
+    
     # ["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"]
     # mcts_eval_series: list[tuple[int, Series, Series, Series, list[Series]]] = []
     # for mcts_samples in config.eval_mcts_samples:
@@ -396,6 +409,42 @@ def main():
     plot_bar("Number of Non-Trivial States in Each Progress Bin",
             ("Num States", state_progress_state_nums.x, state_progress_state_nums.ys["Num States NT"]),
             "State Progress (%)", "Number of States", "state_progress_num_states_nt")
+    
+    for i, num_bin in enumerate(num_bins_list):
+        plot_given(f"Number of States and Unique States Over Game Progress (Num Bins: {num_bin})",
+                   [
+                       ("Num States", n_num_states_series[i].x, n_num_states_series[i].ys["Num States"]),
+                       ("Num Unique States", n_num_unique_states_series[i].x, n_num_unique_states_series[i].ys["Num Unique States"])
+                   ], "Game Progress (%)", "Number of States", f"gp_num_states_over_game_progress_{num_bin}")
+        
+        plot_given_groups(f"Baseline Accuracy Over Game Progress (Num Bins: {num_bin})",
+                   [
+                       [
+                            ("Value Accuracy", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Value Accuracy"]),
+                            ("Value Accuracy (ND)", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Value Accuracy (ND)"]),
+                       ],
+                       [
+                            ("Policy Accuracy", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy"]),
+                            ("Policy Accuracy (NT)", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy (NT)"]),
+                       ]
+                   ], "Game Progress (%)", "Baseline Accuracy", f"gp_baseline_accuracy_over_game_progress_{num_bin}")
+        
+        plot_given_groups(f"Training Data Accuracy Over Game Progress (Num Bins: {num_bin})",
+                   [
+                       [
+                           ("Value Accuracy", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Value Accuracy"]),
+                           ("Value Accuracy (ND)", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Value Accuracy (ND)"]),
+                       ], 
+                       [
+                            ("Policy Accuracy", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Policy Accuracy"]),
+                            ("Policy Accuracy (NT)", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Policy Accuracy (NT)"]),
+                       ]
+                   ], "Game Progress (%)", "Training Data Accuracy", f"gp_training_data_accuracy_over_game_progress_{num_bin}")
+        
+        plot_given(f"Branching Factor Over Game Progress (Num Bins: {num_bin})",
+                   [
+                       ("Average Branching Factor", n_branching_factor_series[i].x, n_branching_factor_series[i].ys["Average Branching Factor"])
+                   ], "Game Progress (%)", "Branching Factor", f"gp_branching_factor_over_game_progress_{num_bin}")
 
 if __name__ == "__main__":
     main()
