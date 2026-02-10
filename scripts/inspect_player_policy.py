@@ -24,8 +24,8 @@ def ci_for_binary_data(p: float, total: int):
     logger.info(f"{p:.2%} (95% CI: {ci_lower:.2%} - {ci_upper:.2%})")
 
 def get_random_board(gt: GroundTruth, cc: Game) -> Board:
+    max_rank = gt.get_max_rank()
     while True:
-        max_rank = gt.get_max_rank()
         rank = random.randint(0, max_rank - 1)
         #rank = 2175897167
         random_board = gt.unrank(rank)
@@ -149,18 +149,18 @@ def main():
         num_pieces=config.num_pieces,
         no_reverse_moves=not config.backwards_moves
     )
-    model = load_model(config.training_dir + f"model_50.pkl")
-    model_player = ModelPlayer(
-        board_size=config.board_size,
-        num_pieces=config.num_pieces,
-        model=model
-    )
+    # model = load_model(config.training_dir + f"model_50.pkl")
+    # model_player = ModelPlayer(
+    #     board_size=config.board_size,
+    #     num_pieces=config.num_pieces,
+    #     model=model
+    # )
     random_player = RandomPlayer(
         random_percent=1.0
     )
     #inspect_player_policy_on_random_board(player, gt, cc)
-    inspect_player_policy_on_random_boards(random_player, gt, cc, num_boards=10000)
-    inspect_player_policy_on_seen_boards(random_player, gt, cc, num_boards=10000)
+    inspect_player_policy_on_random_boards(random_player, gt, cc, num_boards=100)
+    #inspect_player_policy_on_seen_boards(random_player, gt, cc, num_boards=10000)
 
 if __name__ == "__main__":
     setup_logging(
