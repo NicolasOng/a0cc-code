@@ -85,7 +85,8 @@ def _gpu_server_process(
         inference_queue: Queue[InferenceRequest],
         response_queues: dict[int, Queue[InferenceResponse]],
         num_active_clients: Synchronized[int],
-        num_clients: int
+        num_clients: int,
+        max_batch_size: int
     ) -> None:
     setup_logging(
         level=20,
@@ -101,7 +102,7 @@ def _gpu_server_process(
         inference_queue,
         response_queues,
         num_active_clients=num_active_clients,
-        max_batch_size=num_clients
+        max_batch_size=max_batch_size
     )
     server.serve()
     logger.info("GPU server process shutting down")
@@ -189,7 +190,7 @@ def self_play(
     logger.info("Starting GPU server...")
     server_process = Process(
         target=_gpu_server_process,
-        args=(serialized_nn_model, inference_queue, response_queues, num_active_workers, num_workers)
+        args=(serialized_nn_model, inference_queue, response_queues, num_active_workers, num_workers, config.self_play_batch_size)
     )
     server_process.start()
 

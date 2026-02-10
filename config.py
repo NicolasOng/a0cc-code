@@ -48,6 +48,7 @@ class Config:
     use_gt: bool
 
     num_workers: int
+    self_play_batch_size: int
 
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
@@ -66,6 +67,7 @@ class Config:
         - replay_buffer_size: int, size of the replay buffer
         - training_batch_size: int, batch size for training
         - num_workers: int, number of worker threads
+        - self_play_batch_size: int, batch size for self-play
         '''
         self.path = config_fn
 
