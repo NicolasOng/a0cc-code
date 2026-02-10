@@ -1,6 +1,6 @@
 import pickle
 from tqdm import tqdm
-from typing import Generator
+from typing import Generator, Any
 from collections import defaultdict
 import random
 
@@ -780,6 +780,202 @@ def gamedata_accuracy_over_progress(game_data_lists: list[tuple[int, list[GameDa
     save_series(progress_acc_100, f"{config.eval_dir}/gamedata_progress_acc_100.pkl")
     save_series(progress_acc_10, f"{config.eval_dir}/gamedata_progress_acc_10.pkl")
 
+def training_data_bins_over_game_progress(game_data_lists: list[tuple[int, list[GameData]]], num_bins: int) -> dict[int, list[tuple[Board, Player | None, Any]]]:
+    # bins are [0-10), [10-20), ..., [90-100]], assuming num_bins=10
+    progress_bins: dict[int, list[tuple[Board, Player | None, Any]]] = {100 * i // num_bins: list() for i in range(num_bins)}
+
+    # put all the boards from the game data into the appropriate bins
+    logger.info("Extracting boards from game data into progress bins...")
+    for _, game_data_list in tqdm(game_data_lists):
+        for game_data in game_data_list:
+            game_length = len(game_data.turn_data)
+            winner = game_data.winner
+            turn_data = game_data.turn_data
+            for turn_no, turn in enumerate(turn_data):
+                progress = (turn_no * 100) // game_length
+                # find the appropriate bin for this progress
+                bin_key = max([k for k in progress_bins.keys() if k <= progress])
+                # store the board and its value/policy target in the appropriate bin
+                progress_bins[bin_key].append((turn.board, winner, turn.player_data))
+    return progress_bins
+
+def seen_states_bins_over_game_progress(training_data_bins: dict[int, list[tuple[Board, Player | None, Any]]]) -> dict[int, set[Board]]:
+    # bins are [0-10), [10-20), ..., [90-100]], assuming num_bins=10
+    seen_states_bins: dict[int, set[Board]] = {bin_key: set() for bin_key in training_data_bins.keys()}
+
+    # for each progress bin,
+    for bin_key in training_data_bins.keys():
+        # for each board in that bin,
+        for board, _, _ in training_data_bins[bin_key]:
+            # add the board to the seen states for that bin
+            seen_states_bins[bin_key].add(board)
+    return seen_states_bins
+
+def num_states_over_game_progress(training_data_bins: dict[int, list[tuple[Board, Player | None, Any]]]) -> None:
+    num_bins = len(training_data_bins)
+    num_states_series = Series(["Num States"])
+    for bin_key in sorted(training_data_bins.keys()):
+        num_states_series.x.append(bin_key)
+        num_states_series.ys["Num States"].append(len(training_data_bins[bin_key]))
+    save_series(num_states_series, f"{config.eval_dir}/num_states_over_game_progress_{num_bins}.pkl")
+
+def num_unique_states_over_game_progress(seen_states_bins: dict[int, set[Board]]) -> None:
+    num_bins = len(seen_states_bins)
+    num_unique_states_series = Series(["Num Unique States"])
+    for bin_key in sorted(seen_states_bins.keys()):
+        num_unique_states_series.x.append(bin_key)
+        num_unique_states_series.ys["Num Unique States"].append(len(seen_states_bins[bin_key]))
+    save_series(num_unique_states_series, f"{config.eval_dir}/num_unique_states_over_game_progress_{num_bins}.pkl")
+
+def trim_progress_bins(training_data_bins: dict[int, list[tuple[Board, Player | None, Any]]], seen_states_bins: dict[int, set[Board]], max_size: int = 100) -> None:
+    # for each bin,
+    for bin_key in training_data_bins.keys():
+        # if the number of boards in that bin is greater than max_size,
+        if len(training_data_bins[bin_key]) > max_size:
+            # trim the boards in that bin down to max_size by randomly sampling
+            training_data_bins[bin_key] = random.sample(training_data_bins[bin_key], max_size)
+        if len(seen_states_bins[bin_key]) > max_size:
+            # also trim the seen states for that bin down to the boards in the trimmed training data
+            seen_states_bins[bin_key] = set(random.sample(list(seen_states_bins[bin_key]), max_size))
+
+def get_baseline_accuracy(boards: list[Board], gt: GroundTruth) -> tuple[float, float, float, float]:
+    '''
+    Returns the baseline accuracy for random guessing.
+    Could do this more efficiently by batching the boards together,
+    but this is simpler to implement and should be fast enough for our purposes.
+    returns:
+    - value accuracy
+    - policy accuracy
+    - value accuracy (non-draws)
+    - policy accuracy (non-trivial boards)
+    '''
+    total_boards = len(boards)
+    assert total_boards > 0, "No boards provided for baseline accuracy calculation."
+    total_acc_policy = 0.0
+    total_acc_value = 0.0
+    total_acc_policy_nt = 0.0
+    total_acc_value_nd = 0.0
+    for board in boards:
+        # policy
+        gt_policy = gt.get_1ply_policy_prob_dist_list(board, for_model=False)
+        random_policy = gt.get_random_valid_move_prob_dist_list(board, for_model=False)
+        policy_acc = policy_accuracy_function(np.array(random_policy), np.array(gt_policy))
+        # value
+        gt_outcome = gt.get_outcome(board)
+        random_outcome = random.choice([-1, 1])
+        value_acc = 1.0 if random_outcome == gt_outcome else 0.0
+        # adding to totals
+        total_acc_policy += policy_acc
+        total_acc_value += value_acc
+        if not gt.is_trivial(board):
+            total_acc_policy_nt += policy_acc
+        if not gt_outcome == 0:
+            total_acc_value_nd += value_acc
+
+    return total_acc_value / total_boards, total_acc_policy / total_boards, total_acc_value_nd / total_boards, total_acc_policy_nt / total_boards
+
+def baseline_accuracy_over_game_progress(seen_states_bins: dict[int, set[Board]], gt: GroundTruth) -> None:
+    num_bins = len(seen_states_bins)
+    baseline_acc_over_gp_series = Series(["Baseline Value Accuracy", "Baseline Policy Accuracy", "Baseline Value Accuracy (ND)", "Baseline Policy Accuracy (NT)"])
+    for bin_key in sorted(seen_states_bins.keys()):
+        boards = list(seen_states_bins[bin_key])
+        acc_value, acc_policy, acc_value_nd, acc_policy_nt = get_baseline_accuracy(boards, gt)
+        baseline_acc_over_gp_series.x.append(bin_key)
+        baseline_acc_over_gp_series.ys["Baseline Value Accuracy"].append(acc_value)
+        baseline_acc_over_gp_series.ys["Baseline Policy Accuracy"].append(acc_policy)
+        baseline_acc_over_gp_series.ys["Baseline Value Accuracy (ND)"].append(acc_value_nd)
+        baseline_acc_over_gp_series.ys["Baseline Policy Accuracy (NT)"].append(acc_policy_nt)
+    
+    save_series(baseline_acc_over_gp_series, f"{config.eval_dir}/baseline_accuracy_over_game_progress_{num_bins}.pkl")
+
+def get_board_training_data_accuracy(board: Board, winner: Player | None, player_data: Any, gt: GroundTruth) -> tuple[bool, bool]:
+    '''
+    checks if the training data for a given board is accurate.
+    '''
+    # check the value accuracy
+    sd_outcome = gt.get_outcome(board)
+    gd_outcome = 0 if winner is None else 1 if winner == board.current_player else -1
+    value_acc = sd_outcome == gd_outcome
+    # check the policy accuracy
+    sd_policy = np.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))
+    gd_policy: NDArray[np.float32] = player_data
+    policy_acc = policy_accuracy_function(gd_policy, sd_policy)
+    return value_acc, policy_acc
+
+def get_training_data_accuracy(training_data: list[tuple[Board, Player | None, Any]], gt: GroundTruth) -> tuple[float, float, float, float]:
+    '''
+    calculates the training data accuracy for a list of training data.
+    NOTE: could be made more efficient by batching the boards together,
+    but this is simpler to implement and should be fast enough for our purposes.
+    returns:
+    - value accuracy
+    - policy accuracy
+    - value accuracy (non-draws)
+    - policy accuracy (non-trivial boards)
+    '''
+    total_num = len(training_data)
+    assert total_num > 0, "No training data provided for accuracy calculation."
+    total_num_correct_value = 0
+    total_num_correct_policy = 0
+    total_num_correct_value_nd = 0
+    total_num_correct_policy_nt = 0
+    total_nd = 0
+    total_nt = 0
+
+    for board, winner, player_data in training_data:
+        value_acc, policy_acc = get_board_training_data_accuracy(board, winner, player_data, gt)
+        if value_acc:
+            total_num_correct_value += 1
+        if policy_acc:
+            total_num_correct_policy += 1
+        # account for non-draws
+        sd_outcome = gt.get_outcome(board)
+        if not sd_outcome == 0:
+            total_nd += 1
+            if value_acc:
+                total_num_correct_value_nd += 1
+        # account for non-trivial boards
+        if not gt.is_trivial(board):
+            total_nt += 1
+            if policy_acc:
+                total_num_correct_policy_nt += 1
+
+    return (total_num_correct_value / total_num,
+            total_num_correct_policy / total_num,
+            total_num_correct_value_nd / total_nd if total_nd > 0 else 0.0,
+            total_num_correct_policy_nt / total_nt if total_nt > 0 else 0.0)
+
+def training_data_accuracy_over_game_progress(training_data_bins: dict[int, list[tuple[Board, Player | None, Any]]], gt: GroundTruth) -> None:
+    num_bins = len(training_data_bins)
+    acc_over_gp_series = Series(["Value Accuracy", "Policy Accuracy", "Value Accuracy (ND)", "Policy Accuracy (NT)"])
+    for bin_key in sorted(training_data_bins.keys()):
+        training_data = training_data_bins[bin_key]
+        acc_value, acc_policy, acc_value_nd, acc_policy_nt = get_training_data_accuracy(training_data, gt)
+        acc_over_gp_series.x.append(bin_key)
+        acc_over_gp_series.ys["Value Accuracy"].append(acc_value)
+        acc_over_gp_series.ys["Policy Accuracy"].append(acc_policy)
+        acc_over_gp_series.ys["Value Accuracy (ND)"].append(acc_value_nd)
+        acc_over_gp_series.ys["Policy Accuracy (NT)"].append(acc_policy_nt)
+    
+    save_series(acc_over_gp_series, f"{config.eval_dir}/training_data_accuracy_over_game_progress_{num_bins}.pkl")
+
+def get_branching_factor(boards: list[Board], gt: GroundTruth) -> float:
+    total_branching_factor = 0
+    for board in boards:
+        total_branching_factor += sum(gt.get_valid_moves_list(board, for_model=False))
+    return total_branching_factor / len(boards) if boards else 0.0
+
+def branching_factor_over_game_progress(seen_states_bins: dict[int, set[Board]], gt: GroundTruth) -> None:
+    num_bins = len(seen_states_bins)
+    branching_factor_series = Series(["Average Branching Factor"])
+    for bin_key in sorted(seen_states_bins.keys()):
+        boards = list(seen_states_bins[bin_key])
+        avg_branching_factor = get_branching_factor(boards, gt)
+        branching_factor_series.x.append(bin_key)
+        branching_factor_series.ys["Average Branching Factor"].append(avg_branching_factor)
+    
+    save_series(branching_factor_series, f"{config.eval_dir}/branching_factor_over_game_progress_{num_bins}.pkl")
+
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='training_data_evals')
     
@@ -800,6 +996,17 @@ def main():
     get_stats_of_each_iterations_game_data()
     get_training_performance_metrics()
     gamedata_accuracy_over_progress(list(game_data_generator(config.training_dir, config.training_iterations)))
+
+    # over game progress functions
+    training_data_bins = training_data_bins_over_game_progress(list(game_data_generator(config.training_dir, config.training_iterations)), num_bins=10)
+    seen_states_bins = seen_states_bins_over_game_progress(training_data_bins)
+    num_states_over_game_progress(training_data_bins)
+    num_unique_states_over_game_progress(seen_states_bins)
+    trim_progress_bins(training_data_bins, seen_states_bins, max_size=2000)
+    gt = GroundTruth()
+    baseline_accuracy_over_game_progress(seen_states_bins, gt)
+    training_data_accuracy_over_game_progress(training_data_bins, gt)
+    branching_factor_over_game_progress(seen_states_bins, gt)
 
     logger.info("Training data evaluations completed.")
 
