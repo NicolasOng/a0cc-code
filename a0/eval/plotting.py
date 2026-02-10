@@ -153,6 +153,8 @@ def plot_bar(title: str, series: tuple[str, list[int], list[float]], x_label: st
     plt.close()
 
 def main():
+    # I should split this main function into many smaller ones,
+    # each of which can fail independently if a series is missing.
     setup_logging(
         level=20,
         log_dir=config.log_dir,

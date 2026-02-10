@@ -139,6 +139,14 @@ def main():
     load_and_merge_series(outputs, "state_progress_nt_gtv_datasets_eval.pkl", confidence)
     load_and_merge_series(outputs, "state_progress_state_nums.pkl", confidence)
 
+    num_bins_list = [10]
+    for num_bins in num_bins_list:
+        load_and_merge_series(outputs, f"num_states_over_game_progress_{num_bins}.pkl", confidence)
+        load_and_merge_series(outputs, f"num_unique_states_over_game_progress_{num_bins}.pkl", confidence)
+        load_and_merge_series(outputs, f"baseline_accuracy_over_game_progress_{num_bins}.pkl", confidence)
+        load_and_merge_series(outputs, f"training_data_accuracy_over_game_progress_{num_bins}.pkl", confidence)
+        load_and_merge_series(outputs, f"branching_factor_over_game_progress_{num_bins}.pkl", confidence)
+    
     # load the merged series from disk
     # this step is seperated in case I don't want to recalculate all the series
     train_gt_series = load_series(f"{config.eval_dir}/merged_training_gtv_eval.pkl")
@@ -169,6 +177,19 @@ def main():
     state_progress_nt_gtv = load_series(f"{config.eval_dir}/merged_state_progress_nt_gtv_datasets_eval.pkl")
     state_progress_state_nums = load_series(f"{config.eval_dir}/merged_state_progress_state_nums.pkl")
 
+    num_bins_list = [10]
+    n_num_states_series: list[Series] = []
+    n_num_unique_states_series: list[Series] = []
+    n_baseline_acc_over_gp_series: list[Series] = []
+    n_acc_over_gp_series: list[Series] = []
+    n_branching_factor_series: list[Series] = []
+    for num_bins in num_bins_list:
+        n_num_states_series.append(load_series(f"{config.eval_dir}/merged_num_states_over_game_progress_{num_bins}.pkl"))
+        n_num_unique_states_series.append(load_series(f"{config.eval_dir}/merged_num_unique_states_over_game_progress_{num_bins}.pkl"))
+        n_baseline_acc_over_gp_series.append(load_series(f"{config.eval_dir}/merged_baseline_accuracy_over_game_progress_{num_bins}.pkl"))
+        n_acc_over_gp_series.append(load_series(f"{config.eval_dir}/merged_training_data_accuracy_over_game_progress_{num_bins}.pkl"))
+        n_branching_factor_series.append(load_series(f"{config.eval_dir}/merged_branching_factor_over_game_progress_{num_bins}.pkl"))
+    
     # try plotting
     plot_shaded_error("Value Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
@@ -251,6 +272,34 @@ def main():
                 ("Num States", "±95% CI", state_progress_state_nums.x, state_progress_state_nums.ys["Num States"], state_progress_state_nums.ys["Num States_ci"]),
                 #("Num States NT", "±95% CI", state_progress_state_nums.x, state_progress_state_nums.ys["Num States NT"], state_progress_state_nums.ys["Num States NT_ci"]),
             ], "State Progress (%)", "Number of States", "state_progress_num_states")
+
+    for i, num_bin in enumerate(num_bins_list):
+        plot_shaded_error(f"Number of States and Unique States Over Game Progress (Num Bins: {num_bin})",
+                   [
+                       ("Num States", "±95% CI", n_num_states_series[i].x, n_num_states_series[i].ys["Num States"], n_num_states_series[i].ys["Num States_ci"]),
+                       ("Num Unique States", "±95% CI", n_num_unique_states_series[i].x, n_num_unique_states_series[i].ys["Num Unique States"], n_num_unique_states_series[i].ys["Num Unique States_ci"])
+                   ], "Game Progress (%)", "Number of States", f"gp_merged_num_states_over_game_progress_{num_bin}")
+        
+        plot_shaded_error(f"Baseline Accuracy Over Game Progress (Num Bins: {num_bin})",
+                   [
+                        ("Value Accuracy", "±95% CI", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Value Accuracy"], n_baseline_acc_over_gp_series[i].ys["Baseline Value Accuracy_ci"]),
+                        ("Value Accuracy (ND)", "±95% CI", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Value Accuracy (ND)"], n_baseline_acc_over_gp_series[i].ys["Baseline Value Accuracy (ND)_ci"]),
+                        ("Policy Accuracy", "±95% CI", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy"], n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy_ci"]),
+                        ("Policy Accuracy (NT)", "±95% CI", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy (NT)"], n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy (NT)_ci"])
+                   ], "Game Progress (%)", "Baseline Accuracy", f"gp_merged_baseline_accuracy_over_game_progress_{num_bin}")
+        
+        plot_shaded_error(f"Training Data Accuracy Over Game Progress (Num Bins: {num_bin})",
+                   [
+                        ("Value Accuracy", "±95% CI", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Value Accuracy"], n_acc_over_gp_series[i].ys["Value Accuracy_ci"]),
+                        ("Value Accuracy (ND)", "±95% CI", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Value Accuracy (ND)"], n_acc_over_gp_series[i].ys["Value Accuracy (ND)_ci"]),
+                        ("Policy Accuracy", "±95% CI", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Policy Accuracy"], n_acc_over_gp_series[i].ys["Policy Accuracy_ci"]),
+                        ("Policy Accuracy (NT)", "±95% CI", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Policy Accuracy (NT)"], n_acc_over_gp_series[i].ys["Policy Accuracy (NT)_ci"]),
+                   ], "Game Progress (%)", "Training Data Accuracy", f"gp_merged_training_data_accuracy_over_game_progress_{num_bin}")
+        
+        plot_shaded_error(f"Branching Factor Over Game Progress (Num Bins: {num_bin})",
+                   [
+                       ("Average Branching Factor", "±95% CI", n_branching_factor_series[i].x, n_branching_factor_series[i].ys["Average Branching Factor"], n_branching_factor_series[i].ys["Average Branching Factor_ci"])
+                   ], "Game Progress (%)", "Branching Factor", f"gp_merged_branching_factor_over_game_progress_{num_bin}")
 
 if __name__ == "__main__":
     main()
