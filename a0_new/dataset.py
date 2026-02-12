@@ -194,3 +194,20 @@ class Dataset:
         Clear the policies in the dataset (set all to 0).
         """
         self.policies = np.zeros_like(self.policies)
+
+    def save(self, path: str) -> None:
+        """
+        Save the dataset to a file using numpy's savez_compressed.
+        """
+        np.savez_compressed(path, states=self.states, values=self.values, policies=self.policies, masks=self.masks, batch_size=self.batch_size)
+
+    def load(self, path: str) -> None:
+        """
+        Load the dataset from a file saved with numpy's savez_compressed.
+        """
+        data = np.load(path)
+        self.states = data['states']
+        self.values = data['values']
+        self.policies = data['policies']
+        self.masks = data['masks']
+        self.batch_size = int(data['batch_size'])

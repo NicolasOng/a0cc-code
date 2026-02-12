@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import jax
 import jax.numpy as jnp
 from flax import nnx
@@ -161,6 +163,10 @@ class A0CCModel(TrainableModel):
         # use pickle to save the state
         with open(path, 'wb') as f:
             pickle.dump(state, f)
+    
+    @classmethod
+    def load_from_file(cls, file_path: str) -> A0CCModel:
+        return load_model(file_path)
 
 def load_model(filepath: str) -> A0CCModel:
     # create a new model instance with the same parameters

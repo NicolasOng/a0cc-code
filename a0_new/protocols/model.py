@@ -51,6 +51,12 @@ class TrainableModel(nnx.Module):
         Saves the model parameters to the given path.
         '''
         ...
+    
+    @classmethod
+    @abstractmethod
+    def load_from_file(cls, file_path: str) -> TrainableModel:
+        """Each implementation decides how to load itself."""
+        ...
 
 T_nnx = TypeVar("T_nnx", bound=TrainableModel)
 class NNModel(RawModel, Protocol[T_nnx]):

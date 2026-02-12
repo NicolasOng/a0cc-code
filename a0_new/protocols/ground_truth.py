@@ -63,3 +63,10 @@ class GTProtocol(Protocol[T_state, T_action]):
         A trivial board is one where all the moves lead to the same outcome.
         '''
         ...
+    
+    def is_terminal(self, state: T_state) -> bool:
+        '''
+        Checks if the given board is terminal.
+        A terminal board is one where the game has ended (win/loss/draw).
+        '''
+        ...

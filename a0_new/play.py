@@ -3,7 +3,7 @@ import time
 from a0_new.protocols.game import A0Game, A0State, A0Action, T_state, T_action, Player
 from a0_new.protocols.player import PlayerProtocol
 
-from typing import Optional, Any, Protocol, Sequence
+from typing import Optional, Any, Protocol, Sequence, Generic
 
 from a0_new.policy import Policy
 
@@ -17,36 +17,36 @@ class PlayStopSignal(Protocol):
     '''
     def is_set(self) -> bool:
         ...
-class TurnData:
+class TurnData(Generic[T_state, T_action]):
     def __init__(self,
-                 state: A0State[Any],
-                 actions: Sequence[A0Action],
-                 action: A0Action,
+                 state: T_state,
+                 actions: Sequence[T_action],
+                 action: T_action,
                  value: float,
-                 policy: Policy[Any]
+                 policy: Policy[T_action]
                 ):
-        self.state: A0State[Any] = state
-        self.actions: Sequence[A0Action] = actions
-        self.action: A0Action = action
+        self.state: T_state = state
+        self.actions: Sequence[T_action] = actions
+        self.action: T_action = action
         self.value: float = value
-        self.policy: Policy[Any] = policy
+        self.policy: Policy[T_action] = policy
 
-class GameData:
-    def __init__(self, game: A0Game[Any, Any], turn_limit: Optional[int] = None):
-        self.game: A0Game[Any, Any] = game
+class GameData(Generic[T_state, T_action]):
+    def __init__(self, game: A0Game[T_state, T_action], turn_limit: Optional[int] = None):
+        self.game: A0Game[T_state, T_action] = game
         self.turn_limit: Optional[int] = turn_limit
-        self.turn_data: list[TurnData] = []
+        self.turn_data: list[TurnData[T_state, T_action]] = []
         self.ended: bool = False
         self.winner: Optional[Player] = None
         self.time: float = 0.0 # seconds
-        self.final_board: Optional[A0State[Any]] = None
+        self.final_board: Optional[T_state] = None
 
 def play(
         game: A0Game[T_state, T_action],
         players: list[PlayerProtocol[T_state, T_action]],
         turn_limit: Optional[int] = None,
         stop_signal: Optional[PlayStopSignal] = None
-    ) -> GameData:
+    ) -> GameData[T_state, T_action]:
     '''
     Plays the given game with the given players.
     Both game and players should conform to the appropriate protocols,
@@ -57,7 +57,7 @@ def play(
     logger.info("Game started.")
     start = time.perf_counter()
 
-    data = GameData(game, turn_limit)
+    data = GameData[T_state, T_action](game, turn_limit)
 
     turn = 0
     ended = False

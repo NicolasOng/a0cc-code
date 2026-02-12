@@ -18,6 +18,12 @@ class Policy(Generic[T_action]):
         self.actions = actions
         self.action_values = action_values
     
+    def get_action_list(self) -> Sequence[T_action]:
+        '''
+        Returns the list of actions in the policy.
+        '''
+        return self.actions
+    
     def get_action_value(self, action: T_action) -> float:
         '''
         Returns the probability of the given action.

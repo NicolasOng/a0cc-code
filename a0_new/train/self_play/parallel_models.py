@@ -7,7 +7,7 @@ import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
 from a0_new.protocols.model import RecursiveFullOnRawModel, T_nn_model, RawModel, FullModelOnRaw, FullModelOnFull
-from a0_new.protocols.game import A0Game
+from a0_new.protocols.game import A0Game, T_state, T_action
 from a0_new.protocols.player import FullModelPlayer
 
 from multiprocessing import Process, Queue, Array, Event, Value
@@ -36,10 +36,10 @@ from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 def _play_process(
-        game: A0Game[Any, Any],
+        game: A0Game[T_state, T_action],
         serialized_player: bytes,
         state_counter: SynchronizedArray[int],
-        result_queue: Queue[tuple[GameData, list[ExperienceData]]],
+        result_queue: Queue[tuple[GameData[T_state, T_action], list[ExperienceData]]],
         num_active_workers: Synchronized[int],
         shutdown_event: EventType,
         pid: int
@@ -52,7 +52,7 @@ def _play_process(
     logger.info(f"Play process {pid} started")
 
     # deserialize the player
-    player: FullModelPlayer[RecursiveFullOnRawModel[Any], Any, Any] = dill.loads(serialized_player)
+    player: FullModelPlayer[RecursiveFullOnRawModel[Any], T_state, T_action] = dill.loads(serialized_player)
 
     # get the full model on raw from the player,
     # to use its methods for processing gamedata into experience data
@@ -92,13 +92,13 @@ def _play_process(
     logger.info(f"Play process {pid} shutting down, active workers remaining: {num_active_workers.value}")
 
 def self_play(
-        game: A0Game[Any, Any],
-        player: FullModelPlayer[RecursiveFullOnRawModel[T_nn_model], Any, Any],
+        game: A0Game[T_state, T_action],
+        player: FullModelPlayer[RecursiveFullOnRawModel[T_nn_model], T_state, T_action],
         experience_buffer: ExperienceBuffer,
         iteration: int
     ) -> None:
     # gamedata list
-    gamedata_list: list[GameData] = []
+    gamedata_list: list[GameData[T_state, T_action]] = []
 
     # serialize the player and the model it is using
     logger.info("Serializing player + model for play processes...")
@@ -107,7 +107,7 @@ def self_play(
     # get the number of clients to use, create the queue and shared variables
     logger.info(f"Setting up multiprocessing IPC with {config.num_workers} workers...")
     num_workers = config.num_workers
-    result_queue: Queue[tuple[GameData, list[ExperienceData]]] = Queue(maxsize=num_workers)
+    result_queue: Queue[tuple[GameData[T_state, T_action], list[ExperienceData]]] = Queue(maxsize=num_workers)
     num_active_workers: Synchronized[int] = Value('i', 0)
     state_counter: SynchronizedArray[int] = Array('i', [0] * num_workers)
     shutdown_event = Event()
