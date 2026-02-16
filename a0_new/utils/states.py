@@ -175,6 +175,7 @@ def remove_bias(states: list[T_state], state_info_list: list[StateInfo]) -> list
                 removed += 1
             else:
                 filtered_states.append(state)
+    random.shuffle(filtered_states)
     return filtered_states
 
 def convert_state_to_full_gt_experience(state: T_state, gt: GTProtocol[T_state, T_action]) -> FullExperienceData[T_state, T_action]:

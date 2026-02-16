@@ -26,8 +26,12 @@ def get_random_states_for_evaluation(
     gt: the ground truth protocol to use for getting the state values and policies.
     adapter: a model that can be used to get the state values and policies from the gt
     '''
-    random_states = get_random_states(n * 10, gt)
+    random_states = get_random_states(n * 2, gt)
     si_list = get_state_info_for_states(random_states, gt)
+
+    logger.info(f"Logging info before filtering:")
+    log_states_info(get_states_info(random_states, si_list))
+
     random_states_nd = filter_state_list(
         random_states,
         si_list,
@@ -42,7 +46,11 @@ def get_random_states_for_evaluation(
         remove_terminal=True
     )
     # trim the random states to n states, after filtering out the unwanted states
+    random_states_nd = random_states_nd[:n]
     random_states_nt = random_states_nt[:n]
+
+    # remove bias again
+    random_states_nd = remove_bias(random_states_nd, get_state_info_for_states(random_states_nd, gt))
 
     logger.info(f"Logging info for random nd states:")
     log_states_info(get_states_info(random_states_nd, get_state_info_for_states(random_states_nd, gt)))
@@ -68,7 +76,10 @@ def get_seen_states_for_evaluation(
 
     # shuffle seen states to get a random sample of them, then take the first n states
     random.shuffle(seen_states)
-    seen_states = seen_states[:n * 10] # take more than n states to account for filtering out some of them
+    seen_states = seen_states[:n * 2] # take more than n states to account for filtering out some of them
+
+    logger.info(f"Logging info for all seen states before filtering:")
+    log_states_info(get_states_info(seen_states, get_state_info_for_states(seen_states, gt)))
 
     # could put this filtering in its own function,
     # since it's the typical filtering I'll be doing for any evaluation dataset
@@ -90,6 +101,9 @@ def get_seen_states_for_evaluation(
     # trim the seen states to n states, after filtering out the unwanted states
     seen_states_nd = seen_states_nd[:n]
     seen_states_nt = seen_states_nt[:n]
+
+    # remove bias again
+    seen_states_nd = remove_bias(seen_states_nd, get_state_info_for_states(seen_states_nd, gt))
 
     logger.info(f"Logging info for seen nd states:")
     log_states_info(get_states_info(seen_states_nd, get_state_info_for_states(seen_states_nd, gt)))
