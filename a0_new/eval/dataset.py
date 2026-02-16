@@ -1,14 +1,5 @@
-import sys
-import os
-
-from typing import Generator
-
-from jax import numpy as jnp
-import jax
 import optax
-import pickle
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
 
@@ -223,3 +214,63 @@ def evaluate_model(model: TrainableModel, evaluation_dataset: Dataset) -> tuple[
         f"Policy Accuracy: {avg_policy_accuracy:.2%}"
     )
     return avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy
+
+def tweak_batch_size_for_small_datasets(dataset: Dataset) -> None:
+    '''
+    Default btch size is usually 256, which is too large for some of the smaller datasets.
+    '''
+    if len(dataset) < dataset.batch_size + 1:
+        new_batch_size = len(dataset)
+        logger.info(f"Dataset size {len(dataset)} is smaller than batch size {dataset.batch_size}. Setting batch size to {new_batch_size}.")
+        dataset.set_batch_size(new_batch_size)
+
+def evaluate_all_models(models: list[tuple[int, TrainableModel]], evaluation_dataset: Dataset, fn: str) -> None:
+    '''
+    Evaluates all given models.
+    They are all evaluated on the same evaluation dataset.
+    '''
+    logger.info(f"Evaluating all given models (eval_type={fn})...")
+    tweak_batch_size_for_small_datasets(evaluation_dataset)
+
+    # Iterate through all model files in the training directory
+    metrics = Series(["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"])
+    for i, model in tqdm(models):
+        logger.info(f"Evaluating model {i}")
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, evaluation_dataset)
+        metrics.x.append(i)
+        metrics.ys["loss"].append(loss)
+        metrics.ys["value_loss"].append(value_loss)
+        metrics.ys["policy_loss"].append(policy_loss)
+        metrics.ys["value_accuracy"].append(value_accuracy)
+        metrics.ys["policy_accuracy"].append(policy_accuracy)
+    
+    # save the metrics to a file
+    metrics_path = f"{config.eval_dir}/{fn}.pkl"
+    save_series(metrics, metrics_path)
+
+def evaluate_on_all_datasets(model: TrainableModel, datasets: dict[int, Dataset], fn: str) -> None:
+    '''
+    Evaluates the model on all datasets in the dictionary.
+    The dictionary is expected to have keys that are integers that can be ordered,
+    and values as Dataset objects.
+    '''
+    logger.info(f"Evaluating model on all datasets ({fn})...")
+
+    # Iterate through all datasets in the dictionary
+    metrics = Series(["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"])
+    sorted_keys = sorted(datasets.keys())
+    for bin_key in sorted_keys:
+        dataset = datasets[bin_key]
+        tweak_batch_size_for_small_datasets(dataset)
+        logger.info(f"Evaluating dataset with progress bin {bin_key}")
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, dataset)
+        metrics.x.append(bin_key)
+        metrics.ys["loss"].append(loss)
+        metrics.ys["value_loss"].append(value_loss)
+        metrics.ys["policy_loss"].append(policy_loss)
+        metrics.ys["value_accuracy"].append(value_accuracy)
+        metrics.ys["policy_accuracy"].append(policy_accuracy)
+    
+    # save the metrics to a file
+    metrics_path = f"{config.eval_dir}/{fn}.pkl"
+    save_series(metrics, metrics_path)

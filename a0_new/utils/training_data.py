@@ -59,19 +59,19 @@ def model_generator(model_cls: TrainableModel, dir: str, n: int) -> Generator[tu
     '''
     Load model data from the given path.
     Each model data object contains the model for each iteration.
-    Attempts to load each iteration's model (model_{i + 1}.pkl) from 1 to n inclusive
+    Attempts to load each iteration's model (model_{i}.pkl) from 0 to n inclusive
     Returns a generator of tuples (iteration, model),
     where model is a TrainableModel object for that iteration.
     If a file doesn't exist, it skips it.
     '''
-    for i in range(n):
-        file_path = f"{dir}/model_{i + 1}.pkl"
+    for i in range(n + 1):
+        file_path = f"{dir}/model_{i}.pkl"
         try:
             # Use the class-specific loader
             model = model_cls.load_from_file(file_path)
-            yield i + 1, model
+            yield i, model
         except Exception as e:
-            logger.error(f"Failed to load model {i + 1} at {file_path}: {e}")
+            logger.error(f"Failed to load model {i} at {file_path}: {e}")
 
 def get_fed_list_from_gamedata(gamedata: GameData[T_state, T_action]) -> list[FullExperienceData[T_state, T_action]]:
     '''

@@ -1,8 +1,14 @@
 from typing import Optional, Protocol
 
+from enum import Enum
+
 from a0_new.protocols.game import T_state, T_action, Player
 
 from a0_new.policy import Policy
+
+class PolicyType(Enum):
+    PROB_DIST = 1
+    OUTCOMES = 2
 
 class GTProtocol(Protocol[T_state, T_action]):
     def rank(self, state: T_state) -> int:
@@ -51,7 +57,7 @@ class GTProtocol(Protocol[T_state, T_action]):
         '''
         ...
     
-    def get_policy(self, state: T_state) -> Policy[T_action]:
+    def get_policy(self, state: T_state, p_type: PolicyType) -> Policy[T_action]:
         '''
         Returns the ground truth policy for the given state.
         '''

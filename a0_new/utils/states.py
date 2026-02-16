@@ -1,6 +1,6 @@
 from typing import Any, Optional, Generic
 
-from a0_new.protocols.ground_truth import GTProtocol
+from a0_new.protocols.ground_truth import GTProtocol, PolicyType
 from a0_new.protocols.game import T_state, T_action, Player
 from a0_new.protocols.model import FullModelOnRaw
 
@@ -182,7 +182,7 @@ def convert_state_to_full_gt_experience(state: T_state, gt: GTProtocol[T_state, 
     Converts a state to a FullExperienceData object using the GTProtocol.
     '''
     value = gt.get_outcome(state)
-    policy = gt.get_policy(state)
+    policy = gt.get_policy(state, p_type=PolicyType.PROB_DIST)
     return FullExperienceData(state=state, value=value, policy=policy)  
 
 def convert_state_list_to_full_gt_experience_list(states: list[T_state], gt: GTProtocol[T_state, T_action]) -> list[FullExperienceData[T_state, T_action]]:
