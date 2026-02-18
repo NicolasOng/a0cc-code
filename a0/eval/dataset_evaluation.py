@@ -168,7 +168,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[
         board_input, value_label, policy_label, policy_mask = batch
 
         # get the model's predictions, and convert them to numpy arrays
-        value, policy = model(board_input, train=False)
+        value, policy = model.inference(board_input)
         pred_value = np.array(value, dtype=np.float32)
         pred_policy = np.array(policy, dtype=np.float32)
         # also convert the labels to numpy arrays

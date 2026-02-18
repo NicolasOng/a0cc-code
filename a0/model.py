@@ -138,6 +138,16 @@ class AlphaZeroModel(nnx.Module):
         value = self.value_head(x)
         # value: (batch_size, 1)
         return value, policy
+    
+    @nnx.jit
+    def inference(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+        '''
+        A convenience method for performing inference (i.e., calling the model with train=False).
+        '''
+        return self.__call__(x, train=False)
+    
+    def train_inference(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+        return self(x, train=True)
 
 def save_model(filepath: str, model: AlphaZeroModel) -> None:
     # get the state of the model

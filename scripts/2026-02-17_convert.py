@@ -124,6 +124,7 @@ def main():
 
     convert_gamedata(old_gamedata_dir, new_gamedata_dir, n_iterations)
     convert_models(old_model_dir, new_model_dir, n_iterations)
+    # TODO: Should also just copy over the "iteration_stats_*.pkl" files.
 
 if __name__ == "__main__":
     main()

@@ -170,7 +170,7 @@ class MCTS_NN:
             return 1.0 if winner == self._initial_state.current_player else -1.0
 
         board_input = board_to_input(state)
-        value, _ = self.model(jnp.array(board_input), train=False)
+        value, _ = self.model.inference(jnp.array(board_input))
         value = float(value[0][0])
 
         # print("Value from model:", value)

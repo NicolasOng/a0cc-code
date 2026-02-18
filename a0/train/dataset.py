@@ -119,7 +119,7 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     policy_mask: jnp.ndarray = batch['mask']
 
     # get the model's predictions
-    value, policy = model(board_input, train=True)
+    value, policy = model.train_inference(board_input)
 
     # calculate the value loss and accuracy
     value_loss = value_loss_function(value, value_label)
