@@ -22,7 +22,7 @@ class A0Player:
             num_pieces=num_pieces,
             repeats_for_draw=-1,
             no_reverse_moves=no_reverse_moves,
-            no_illegal_moves=False,
+            no_illegal_moves=True,
             no_side_moves=no_side_moves
         )
         self.temperature = 1.0  # Temperature for exploration in MCTS

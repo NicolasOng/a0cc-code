@@ -606,7 +606,7 @@ class Board:
         return self.__hash__() == other.__hash__()
 
 class Game:
-    def __init__(self, board_size: int = 7, num_pieces: int = 6, repeats_for_draw: int = -1, no_reverse_moves: bool=False, no_illegal_moves: bool=False, no_side_moves: bool=False) -> None:
+    def __init__(self, board_size: int = 7, num_pieces: int = 6, repeats_for_draw: int = -1, no_reverse_moves: bool=False, no_illegal_moves: bool=True, no_side_moves: bool=False) -> None:
         self.board = Board(board_size=board_size, home_size=board_to_home_size[board_size])
         self.board_history: list[Board] = []
         self.end = False
