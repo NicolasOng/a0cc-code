@@ -70,6 +70,7 @@ class Config:
         - self_play_batch_size: int, batch size for self-play
         '''
         self.path = config_fn
+        self.trial_num = trial_num
 
         # Load the default configuration first
         with open(default_config_fn) as f:

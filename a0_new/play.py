@@ -39,7 +39,7 @@ class GameData(Generic[T_state, T_action]):
         self.ended: bool = False
         self.winner: Optional[Player] = None
         self.time: float = 0.0 # seconds
-        self.final_board: Optional[T_state] = None
+        self.final_state: Optional[T_state] = None
 
 def play(
         game: A0Game[T_state, T_action],
@@ -96,7 +96,7 @@ def play(
     else:
         logger.info(f"{winner} wins!")
     
-    data.final_board = next_state
+    data.final_state = next_state
     
     data.ended = ended
     data.winner = winner
