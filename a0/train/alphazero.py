@@ -3,6 +3,7 @@ import multiprocessing
 import concurrent.futures
 from concurrent.futures import Future, wait, FIRST_COMPLETED
 import os
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 import pickle
 import dill
 
