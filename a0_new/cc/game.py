@@ -18,6 +18,14 @@ class CCState(A0State[CCAction]):
         self.board: Board = Board(board_size, home_size)
         self._action = CCAction(0,0,0,0)
     
+    def __hash__(self) -> int:
+        return hash(self.board)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CCState):
+            return False
+        return self.board == other.board
+
     def __str__(self) -> str:
         board_str = self.board.board_view()
         current_player_str = f"Current player: {self.board.current_player}"
