@@ -72,7 +72,11 @@ def get_seen_states_for_evaluation(
     '''
     training_data = gamedata_generator(config.training_dir, config.training_iterations)
     full_experience_data_list = get_full_experience_data_list_from_training_data(training_data)
-    seen_states = list(set(get_states_from_fed_list(full_experience_data_list)))
+    seen_states_list = get_states_from_fed_list(full_experience_data_list)
+    seen_states = list(set(seen_states_list))
+
+    logger.info(f"Total number of seen states (with duplicates): {len(seen_states_list)}")
+    logger.info(f"Total number of unique seen states: {len(seen_states)}")
 
     # shuffle seen states to get a random sample of them, then take the first n states
     random.shuffle(seen_states)
