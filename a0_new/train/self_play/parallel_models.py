@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import os
+import time
 
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
@@ -13,6 +14,7 @@ from a0_new.protocols.player import FullModelPlayer
 from multiprocessing import Process, Queue, Array, Event, Value
 from multiprocessing.sharedctypes import Synchronized, SynchronizedArray
 from multiprocessing.synchronize import Event as EventType
+import threading
 
 import pickle
 import dill
@@ -97,6 +99,8 @@ def self_play(
         experience_buffer: ExperienceBuffer,
         iteration: int
     ) -> None:
+    self_play_start = time.time()
+
     # gamedata list
     gamedata_list: list[GameData[T_state, T_action]] = []
 
@@ -156,17 +160,35 @@ def self_play(
                 break
         
     logger.info("Main process finished result processing loop, waiting for play processes to shut down...")
-    
-    # wait for all play processes to finish
+
+    # Drain the result queue in a background thread while we join workers.
+    # Workers cannot exit if they have un-consumed items in the queue — Python's
+    # mp.Queue blocks the internal feeder thread until the pipe buffer is drained.
+    # See: https://docs.python.org/3/library/multiprocessing.html#pipes-and-queues
+    drain_stop = threading.Event()
+    def _drain_queue():
+        while not drain_stop.is_set():
+            try:
+                result_queue.get(timeout=0.1)
+            except Exception:
+                pass
+    drain_thread = threading.Thread(target=_drain_queue, daemon=True)
+    drain_thread.start()
+
     for p in processes:
-        # note: join() is blocking,
-        # and waits for the processes in order
-        # can't decrement num_active_workers here.
-        p.join()
+        p.join(timeout=300)
+        if p.is_alive():
+            raise RuntimeError(f"Play process {p.pid} did not shut down within 300s. This should not happen — investigate the worker process.")
         logger.info(f"Play process {p.pid} has shut down.")
+
+    drain_stop.set()
+    drain_thread.join()
 
     # save the game data to disk
     logger.info("Saving game data to disk...")
     if config.training_dir:
         with open(config.training_dir + f"gamedata_{iteration + 1}.pkl", 'wb') as f:
             pickle.dump(gamedata_list, f)
+
+    self_play_elapsed = time.time() - self_play_start
+    logger.info(f"Self-play for iteration {iteration} completed in {self_play_elapsed:.1f}s")

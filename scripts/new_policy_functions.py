@@ -5,7 +5,7 @@ from cc.core import Board, Move, Player, Game
 from a0.model_utils import board_to_input, Policy
 from a0.eval.dataset_evaluation import policy_accuracy_function
 from cc.ground_truth import GroundTruth
-from a0.model_utils import get_value_head_policy, get_policy_head_policy, get_value_head_policy2
+from a0.model_utils import get_value_head_policy, get_policy_head_policy
 
 from scripts.policy_inspection import print_policy
 from scripts.sl_on_policy_head import get_n_random_states
@@ -75,7 +75,7 @@ def test_accuracies(n: int):
 
 def inspect_new_policies():
     gt = GroundTruth()
-    model = load_model(config.training_dir + "model_450.pkl")
+    model = load_model(config.training_dir + "model_50.pkl")
     game = Game(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
@@ -184,7 +184,7 @@ if __name__ == "__main__":
         process_name="new_policy_functions"
     )
 
-    #inspect_new_policies()
+    inspect_new_policies()
     #test_accuracies(100000)
     #time_new_policy_functions()
-    verify_policy_equivalence()
+    #verify_policy_equivalence()

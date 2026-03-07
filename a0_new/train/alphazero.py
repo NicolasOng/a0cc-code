@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Union, TypeVar, TypeAlias
 
 import os
+import time
 
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
@@ -28,6 +29,8 @@ def train(
         experience_buffer: ExperienceBuffer,
         iteration: int
     ) -> None:
+    train_start = time.time()
+
     # get the trainable nn model from the player
     model = get_nn_model_from_player(player).get_nn_model()
 
@@ -57,6 +60,9 @@ def train(
     # save the model after each iteration
     if config.training_dir:
         model.save_to_file(config.training_dir + f'model_{i + 1}.pkl')
+
+    train_elapsed = time.time() - train_start
+    logger.info(f"Training for iteration {i + 1} completed in {train_elapsed:.1f}s")
 
 def alphazero(
         game: A0Game[Any, Any],
