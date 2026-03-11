@@ -16,9 +16,9 @@ from config import config
 
 from a0.game import play, GameData
 from a0.players.a0 import A0Player
-from a0.model_utils import board_to_input, get_legal_move_mask_from_state
+from a0.model_utils import board_to_input, get_legal_move_mask_from_state, Policy
 from a0.model import AlphaZeroModel, load_model, save_model
-from cc.core import Game
+from cc.core import Game, Player
 from cc.ground_truth import GroundTruth
 from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data
 from a0.eval.training_data import GameDataStats, game_data_list_stats
@@ -107,6 +107,76 @@ def game_data_to_gt_training_set(game_data: GameData) -> list[ExperienceData]:
 
     return training_set
 
+def game_data_to_gt_value_training_set(game_data: GameData) -> list[ExperienceData]:
+    '''
+    Like game_data_to_training_set, but replaces the value with the ground truth
+    outcome of the current state. The policy is kept as the MCTS policy.
+    '''
+    gt = GroundTruth()
+    training_set: list[ExperienceData] = []
+
+    turn_data = game_data.turn_data
+    for turn in turn_data:
+        board = turn.board
+        legal_move_mask = get_legal_move_mask_from_state(board, for_model=True)
+
+        # GT value for the current state
+        value = gt.get_outcome(board)
+
+        # MCTS policy (already in model perspective)
+        mcts_policy = turn.player_data
+
+        training_example = ExperienceData(
+            board=board_to_input(board),
+            value=value,
+            policy=mcts_policy,
+            mask=legal_move_mask
+        )
+        training_set.append(training_example)
+
+    return training_set
+
+def game_data_to_gt_next_value_training_set(game_data: GameData) -> list[ExperienceData]:
+    '''
+    Like game_data_to_training_set, but replaces the value with the ground truth
+    outcome of the next state, where the top action in the MCTS policy is taken
+    on the current state. The policy is kept as the MCTS policy.
+    The GT outcome of the next state is from the opponent's perspective,
+    so it is negated to stay in the current player's perspective.
+    '''
+    gt = GroundTruth()
+    training_set: list[ExperienceData] = []
+
+    turn_data = game_data.turn_data
+    for turn in turn_data:
+        board = turn.board
+        legal_move_mask = get_legal_move_mask_from_state(board, for_model=True)
+
+        # The stored MCTS policy is in model perspective (rotated for PLAYER_O).
+        # Un-rotate to find the actual best move on the board.
+        mcts_policy = turn.player_data
+        p = Policy(len(board.board))
+        p.set_logits(mcts_policy.copy(), rotate_180=False)
+        if board.current_player == Player.PLAYER_O:
+            p.rotate_policy()
+        best_move = p.get_best_move()
+
+        # Apply the best move to get the next state
+        board.apply_move(best_move)
+        # GT outcome from the next state's current player (opponent), negated
+        value = -gt.get_outcome(board)
+        board.undo_move(best_move)
+
+        training_example = ExperienceData(
+            board=board_to_input(board),
+            value=value,
+            policy=mcts_policy,
+            mask=legal_move_mask
+        )
+        training_set.append(training_example)
+
+    return training_set
+
 def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
     '''
     Plays a game of chinese checkers with the given players,
@@ -136,8 +206,12 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
     player: A0Player = dill.loads(serialized_player)
     game_data = play(game, [player, player], config.turn_limit)
 
-    if config.use_gt:
+    if config.experiment == "gt":
         return game_data_to_gt_training_set(game_data), game_data
+    elif config.experiment == "gt_value":
+        return game_data_to_gt_value_training_set(game_data), game_data
+    elif config.experiment == "gt_next_value":
+        return game_data_to_gt_next_value_training_set(game_data), game_data
     else:
         return game_data_to_training_set(game_data), game_data
 
