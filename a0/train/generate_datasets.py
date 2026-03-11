@@ -9,7 +9,6 @@ from cc.ground_truth import GroundTruth
 
 from a0.players.a0 import board_to_input
 
-import jax.numpy as jnp
 import numpy as np
 from numpy.typing import NDArray
 
@@ -66,13 +65,13 @@ def generate_ground_truth_dataset(num_states: int | None = None, prob_dist: bool
         values.append(outcome)
         policies.append(policy)
 
-    jnp_states = jnp.stack(states, 0) # (board_size, board_size, 2) -> (N, board_size, board_size, 2)
-    jnp_values = jnp.stack(values, 0)  # (1,) -> (N, 1)
-    jnp_policies = jnp.stack(policies, 0) # (board_size ** 4) -> (N, board_size ** 4)
+    np_states = np.stack(states, 0) # (board_size, board_size, 2) -> (N, board_size, board_size, 2)
+    np_values = np.stack(values, 0)  # (1,) -> (N, 1)
+    np_policies = np.stack(policies, 0) # (board_size ** 4) -> (N, board_size ** 4)
     
     # add these to a dataset
     dataset = Dataset(256)
-    dataset.set(jnp_states, jnp_values, jnp_policies)
+    dataset.set(np_states, np_values, np_policies)
 
     # save the dataset
     logger.info("Saving ground truth dataset to file...")
@@ -120,15 +119,15 @@ def generate_random_dataset(num_states: int | None = None):
         # put these into the lists
         states.append(board_input)
         values.append(outcome)
-        policies.append(jnp.zeros((config.board_size ** 4,)))
+        policies.append(np.zeros((config.board_size ** 4,)))
     
-    jnp_states = jnp.stack(states, 0) # (board_size, board_size) -> (N, board_size, board_size)
-    jnp_values = jnp.stack(values, 0)  # (1,) -> (N, 1)
-    jnp_policies = jnp.stack(policies, 0) # (board_size ** 4) -> (N, board_size ** 4)
+    np_states = np.stack(states, 0) # (board_size, board_size) -> (N, board_size, board_size)
+    np_values = np.stack(values, 0)  # (1,) -> (N, 1)
+    np_policies = np.stack(policies, 0) # (board_size ** 4) -> (N, board_size ** 4)
 
     # add these to a dataset
     dataset = Dataset(256)
-    dataset.set(jnp_states, jnp_values, jnp_policies)
+    dataset.set(np_states, np_values, np_policies)
 
     # save the dataset
     logger.info("Saving random dataset to file...")

@@ -30,5 +30,7 @@
     "coprime_stepping_b": 4397420414,
     "use_gt": false,
     "num_workers": 32,
-    "self_play_batch_size": 32
+    "self_play_batch_size": 32,
+    "illegal_moves": false,
+    "experiment": ""
 }

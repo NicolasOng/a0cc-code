@@ -155,7 +155,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[
 
     # shuffle the dataset and create batches generator
     evaluation_dataset.shuffle()
-    batches = evaluation_dataset.batches()
+    batches = evaluation_dataset.jnp_batches()
 
     total_loss = 0.0
     total_value_loss, total_value_accuracy = 0.0, 0.0

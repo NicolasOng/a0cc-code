@@ -50,6 +50,9 @@ class Config:
     num_workers: int
     self_play_batch_size: int
 
+    illegal_moves: bool
+    experiment: str
+
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
         Initialize the configuration from a JSON file.

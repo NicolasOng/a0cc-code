@@ -2,19 +2,20 @@ from __future__ import annotations
 
 from typing import Generator
 
+import numpy as np
+from numpy.typing import NDArray
 import jax.numpy as jnp
-import jax.random as jrandom
 
 class Dataset:
-    states: jnp.ndarray
-    values: jnp.ndarray
-    policies: jnp.ndarray
-    masks: jnp.ndarray
+    states: NDArray[np.float32]
+    values: NDArray[np.float32]
+    policies: NDArray[np.float32]
+    masks: NDArray[np.float32]
 
     def __init__(self, batch_size: int) -> None:
         self.batch_size = batch_size
     
-    def set(self, states: jnp.ndarray, values: jnp.ndarray, policies: jnp.ndarray, masks: jnp.ndarray) -> None:
+    def set(self, states: NDArray[np.float32], values: NDArray[np.float32], policies: NDArray[np.float32], masks: NDArray[np.float32]) -> None:
         self.states = states
         self.values = values
         self.policies = policies
@@ -70,19 +71,29 @@ class Dataset:
 
     def shuffle(self) -> None:
         # shuffle the data
-        key = jrandom.PRNGKey(0)
-        perm = jrandom.permutation(key, self.states.shape[0])
+        perm = np.random.permutation(self.states.shape[0])
         self.states = self.states[perm]
         self.values = self.values[perm]
         self.policies = self.policies[perm]
         self.masks = self.masks[perm]
 
-    def batches(self) -> Generator[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray], None, None]:
+    def batches(self) -> Generator[tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]], None, None]:
         data_len = self.states.shape[0]
         for i in range(0, data_len, self.batch_size):
             if i + self.batch_size > data_len:
                 break
             yield self.states[i:i + self.batch_size], self.values[i:i + self.batch_size], self.policies[i:i + self.batch_size], self.masks[i:i + self.batch_size]
+
+    def jnp_batches(self) -> Generator[tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray], None, None]:
+        jnp_states = jnp.asarray(self.states, dtype=jnp.float32)
+        jnp_values = jnp.asarray(self.values, dtype=jnp.float32)
+        jnp_policies = jnp.asarray(self.policies, dtype=jnp.float32)
+        jnp_masks = jnp.asarray(self.masks, dtype=jnp.float32)
+        data_len = jnp_states.shape[0]
+        for i in range(0, data_len, self.batch_size):
+            if i + self.batch_size > data_len:
+                break
+            yield jnp_states[i:i + self.batch_size], jnp_values[i:i + self.batch_size], jnp_policies[i:i + self.batch_size], jnp_masks[i:i + self.batch_size]
 
     def num_batches(self) -> int:
         """Return the number of complete batches that will be output by the batches method."""
@@ -101,10 +112,10 @@ class Dataset:
         draws = self.values == 0  
         losses = self.values < 0
         
-        win_count = int(jnp.sum(wins))
-        draw_count = int(jnp.sum(draws))
-        loss_count = int(jnp.sum(losses))
-        
+        win_count = int(np.sum(wins))
+        draw_count = int(np.sum(draws))
+        loss_count = int(np.sum(losses))
+
         return win_count, draw_count, loss_count
     
     def print_distribution(self) -> None:
@@ -131,34 +142,33 @@ class Dataset:
         self.print_distribution()
 
         # Find the minimum count to balance to
-        win_count = int(jnp.sum(wins))
-        loss_count = int(jnp.sum(losses))
+        win_count = int(np.sum(wins))
+        loss_count = int(np.sum(losses))
         target_count = min(win_count, loss_count)
         draw_target_count = target_count // 50  # keep some draws, but fewer
-        
+
         if target_count == 0:
             print("Cannot balance: one category has no samples")
             return
-        
+
         # Randomly sample indices for each category
-        key = jrandom.PRNGKey(42)
+        np.random.seed(42)
         indices_to_keep = []
-        
+
         for mask, name in [(wins, "wins"), (draws, "draws"), (losses, "losses")]:
-            category_indices = jnp.where(mask)[0]
+            category_indices = np.where(mask)[0]
             # Determine the target for this category
             category_target = draw_target_count if name == "draws" else target_count
             # for balancing, sample if there are more than needed (target different for draws)
             if len(category_indices) > category_target:
-                key, subkey = jrandom.split(key)
-                selected = jrandom.choice(subkey, category_indices, shape=(category_target,), replace=False)
+                selected = np.random.choice(category_indices, size=category_target, replace=False)
                 indices_to_keep.extend(selected.tolist())
             # otherwise, keep all
             else:
                 indices_to_keep.extend(category_indices.tolist())
-        
+
         # Update dataset
-        indices_to_keep = jnp.array(sorted(indices_to_keep))
+        indices_to_keep = np.array(sorted(indices_to_keep))
         self.states = self.states[indices_to_keep]
         self.values = self.values[indices_to_keep]
         self.policies = self.policies[indices_to_keep]
@@ -171,10 +181,10 @@ class Dataset:
         """
         Clear the values in the dataset (set all to 0).
         """
-        self.values = jnp.zeros_like(self.values)
-    
+        self.values = np.zeros_like(self.values)
+
     def clear_policies(self) -> None:
         """
         Clear the policies in the dataset (set all to 0).
         """
-        self.policies = jnp.zeros_like(self.policies)
+        self.policies = np.zeros_like(self.policies)

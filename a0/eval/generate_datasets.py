@@ -2,9 +2,9 @@ import pickle
 import random
 import copy
 
-import jax.numpy as jnp
 from tqdm import tqdm
 import numpy as np
+from numpy.typing import NDArray
 
 from cc.core import Board, Game
 from cc.ground_truth import GroundTruth
@@ -113,8 +113,8 @@ def training_experienced_values(n: int | None = None, gen_non_trivial: bool = Tr
                 board = turn.board
                 experienced_outcome = 0.0 if game_winner is None else 1.0 if game_winner == board.current_player else -1.0
                 experienced_policy = turn.player_data
-                mask = jnp.array(get_legal_move_mask_from_state(board, for_model=True)) # (board_size ** 4,)
-                experience = ExperienceData(jnp.array(board_to_input(board)), experienced_outcome, experienced_policy, mask)
+                mask = get_legal_move_mask_from_state(board, for_model=True) # (board_size ** 4,)
+                experience = ExperienceData(board_to_input(board), experienced_outcome, experienced_policy, mask)
 
                 # add this to a set
                 boards_set.add(experience)
@@ -132,10 +132,10 @@ def training_experienced_values(n: int | None = None, gen_non_trivial: bool = Tr
     # load all this into a Dataset object
     boards = list(boards_set)
     ev_dataset = Dataset(batch_size=256)
-    e_board = jnp.concatenate([d.board for d in boards], axis=0) # (1, board_size, board_size, 2) -> (N, board_size, board_size, 2)
-    e_value = jnp.array([d.value for d in boards]).reshape(-1, 1) # list[float] -> (N, 1)
-    e_policy = jnp.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
-    e_mask = jnp.stack([d.mask for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
+    e_board = np.concatenate([d.board for d in boards], axis=0) # (1, board_size, board_size, 2) -> (N, board_size, board_size, 2)
+    e_value = np.array([d.value for d in boards]).reshape(-1, 1) # list[float] -> (N, 1)
+    e_policy = np.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
+    e_mask = np.stack([d.mask for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
     logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
     ev_dataset.set(e_board, e_value, e_policy, e_mask)
     if remove_bias:
@@ -153,10 +153,10 @@ def training_experienced_values(n: int | None = None, gen_non_trivial: bool = Tr
     if gen_non_trivial:
         boards = list(boards_set_non_trivial)
         ev_dataset_non_trivial = Dataset(batch_size=256)
-        e_board = jnp.concatenate([d.board for d in boards], axis=0) # (1, board_size, board_size, 2) -> (N, board_size, board_size, 2)
-        e_value = jnp.array([d.value for d in boards]).reshape(-1, 1) # list[float] -> (N, 1)
-        e_policy = jnp.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
-        e_mask = jnp.stack([d.mask for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
+        e_board = np.concatenate([d.board for d in boards], axis=0) # (1, board_size, board_size, 2) -> (N, board_size, board_size, 2)
+        e_value = np.array([d.value for d in boards]).reshape(-1, 1) # list[float] -> (N, 1)
+        e_policy = np.stack([d.policy for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
+        e_mask = np.stack([d.mask for d in boards]) # (board_size ** 4) -> (N, board_size ** 4)
         logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
         ev_dataset_non_trivial.set(e_board, e_value, e_policy, e_mask)
         if n is not None:
@@ -171,30 +171,30 @@ def create_gtv_dataset_from_board_list(boards: list[Board]):
     Creates a ground truth value dataset from a list of boards.
     '''
     # for each board, get the value and policy from the solve data and convert it to a model input,
-    # then add these to a jnp array
+    # then add these to a np array
     # values = jnp.zeros((len(boards), 1))
     # policies = jnp.zeros((len(boards), config.board_size ** 4))
     logger.info("Get ground truth values for each board (current player perspective)...")
-    states: list[jnp.ndarray] = []
+    states: list[NDArray[np.float32]] = []
     values: list[float] = []
-    policies: list[jnp.ndarray] = []
-    masks: list[jnp.ndarray] = []
+    policies: list[NDArray[np.float32]] = []
+    masks: list[NDArray[np.float32]] = []
     gt = GroundTruth()
     for board in tqdm(boards):
-        states.append(jnp.array(board_to_input(board))) # (1, board_size, board_size, 2)
+        states.append(board_to_input(board)) # (1, board_size, board_size, 2)
         values.append(gt.get_outcome(board)) # float
-        policies.append(jnp.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))) # (board_size ** 4,)
-        masks.append(jnp.array(get_legal_move_mask_from_state(board, for_model=True))) # (board_size ** 4,)
+        policies.append(np.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))) # (board_size ** 4,)
+        masks.append(get_legal_move_mask_from_state(board, for_model=True)) # (board_size ** 4,)
     
     # load all this into a Dataset object
     logger.info("Creating Dataset object with ground truth values...")
-    jnp_states = jnp.concatenate(states, axis=0) # (N, board_size, board_size, 2)
-    jnp_values = jnp.array(values).reshape(-1, 1)  # (N, 1)
-    jnp_policies = jnp.stack(policies) # (N, board_size ** 4)
-    jnp_masks = jnp.stack(masks) # (N, board_size ** 4)
-    logger.info(f"states.shape: {jnp_states.shape}, values.shape: {jnp_values.shape}, policies.shape: {jnp_policies.shape}")
+    np_states = np.concatenate(states, axis=0) # (N, board_size, board_size, 2)
+    np_values = np.array(values).reshape(-1, 1)  # (N, 1)
+    np_policies = np.stack(policies) # (N, board_size ** 4)
+    np_masks = np.stack(masks) # (N, board_size ** 4)
+    logger.info(f"states.shape: {np_states.shape}, values.shape: {np_values.shape}, policies.shape: {np_policies.shape}")
     gtv_dataset = Dataset(batch_size=256)
-    gtv_dataset.set(jnp_states, jnp_values, jnp_policies, jnp_masks)
+    gtv_dataset.set(np_states, np_values, np_policies, np_masks)
     return gtv_dataset
 
 def save_dataset(fn: str, dataset: Dataset) -> None:
@@ -408,43 +408,43 @@ def balance_dataset(dataset: Dataset) -> Dataset:
     # for each sample in the minority class, create a mirrored board (with b.flip_horizontal()) and add it to the dataset
     # until the dataset is balanced
     # create lists to hold the new samples
-    flipped_states: list[jnp.ndarray] = []
+    flipped_states: list[NDArray[np.float32]] = []
     flipped_values: list[float] = []
-    flipped_policies: list[jnp.ndarray] = []
+    flipped_policies: list[NDArray[np.float32]] = []
     # for each sample in the dataset
     for i in range(len(dataset.states)):
         # get the board, value, and policy
-        value_jnp = dataset.values[i, 0]
-        board_jnp = dataset.states[i]
-        policy_jnp = dataset.policies[i]
-        value = float(value_jnp)
+        cur_value = dataset.values[i, 0]
+        cur_board = dataset.states[i]
+        cur_policy = dataset.policies[i]
+        value = float(cur_value)
         # add the original sample to the new lists
-        flipped_states.append(board_jnp)
+        flipped_states.append(cur_board)
         flipped_values.append(value)
-        flipped_policies.append(policy_jnp)
+        flipped_policies.append(cur_policy)
         # if we need more flipped samples, and this sample is in the minority class
         if (to_add > 0) and ((add_wins and value == 1.0) or (not add_wins and value == -1.0)):
             # create a mirrored board
-            flipped_board = input_to_board(np.array(board_jnp))
+            flipped_board = input_to_board(np.array(cur_board))
             flipped_board.flip_horizontal()
-            flipped_board_jnp = jnp.array(board_to_input(flipped_board))
+            flipped_board_np = np.array(board_to_input(flipped_board))
             # create a mirrored policy
             p = Policy(len(flipped_board.board))
-            p.set_logits(np.array(policy_jnp), rotate_180=False)
+            p.set_logits(np.array(cur_policy), rotate_180=False)
             p.flip_policy(horizontal=True)
-            flipped_policy_jnp = jnp.array(p.policy)
+            flipped_policy_np = np.array(p.policy)
             # add the new sample to the dataset
-            flipped_states.append(flipped_board_jnp)
+            flipped_states.append(flipped_board_np)
             flipped_values.append(value)
-            flipped_policies.append(flipped_policy_jnp)
+            flipped_policies.append(flipped_policy_np)
             # decrement the number of samples to add
             to_add -= 1
     
     # add the new samples to the dataset
     balanced_dataset = Dataset(batch_size=256)
-    e_board = jnp.stack([board for board in flipped_states]) # (board_size, board_size) -> (N, board_size, board_size)
-    e_value = jnp.array([value for value in flipped_values])[:, None] # Add [:, None] to make its shape (N, 1)
-    e_policy = jnp.stack([policy for policy in flipped_policies]) # (board_size ** 4) -> (N, board_size ** 4)
+    e_board = np.stack([board for board in flipped_states]) # (board_size, board_size) -> (N, board_size, board_size)
+    e_value = np.array([value for value in flipped_values])[:, None] # Add [:, None] to make its shape (N, 1)
+    e_policy = np.stack([policy for policy in flipped_policies]) # (board_size ** 4) -> (N, board_size ** 4)
     logger.info(f"states.shape: {e_board.shape}, values.shape: {e_value.shape}, policies.shape: {e_policy.shape}")
     balanced_dataset.set(e_board, e_value, e_policy)
     # shuffle the dataset

@@ -4,8 +4,6 @@ import copy
 import random
 import numpy as np
 from numpy.typing import NDArray
-import jax.numpy as jnp
-import jax
 
 from cc.core import Board, Move, Player, player_to_tile, Game
 from a0.graph_search.mcts import MCTS

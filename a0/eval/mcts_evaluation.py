@@ -42,7 +42,7 @@ def evaluate_model_mcts(player: A0Player, evaluation_dataset: Dataset):
 
     # shuffle the dataset and create batches generator
     evaluation_dataset.shuffle()
-    batches = evaluation_dataset.batches()
+    batches = evaluation_dataset.jnp_batches()
 
     total_loss = 0.0
     total_value_loss, total_value_accuracy = 0.0, 0.0

@@ -165,7 +165,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
 
     # shuffle the dataset and create batches generator
     dataset.shuffle()
-    batches = dataset.batches()
+    batches = dataset.jnp_batches()
 
     num_batches = dataset.num_batches()
     batches_per_save = math.ceil(num_batches / 50)
