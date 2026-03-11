@@ -13,14 +13,14 @@ from a0.mcts.nn import MCTS_NN
 from a0.mcts.gt import MCTS_GT
 
 class A0Player:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_side_moves: bool = False, rollout_type: str = "none", rollout_depth: int = -1, policy_type: str = "policy", epsilon: float = 0.1, dirichlet_epsilon: float = 0.25) -> None:
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_illegal_moves: bool = True, no_side_moves: bool = False, rollout_type: str = "none", rollout_depth: int = -1, policy_type: str = "policy", epsilon: float = 0.1, dirichlet_epsilon: float = 0.25) -> None:
         self.model = model
         self.game = Game(
             board_size=board_size,
             num_pieces=num_pieces,
             repeats_for_draw=-1,
             no_reverse_moves=no_reverse_moves,
-            no_illegal_moves=True,
+            no_illegal_moves=no_illegal_moves,
             no_side_moves=no_side_moves
         )
         self.temperature = 1.0  # Temperature for exploration in MCTS

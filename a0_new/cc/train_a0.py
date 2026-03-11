@@ -25,7 +25,8 @@ def train_from_zero():
         num_pieces=config.num_pieces,
         side_moves=config.sideways_moves,
         backwards_moves=config.backwards_moves,
-        num_repeats_to_draw=config.repeats_for_draw
+        num_repeats_to_draw=config.repeats_for_draw,
+        illegal_moves=config.illegal_moves
     )
     ccnn_model = CCNNModel()
     ccfull_model = CCFullModel(ccnn_model, cc_game)

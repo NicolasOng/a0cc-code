@@ -7,12 +7,12 @@ from a0.graph_search.mcts import MCTS
 from a0.mcts.random_rollout import SearchMoves
 
 class MCTSRolloutPlayer:
-    def __init__(self, board_size: int, num_pieces: int, no_reverse_moves: bool = True, mcts_iterations: int = 10000):
+    def __init__(self, board_size: int, num_pieces: int, no_reverse_moves: bool = True, no_illegal_moves: bool = True, mcts_iterations: int = 10000):
         self.game = Game(board_size=board_size,
                         num_pieces=num_pieces,
                         repeats_for_draw=-1,
                         no_reverse_moves=no_reverse_moves,
-                        no_illegal_moves=False)
+                        no_illegal_moves=no_illegal_moves)
         self.mcts_iterations = mcts_iterations
         self.max_depth = 1000
     

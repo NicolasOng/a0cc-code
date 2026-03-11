@@ -9,13 +9,13 @@ from a0.model import AlphaZeroModel
 from a0.model_utils import board_to_input, Policy
 
 class ModelPlayer:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel):
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, no_illegal_moves: bool = True):
         self.model = model
         self.game = Game(board_size=board_size,
                         num_pieces=num_pieces,
                         repeats_for_draw=-1,
                         no_reverse_moves=True,
-                        no_illegal_moves=False)
+                        no_illegal_moves=no_illegal_moves)
     
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         '''

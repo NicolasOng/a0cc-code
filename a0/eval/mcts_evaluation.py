@@ -51,8 +51,8 @@ def evaluate_model_mcts(player: A0Player, evaluation_dataset: Dataset):
     num_batches = 0
     
     for ts, batch in tqdm(enumerate(batches)):
-        # get the board input, value label, and policy label from the batch
-        board_input, value_label, policy_label = batch
+        # get the board input, value label, policy label, and mask from the batch
+        board_input, value_label, policy_label, policy_mask = batch
 
         # convert the board input to a Board object
         if board_input.shape[1] == 1:
@@ -74,9 +74,6 @@ def evaluate_model_mcts(player: A0Player, evaluation_dataset: Dataset):
         # Calculate accuracy for value prediction
         value_accuracy = value_accuracy_function(pred_value, value_label)
 
-        # get the mask for valid moves in the policy
-        mask_value = 0.0 # 0.0 for CE, -1.0 for BCE
-        policy_mask = get_policy_mask(policy_label, mask_value=mask_value)
         # Apply the mask to the predicted policy and label policy
         # The mask value when using Softmax Cross Entropy loss should be -1e9
         # When using Binary Cross Entropy, it should be 0.0
@@ -155,6 +152,7 @@ def load_players(training_dir: str, training_iterations: int) -> list[tuple[int,
             model=model,
             mcts_samples=config.eval_mcts_samples[0],
             no_reverse_moves=not config.backwards_moves,
+            no_illegal_moves=not config.illegal_moves,
             no_side_moves=not config.sideways_moves
         )
         players.append((i, player))

@@ -54,12 +54,13 @@ class CCState(A0State[CCAction]):
         return CCAction(move.start.x, move.start.y, move.end.x, move.end.y)
 
 class CCGame(A0Game[CCState, CCAction]):
-    def __init__(self, board_size: int, num_pieces: int, side_moves: bool, backwards_moves: bool, num_repeats_to_draw: int):
+    def __init__(self, board_size: int, num_pieces: int, side_moves: bool, backwards_moves: bool, num_repeats_to_draw: int, illegal_moves: bool = False):
         self.board_size = board_size
         self.num_pieces = num_pieces
         self.side_moves = side_moves
         self.backwards_moves = backwards_moves
         self.num_repeats_to_draw = num_repeats_to_draw
+        self.illegal_moves = illegal_moves
 
         self.game = Game(
             board_size=board_size,
@@ -67,7 +68,7 @@ class CCGame(A0Game[CCState, CCAction]):
             repeats_for_draw=num_repeats_to_draw,
             no_side_moves=not side_moves,
             no_reverse_moves=not backwards_moves,
-            no_illegal_moves=True
+            no_illegal_moves=not illegal_moves
         )
     
     def reset(self) -> None:

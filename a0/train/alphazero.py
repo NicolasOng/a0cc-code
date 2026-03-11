@@ -130,7 +130,7 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
         num_pieces=config.num_pieces,
         repeats_for_draw=config.repeats_for_draw,
         no_reverse_moves=not game_has_reverse_moves,
-        no_illegal_moves=True,
+        no_illegal_moves=not config.illegal_moves,
         no_side_moves=not game_has_side_moves
     )
     player: A0Player = dill.loads(serialized_player)
@@ -281,6 +281,7 @@ def train_alphazero() -> None:
             model,
             mcts_samples=config.mcts_samples,
             no_reverse_moves=not config.backwards_moves,
+            no_illegal_moves=not config.illegal_moves,
             no_side_moves=not config.sideways_moves,
             rollout_type=config.rollout_type,
             rollout_depth=config.rollout_depth,

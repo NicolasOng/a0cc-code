@@ -29,7 +29,7 @@ class GameResult(Enum):
 
 def single_game(player1: PlayerClass, player2: PlayerClass) -> GameResult:
     # play a game
-    game_data = play(Game(config.board_size, config.num_pieces, True, False, False), [player1, player2], turn_limit=100)
+    game_data = play(Game(config.board_size, config.num_pieces, repeats_for_draw=1, no_reverse_moves=False, no_illegal_moves=not config.illegal_moves), [player1, player2], turn_limit=100)
     # get the winner of the game
     if game_data.winner == Player.PLAYER_X:
         return GameResult.WIN
@@ -120,7 +120,7 @@ def get_trained_players_list() -> list[A0Player]:
         model_path = f"{config.training_dir}/model_{i}.pkl"
         try:
             model = load_model(model_path)
-            player = A0Player(config.board_size, config.num_pieces, model, exploit=True)
+            player = A0Player(config.board_size, config.num_pieces, model, exploit=True, no_illegal_moves=not config.illegal_moves)
             players.append(player)
         except Exception as e:
             logger.error(f"Failed to load model or create player {i + 1} at {model_path}: {e}")
@@ -203,6 +203,7 @@ def main():
         board_size=config.board_size,
         num_pieces=config.num_pieces,
         no_reverse_moves=True,
+        no_illegal_moves=not config.illegal_moves,
         mcts_iterations=64
     )
     #baseline_player = RandomPlayer()
