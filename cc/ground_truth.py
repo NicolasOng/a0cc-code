@@ -20,7 +20,8 @@ class GroundTruth:
                         num_pieces=config.num_pieces,
                         repeats_for_draw=-1,
                         no_reverse_moves=not config.backwards_moves,
-                        no_illegal_moves=True)
+                        no_illegal_moves=not config.illegal_moves,
+                        no_side_moves=not config.sideways_moves)
         self.l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
     
     def rank(self, board: Board) -> int:
