@@ -470,9 +470,9 @@ def get_legal_move_mask_from_state(state: Board, for_model: bool) -> NDArray[np.
         board_size=board_size,
         num_pieces=num_pieces,
         repeats_for_draw=-1,
-        no_reverse_moves=not config.backwards_moves,
-        no_illegal_moves=not config.illegal_moves,
-        no_side_moves=not config.sideways_moves
+        no_reverse_moves=False,
+        no_illegal_moves=False,
+        no_side_moves=False
     )
     full_legal_moves = game_full.generate_moves_for_given_board(state)
 
