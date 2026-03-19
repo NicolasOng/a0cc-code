@@ -5,7 +5,6 @@
 #SBATCH --mem-per-cpu=4G
 
 module load python/3.11
-# for GPU: module load cuda/12.6 and SBATCH --gpus-per-node=1
 virtualenv --no-download $SLURM_TMPDIR/env
 source $SLURM_TMPDIR/env/bin/activate
 pip install --no-index --upgrade pip
@@ -18,15 +17,8 @@ TRIAL_NO="${2}"
 echo "Using configuration file: $CONFIG_FILE"
 echo "Using trial number: $TRIAL_NO"
 
-#time python -m a0.eval.combine "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.train.alphazero "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.generate_datasets "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.dataset_evaluation "$CONFIG_FILE" "$TRIAL_NO"
-#time python -m a0.eval.mcts_evaluation "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.training_data "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.plotting "$CONFIG_FILE" "$TRIAL_NO"
-#time python -m a0.eval.player "$CONFIG_FILE" "$TRIAL_NO"
-
-sleep 60 * 60
-
-#sbatch drac_job2.sh "$CONFIG_FILE" "$TRIAL_NO"
