@@ -385,10 +385,10 @@ def train_alphazero() -> None:
         
         # get a dataset from the replay buffer for training, and train the model on it
         eb_dataset = experience_buffer.get_dataset(config.training_batch_size)
+        # print the distribution of values in the dataset
+        win_count, draw_count, loss_count = eb_dataset.get_distribution()
+        logger.log(25, f"Experience buffer dataset distribution: {win_count} wins, {draw_count} draws, {loss_count} losses")
         if config.experiment in ["gt", "gt_value", "gt_next_value"]:
-            # for GT experiments, print the distribution of values in the dataset
-            win_count, draw_count, loss_count = eb_dataset.get_distribution()
-            logger.log(25, f"Experience buffer dataset distribution: {win_count} wins, {draw_count} draws, {loss_count} losses")
             # and remove the bias
             eb_dataset.balance_values()
             new_win_count, new_draw_count, new_loss_count = eb_dataset.get_distribution()
