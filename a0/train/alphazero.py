@@ -17,7 +17,7 @@ from config import config
 from a0.game import play, GameData
 from a0.players.a0 import A0Player
 from a0.model_utils import board_to_input, get_legal_move_mask_from_state, Policy
-from a0.model import AlphaZeroModel, load_model, save_model
+from a0.model import AlphaZeroModel, load_model, save_model, create_model
 from cc.core import Game, Player
 from cc.ground_truth import GroundTruth
 from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data
@@ -335,7 +335,7 @@ def train_alphazero() -> None:
     if model_path:
         model = load_model(model_path)
     else:
-        model = AlphaZeroModel(
+        model = create_model(
             config.board_size,
             rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
         )

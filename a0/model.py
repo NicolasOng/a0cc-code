@@ -149,6 +149,57 @@ class AlphaZeroModel(nnx.Module):
     def train_inference(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
         return self(x, train=True)
 
+# class for the multi-trunk AlphaZero model (separate backbones for value and policy)
+class MultiTrunkAlphaZeroModel(nnx.Module):
+    def __init__(self, board_size: int, rngs: nnx.Rngs, num_filters: int=256, num_resblocks: int=3):
+        '''
+        Like AlphaZeroModel, but with separate backbones (trunks) for the value and policy heads.
+        Each trunk has its own conv + BN + resblocks.
+        '''
+        super().__init__()
+        # value trunk
+        self.value_conv = nnx.Conv(in_features=2, out_features=num_filters, kernel_size=(3, 3), strides=(1, 1), padding='SAME', use_bias=False, rngs=rngs)
+        self.value_bn = nnx.BatchNorm(num_features=num_filters, momentum=0.9, epsilon=1e-5, rngs=rngs)
+        self.value_resblocks = [ResidualBlock(num_filters, rngs=rngs) for _ in range(num_resblocks)]
+        self.value_head = ValueHead(board_size * board_size * num_filters, rngs=rngs)
+        # policy trunk
+        self.policy_conv = nnx.Conv(in_features=2, out_features=num_filters, kernel_size=(3, 3), strides=(1, 1), padding='SAME', use_bias=False, rngs=rngs)
+        self.policy_bn = nnx.BatchNorm(num_features=num_filters, momentum=0.9, epsilon=1e-5, rngs=rngs)
+        self.policy_resblocks = [ResidualBlock(num_filters, rngs=rngs) for _ in range(num_resblocks)]
+        self.policy_head = PolicyHead(board_size, num_filters, num_filters, rngs=rngs)
+
+    def __call__(self, x: jnp.ndarray, train: bool) -> tuple[jnp.ndarray, jnp.ndarray]:
+        # value trunk
+        v = self.value_conv(x)
+        v = self.value_bn(v, use_running_average=not train)
+        v = jax.nn.relu(v)
+        for block in self.value_resblocks:
+            v = block(v, train=train)
+        value = self.value_head(v)
+        # policy trunk
+        p = self.policy_conv(x)
+        p = self.policy_bn(p, use_running_average=not train)
+        p = jax.nn.relu(p)
+        for block in self.policy_resblocks:
+            p = block(p, train=train)
+        policy = self.policy_head(p, train=train)
+        return value, policy
+
+    @nnx.jit
+    def inference(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+        return self.__call__(x, train=False)
+
+    def train_inference(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+        return self(x, train=True)
+
+
+def create_model(board_size: int, rngs: nnx.Rngs, num_filters: int = 256, num_resblocks: int = 3) -> AlphaZeroModel | MultiTrunkAlphaZeroModel:
+    '''Creates the appropriate model based on config.experiment.'''
+    if config.experiment == "separate_backbone":
+        return MultiTrunkAlphaZeroModel(board_size, rngs=rngs, num_filters=num_filters, num_resblocks=num_resblocks)
+    return AlphaZeroModel(board_size, rngs=rngs, num_filters=num_filters, num_resblocks=num_resblocks)
+
+
 def save_model(filepath: str, model: AlphaZeroModel) -> None:
     # get the state of the model
     _, state = nnx.split(model)
@@ -157,11 +208,10 @@ def save_model(filepath: str, model: AlphaZeroModel) -> None:
     with open(filepath, 'wb') as f:
         pickle.dump(state, f)
 
-def load_model(filepath: str, training: bool = True) -> AlphaZeroModel:
+def load_model(filepath: str, training: bool = True) -> AlphaZeroModel | MultiTrunkAlphaZeroModel:
     # create a new model instance with the same parameters
-    model = AlphaZeroModel(
+    model = create_model(
         board_size=config.board_size,
-        num_filters=256,
         rngs=nnx.Rngs({'params': jax.random.PRNGKey(1)})
     )
     
