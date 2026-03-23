@@ -3,7 +3,8 @@ Bias sweep experiment: train models on ground truth data with varying win/loss r
 Measures how dataset bias affects model predictions and accuracy.
 
 Usage:
-    Timing test:  python -m scripts.2026-03-23_bias_sweep config_file.json
+    Timing test:   python -m scripts.2026-03-23_bias_sweep config_file.json
+    Full sweep:    python -m scripts.2026-03-23_bias_sweep config_file.json sweep
 '''
 import numpy as np
 import jax
@@ -11,6 +12,7 @@ import jax.numpy as jnp
 from flax import nnx
 import time
 import pickle
+import multiprocessing
 import matplotlib.pyplot as plt
 
 from config import config
@@ -214,24 +216,27 @@ def run_trial(
     win_pct: float,
     trial: int,
     eval_dataset: Dataset,
+    train_dataset: Dataset | None = None,
     dataset_size: int = 100_000,
     num_epochs: int = 10,
 ) -> dict:
     """
-    Run a single bias trial: generate biased dataset, train epoch-by-epoch
-    with evaluation after each epoch, plot results.
+    Run a single bias trial: train epoch-by-epoch with evaluation after each epoch.
+    If train_dataset is None, generates one (for standalone/timing use).
     """
     logger.info(f"=== Trial {trial}, win_pct={win_pct:.0%} ===")
     plot_prefix = f"bias_{int(win_pct * 100)}_trial_{trial}"
     eval_states = eval_dataset.states
     eval_gt_values = eval_dataset.values.flatten()
 
-    # generate biased training dataset (unique seed per trial+bias combo)
-    dataset_seed = trial * 1000 + int(win_pct * 100)
-    t0 = time.perf_counter()
-    train_dataset = generate_biased_gt_dataset(win_pct, dataset_size, seed=dataset_seed)
-    t_dataset = time.perf_counter() - t0
-    logger.info(f"Generated dataset in {t_dataset:.1f}s")
+    # generate dataset if not pre-generated
+    t_dataset = 0.0
+    if train_dataset is None:
+        dataset_seed = trial * 1000 + int(win_pct * 100)
+        t0 = time.perf_counter()
+        train_dataset = generate_biased_gt_dataset(win_pct, dataset_size, seed=dataset_seed)
+        t_dataset = time.perf_counter() - t0
+        logger.info(f"Generated dataset in {t_dataset:.1f}s")
     train_dataset.print_distribution()
 
     # create model
@@ -302,25 +307,94 @@ def run_trial(
     }
 
 
-if __name__ == "__main__":
-    setup_logging(level=20, log_dir=config.log_dir, process_name="bias_sweep")
+def _generate_dataset_worker(args: tuple) -> tuple[int, Dataset]:
+    """Worker for parallel dataset generation. Returns (trial, dataset)."""
+    win_pct, trial, dataset_size = args
+    seed = trial * 1000 + int(win_pct * 100)
+    dataset = generate_biased_gt_dataset(win_pct, dataset_size, seed=seed)
+    return trial, dataset
 
-    # generate balanced eval set (shared across all trials)
+
+def run_sweep(
+    win_pcts: list[float],
+    num_trials: int = 8,
+    dataset_size: int = 100_000,
+    num_epochs: int = 10,
+    num_workers: int = 8,
+):
+    """
+    Run the full bias sweep. For each bias level, generates all trial datasets
+    in parallel (CPU-bound), then trains each trial sequentially (GPU-bound).
+    """
+    # generate balanced eval set once
     logger.info("Generating balanced eval set...")
     eval_dataset = generate_balanced_eval_set(n_per_class=1000, seed=99999)
     wins = int(np.sum(eval_dataset.values > 0))
     losses = int(np.sum(eval_dataset.values < 0))
     logger.info(f"Eval set: {len(eval_dataset)} states ({wins} wins, {losses} losses)")
 
-    # single trial for timing
-    logger.info("Running single trial for timing...")
-    t_total = time.perf_counter()
-    result = run_trial(
-        win_pct=0.50,
-        trial=1,
-        eval_dataset=eval_dataset,
-        dataset_size=100_000,
-        num_epochs=10,
-    )
-    t_total = time.perf_counter() - t_total
-    logger.info(f"Total: {t_total:.1f}s (dataset={result['dataset_time']:.1f}s, train={result['train_time']:.1f}s)")
+    all_results = []
+    t_sweep = time.perf_counter()
+
+    for win_pct in win_pcts:
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Bias level: {win_pct:.0%} wins — generating {num_trials} datasets in parallel...")
+        logger.info(f"{'='*60}")
+
+        # generate all datasets for this bias level in parallel
+        worker_args = [(win_pct, trial, dataset_size) for trial in range(1, num_trials + 1)]
+        t0 = time.perf_counter()
+        with multiprocessing.Pool(num_workers) as pool:
+            datasets = dict(pool.map(_generate_dataset_worker, worker_args))
+        t_gen = time.perf_counter() - t0
+        logger.info(f"Generated {num_trials} datasets in {t_gen:.1f}s (parallel)")
+
+        # train each trial sequentially on GPU
+        for trial in range(1, num_trials + 1):
+            result = run_trial(
+                win_pct=win_pct,
+                trial=trial,
+                eval_dataset=eval_dataset,
+                train_dataset=datasets[trial],
+                num_epochs=num_epochs,
+            )
+            all_results.append(result)
+
+    t_sweep = time.perf_counter() - t_sweep
+    logger.info(f"\nSweep complete: {len(all_results)} trials in {t_sweep:.1f}s ({t_sweep/60:.1f}m)")
+    return all_results
+
+
+if __name__ == "__main__":
+    setup_logging(level=20, log_dir=config.log_dir, process_name="bias_sweep")
+
+    import sys
+    mode = sys.argv[3] if len(sys.argv) > 3 else "timing"
+
+    if mode == "sweep" or True:
+        multiprocessing.set_start_method('spawn', force=True)
+        run_sweep(
+            win_pcts=[0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95],
+            num_trials=8,
+            dataset_size=100_000,
+            num_epochs=10,
+        )
+    else:
+        # single trial for timing
+        logger.info("Generating balanced eval set...")
+        eval_dataset = generate_balanced_eval_set(n_per_class=1000, seed=99999)
+        wins = int(np.sum(eval_dataset.values > 0))
+        losses = int(np.sum(eval_dataset.values < 0))
+        logger.info(f"Eval set: {len(eval_dataset)} states ({wins} wins, {losses} losses)")
+
+        logger.info("Running single trial for timing...")
+        t_total = time.perf_counter()
+        result = run_trial(
+            win_pct=0.50,
+            trial=1,
+            eval_dataset=eval_dataset,
+            dataset_size=100_000,
+            num_epochs=10,
+        )
+        t_total = time.perf_counter() - t_total
+        logger.info(f"Total: {t_total:.1f}s (dataset={result['dataset_time']:.1f}s, train={result['train_time']:.1f}s)")
