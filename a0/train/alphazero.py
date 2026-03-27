@@ -17,7 +17,7 @@ from config import config
 from a0.game import play, GameData
 from a0.players.a0 import A0Player
 from a0.model_utils import board_to_input, get_legal_move_mask_from_state, Policy
-from a0.model import AlphaZeroModel, load_model, save_model, create_model
+from a0.model import AlphaZeroModel, MultiTrunkAlphaZeroModel, load_model, save_model, create_model
 from cc.core import Game, Player
 from cc.ground_truth import GroundTruth
 from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data
@@ -180,6 +180,55 @@ def game_data_to_gt_next_value_training_set(game_data: GameData, gt: GroundTruth
 
     return training_set
 
+def game_data_to_model_value_training_set(game_data: GameData, model: AlphaZeroModel | MultiTrunkAlphaZeroModel) -> list[ExperienceData]:
+    '''
+    Like game_data_to_training_set, but uses backward-propagated model values as targets.
+    The last state's target is the true game outcome. For all earlier states, the target
+    is the negated model value of the next state (negated because players alternate).
+    The policy is kept as the MCTS policy.
+    Also populates turn.alternative_targets["model_value"] on each turn so that
+    the model's predictions are saved with the game data.
+    '''
+    training_set: list[ExperienceData] = []
+
+    turn_data = game_data.turn_data
+    if not turn_data:
+        return training_set
+
+    # batch all board inputs for a single inference call
+    board_inputs = [board_to_input(turn.board) for turn in turn_data]
+    boards = np.concatenate(board_inputs, axis=0)
+    model_values, _ = model.inference(boards)
+
+    # compute targets backward from the last state
+    num_turns = len(turn_data)
+    targets = [0.0] * num_turns
+
+    # last state: true game outcome from that player's perspective
+    game_winner = game_data.winner
+    if game_winner is None:
+        targets[-1] = 0.0
+    else:
+        targets[-1] = 1.0 if game_winner == turn_data[-1].board.current_player else -1.0
+
+    # earlier states: negated model value of the next state
+    for t in range(num_turns - 2, -1, -1):
+        targets[t] = -float(model_values[t + 1][0])
+
+    for turn, board_input, target in zip(turn_data, board_inputs, targets):
+        turn.alternative_targets["model_value"] = target
+
+        legal_move_mask = get_legal_move_mask_from_state(turn.board, for_model=True)
+        training_example = ExperienceData(
+            board=board_input,
+            value=target,
+            policy=turn.player_data,
+            mask=legal_move_mask
+        )
+        training_set.append(training_example)
+
+    return training_set
+
 def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
     '''
     Plays a game of chinese checkers with the given players,
@@ -215,6 +264,8 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
         return game_data_to_gt_value_training_set(game_data), game_data
     elif config.experiment == "gt_next_value":
         return game_data_to_gt_next_value_training_set(game_data), game_data
+    elif config.experiment == "model_value":
+        return game_data_to_model_value_training_set(game_data, player.model), game_data
     else:
         return game_data_to_training_set(game_data), game_data
 
@@ -388,11 +439,14 @@ def train_alphazero() -> None:
         # print the distribution of values in the dataset
         win_count, draw_count, loss_count = eb_dataset.get_distribution()
         logger.log(25, f"Experience buffer dataset distribution: {win_count} wins, {draw_count} draws, {loss_count} losses")
+        eb_dataset.print_bucket_distribution()
         if config.experiment in ["gt", "gt_value", "gt_next_value"]:
             # and remove the bias
             eb_dataset.balance_values()
             new_win_count, new_draw_count, new_loss_count = eb_dataset.get_distribution()
             logger.log(25, f"After balancing: {new_win_count} wins, {new_draw_count} draws, {new_loss_count} losses")
+            eb_dataset.print_bucket_distribution()
+            logger.log(25, "---")
         
         # train the model on the experiences in the replay buffer
         model, train_data = train_model_epochs(

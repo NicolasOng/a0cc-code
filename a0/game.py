@@ -18,6 +18,7 @@ class TurnData:
         self.moves: list[Move] = moves
         self.move: Move = move
         self.player_data: Any = player_data
+        self.alternative_targets: dict[str, Any] = {}
 
 class GameData:
     def __init__(self, game: Game, turn_limit: Optional[int] = None):

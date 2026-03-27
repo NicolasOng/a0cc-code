@@ -6,6 +6,9 @@ import numpy as np
 from numpy.typing import NDArray
 import jax.numpy as jnp
 
+from utils.log import get_logger, setup_logging
+logger = get_logger(__name__)
+
 class Dataset:
     states: NDArray[np.float32]
     values: NDArray[np.float32]
@@ -123,11 +126,26 @@ class Dataset:
         Print the distribution of values in the dataset.
         """
         win_count, draw_count, loss_count = self.get_distribution()
-        
+
         print(f"Dataset distribution:")
         print(f"  Wins (>0):  {win_count:6d} ({win_count/len(self):.2%})")
         print(f"  Draws (=0): {draw_count:6d} ({draw_count/len(self):.2%})")
         print(f"  Losses (<0):{loss_count:6d} ({loss_count/len(self):.2%})")
+
+    def print_bucket_distribution(self, n: int = 10) -> None:
+        """
+        Log the distribution of values across n equal-width buckets over [-1, 1].
+        """
+        total = len(self)
+        edges = np.linspace(-1, 1, n + 1)
+        counts = np.histogram(self.values, bins=edges)[0]
+
+        logger.log(25, f"Dataset distribution ({n} buckets):")
+        for i in range(n):
+            lo, hi = edges[i], edges[i + 1]
+            count = int(counts[i])
+            bar = "#" * int(40 * count / max(total, 1))
+            logger.log(25, f"  [{lo:+.2f}, {hi:+.2f}{']' if i == n - 1 else ')'} {count:6d} ({count/total:.2%}) {bar}")
     
     def balance_values(self) -> None:
         """

@@ -1008,7 +1008,7 @@ def main():
     #state_acc_dicts = split_by_visited_seen_bins(get_state_accuracy_dict(get_all_games_generated_during_training()), thresholds)
     #duplicate_states_analysis(state_acc_dicts, thresholds)
     # overall
-    duplicate_states_analysis([get_state_accuracy_dict(get_all_games_generated_during_training())])
+    # duplicate_states_analysis([get_state_accuracy_dict(get_all_games_generated_during_training())])
 
     check_game_data_accuracy(list(game_data_generator(config.training_dir, config.training_iterations)))
     check_game_data_bias(list(game_data_generator(config.training_dir, config.training_iterations)))
