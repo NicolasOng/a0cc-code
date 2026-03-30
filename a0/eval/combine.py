@@ -12,72 +12,65 @@ def merge_series(series: list[Series], confidence: float = 0.95) -> Series:
     '''
     Combines multiple series into one.
     Assumes that all the series share the same y's.
-    If the series have different x-values, only the intersection of all the x's will be kept.
+    Uses the union of all x-values across series. Stats (mean, std, CI) at each x
+    are computed from whichever series have a value there.
     The resultant series will contain the mean, standard deviation, and confidence interval for each y in the original series.
     '''
-    # find the intersection of all x-values in all the Series objects
-    common_x = set(series[0].x)
-    for s in series[1:]:
-        common_x &= set(s.x)
-    
-    # Sort to maintain order
-    common_x = sorted(common_x)
-
-    # log how many x-values are lost in each series.
-    for i, s in enumerate(series):
-        lost_x = set(s.x) - set(common_x)
-        logger.info(f"Series {i} lost {len(lost_x)} x-values ({lost_x}).")
-
-    # create a list of new, aligned Series objects
-    aligned_series: list[Series] = []
+    # find the union of all x-values in all the Series objects
+    all_x: set = set()
     for s in series:
-        # Create new Series with same y keys
-        new_series = Series(list(s.ys.keys()))
-        new_series.x = common_x.copy()
-        
-        # Create mapping from x value to index in original series
-        x_to_index = {x_val: i for i, x_val in enumerate(s.x)}
-        
-        # Copy y values for common x values only
-        for y_key in s.ys:
-            new_series.ys[y_key] = [
-                s.ys[y_key][x_to_index[x_val]] 
-                for x_val in common_x
-            ]
-        
-        aligned_series.append(new_series)
-    
-    # for each y, create a numpy array
-    y_keys = list(aligned_series[0].ys.keys())
-    merged_ys: dict[str, NDArray[np.float32]] = {}
+        all_x |= set(s.x)
+
+    # Sort to maintain order
+    all_x_sorted = sorted(all_x)
+
+    # log how many x-values each series is missing
+    for i, s in enumerate(series):
+        missing_x = set(all_x_sorted) - set(s.x)
+        if missing_x:
+            logger.info(f"Series {i} missing {len(missing_x)} x-values ({missing_x}).")
+
+    # build aligned arrays with NaN where a series doesn't have a given x
+    y_keys = list(series[0].ys.keys())
+    num_x = len(all_x_sorted)
+    num_series = len(series)
+
+    merged_ys: dict[str, NDArray[np.float64]] = {}
     for y_key in y_keys:
-        y_data = np.array([s.ys[y_key] for s in aligned_series])
+        y_data = np.full((num_series, num_x), np.nan, dtype=np.float64)
+        for s_idx, s in enumerate(series):
+            x_to_index = {x_val: i for i, x_val in enumerate(s.x)}
+            for x_idx, x_val in enumerate(all_x_sorted):
+                if x_val in x_to_index:
+                    y_data[s_idx, x_idx] = s.ys[y_key][x_to_index[x_val]]
         merged_ys[y_key] = y_data
-    
+
     # create a merged series object, where each y in the original Series is replaced with
     # average, std, and CI
     merged_series = Series(y_keys + [y_key + "_std" for y_key in y_keys] + [y_key + "_ci" for y_key in y_keys])
 
     for y_key in y_keys:
         y_data = merged_ys[y_key]
-        num_merged_series = y_data.shape[0]
-        # calculate mean
-        mean = np.mean(y_data, axis=0)
+        # count of non-NaN values at each x position
+        n = np.sum(~np.isnan(y_data), axis=0)
 
-        # calculate standard deviation
-        std = np.std(y_data, axis=0)
+        # calculate mean and std ignoring NaNs
+        mean = np.nanmean(y_data, axis=0)
+        std = np.nanstd(y_data, axis=0)
 
-        # Calculate confidence interval
+        # Calculate confidence interval (per-x degrees of freedom)
         alpha = 1 - confidence
-        t_value = stats.t.ppf(1 - alpha/2, df=num_merged_series-1)
-        confidence_interval = t_value * std / np.sqrt(num_merged_series)
+        # where n < 2 we can't compute a CI; use NaN
+        df = np.maximum(n - 1, 1)  # avoid 0 df for t.ppf
+        t_value = stats.t.ppf(1 - alpha/2, df=df)
+        confidence_interval = np.where(n >= 2, t_value * std / np.sqrt(n), np.nan)
 
         # put all these into the merged series object
-        merged_series.x = common_x.copy()
+        merged_series.x = list(all_x_sorted)
         merged_series.ys[y_key] = mean.tolist()
         merged_series.ys[y_key + "_std"] = std.tolist()
         merged_series.ys[y_key + "_ci"] = confidence_interval.tolist()
-    
+
     return merged_series
 
 def load_and_merge_series(dirs: list[str], series_fn: str, confidence: float = 0.95, save: bool = True) -> Series:
