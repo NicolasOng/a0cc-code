@@ -192,7 +192,7 @@ def main():
                           ("Random Accuracy", "±1σ", random_gt_series.x, random_gt_series.ys["value_accuracy"], random_gt_series.ys["value_accuracy_std"]),
                           ("Training Data Accuracy", "±1σ", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"], gd_accuracy_series.ys["Iteration Value Accuracy_std"]),
                           ("Training Data Overall Accuracy", "±1σ", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Value Accuracy"], gd_overall_acc_series.ys["Overall Value Accuracy_std"]),
-                      ], "Iterations", "Accuracy", "merged_full_accuracy_value_std")
+                      ], "Iterations", "Accuracy", "merged_full_accuracy_value_std", (0, 1))
 
     plot_shaded_error("Value Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
@@ -204,7 +204,7 @@ def main():
                           ("Training Data Overall Accuracy", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Value Accuracy"], gd_overall_acc_series.ys["Overall Value Accuracy_ci"]),
                           ("Training Data Accuracy ND", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy ND"], gd_accuracy_series.ys["Iteration Value Accuracy ND_ci"]),
                           ("Training Data Overall Accuracy ND", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Value Accuracy ND"], gd_overall_acc_series.ys["Overall Value Accuracy ND_ci"]),
-                      ], "Iterations", "Accuracy", "merged_full_accuracy_value_ci")
+                      ], "Iterations", "Accuracy", "merged_full_accuracy_value_ci", (0, 1))
     
     plot_shaded_error("Value Head Model Performance on Ground Truth of Non-Trivial States and Training Data Accuracy",
                       [
@@ -214,7 +214,7 @@ def main():
                           ("Random Accuracy", "±95% CI", random_nt_gt_series.x, random_nt_gt_series.ys["value_accuracy"], random_nt_gt_series.ys["value_accuracy_ci"]),
                           ("Training Data Accuracy", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"], gd_accuracy_series.ys["Iteration Value Accuracy_ci"]),
                           ("Training Data Overall Accuracy", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Value Accuracy"], gd_overall_acc_series.ys["Overall Value Accuracy_ci"]),
-                      ], "Iterations", "Accuracy", "merged_full_accuracy_value_nt_ci")
+                      ], "Iterations", "Accuracy", "merged_full_accuracy_value_nt_ci", (0, 1))
     
     plot_shaded_error("Policy Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
@@ -230,7 +230,7 @@ def main():
                           ("Training Data Overall Accuracy", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Policy Accuracy"], gd_overall_acc_series.ys["Overall Policy Accuracy_ci"]),
                           ("Training Data Accuracy NT", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy NT"], gd_accuracy_series.ys["Iteration Policy Accuracy NT_ci"]),
                           ("Training Data Overall Accuracy NT", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Policy Accuracy NT"], gd_overall_acc_series.ys["Overall Policy Accuracy NT_ci"]),
-                      ], "Iterations", "Accuracy", "merged_full_full_accuracy_policy_ci")
+                      ], "Iterations", "Accuracy", "merged_full_full_accuracy_policy_ci", (0, 1))
     
     plot_shaded_error("Policy Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
@@ -246,19 +246,19 @@ def main():
                           #("Training Data Overall Accuracy", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Policy Accuracy"], gd_overall_acc_series.ys["Overall Policy Accuracy_ci"]),
                           ("Training Data Accuracy NT", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy NT"], gd_accuracy_series.ys["Iteration Policy Accuracy NT_ci"]),
                           ("Training Data Overall Accuracy NT", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Policy Accuracy NT"], gd_overall_acc_series.ys["Overall Policy Accuracy NT_ci"]),
-                      ], "Iterations", "Accuracy", "merged_full_accuracy_policy_ci")
+                      ], "Iterations", "Accuracy", "merged_full_accuracy_policy_ci", (0, 1))
     
     plot_shaded_error("Training Data Value Accuracy Over Game Progress (10 & 100 bins)",
                       [
                             ("Value Accuracy (100 bins)", "±95% CI", gd_prog_acc_100.x, gd_prog_acc_100.ys["Value Accuracy"], gd_prog_acc_100.ys["Value Accuracy_ci"]),
                             ("Value Accuracy (10 bins)", "±95% CI", gd_prog_acc_10.x, gd_prog_acc_10.ys["Value Accuracy"], gd_prog_acc_10.ys["Value Accuracy_ci"]),
-                      ], "Game Progress (%)", "Accuracy", "merged_gamedata_progress_acc_ci")
+                      ], "Game Progress (%)", "Accuracy", "merged_gamedata_progress_acc_ci", (0, 1))
 
     plot_shaded_error("Model Accuracy on Ground Truth Value by State Progress",
                [
                    ("Value Accuracy", "±95% CI", state_progress_gtv.x, state_progress_gtv.ys["value_accuracy"], state_progress_gtv.ys["value_accuracy_ci"]),
                    #("Policy Accuracy", state_progress_gtv.x, state_progress_gtv.ys["policy_accuracy"])
-               ], "State Progress (%)", "Accuracy", "state_progress_gtv")
+               ], "State Progress (%)", "Accuracy", "state_progress_gtv", (0, 1))
     
     plot_shaded_error("Number of States in Each Progress Bin",
             [

@@ -121,7 +121,7 @@ def plot_std_error(title: str, x: list[int], avg: list[float], std: list[float],
     plt.savefig(f"{config.plot_dir}/{fn}.png")
     plt.close()
 
-def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[float], list[float]]], x_label: str, y_label: str, fn: str):
+def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[float], list[float]]], x_label: str, y_label: str, fn: str, y_lim: tuple[float, float] | None = None):
     plt.figure(figsize=(16, 9))
     for line_label, fill_label, x_values, y_values, fill_values in series:
         plt.plot(x_values, y_values, label=line_label)
@@ -131,6 +131,8 @@ def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[f
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.legend()
+    if y_lim is not None:
+        plt.ylim(y_lim)
     plt.grid(True, which='both')
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}.png")
