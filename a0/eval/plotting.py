@@ -133,7 +133,9 @@ def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[f
     plt.legend()
     if y_lim is not None:
         plt.ylim(y_lim)
-    plt.grid(True, which='both')
+    plt.minorticks_on()
+    plt.grid(True, which='major', linewidth=0.8)
+    plt.grid(True, which='minor', linewidth=0.3, alpha=0.5)
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}.png")
     plt.close()
