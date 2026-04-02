@@ -32,5 +32,6 @@
     "num_workers": 32,
     "self_play_batch_size": 32,
     "illegal_moves": false,
-    "experiment": ""
+    "experiment": "",
+    "td_lambda": 0.0
 }

@@ -25,5 +25,6 @@
     "weight_decay": 1e-4,
     "eval_neighbors": 2,
     "eval_mcts_samples": [64, 128],
-    "model_training": false
+    "model_training": false,
+    "td_lambda": 0.0
 }

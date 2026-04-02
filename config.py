@@ -52,6 +52,7 @@ class Config:
 
     illegal_moves: bool
     experiment: str
+    td_lambda: float
 
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
