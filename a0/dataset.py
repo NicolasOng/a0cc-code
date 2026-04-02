@@ -195,6 +195,59 @@ class Dataset:
         print(f"Balanced to {target_count} samples each ({len(self)} total)")
         self.print_distribution()
     
+    def balance_values_symmetric(self, n_buckets: int = 20) -> None:
+        """
+        Balance the dataset by pairing symmetric buckets around 0 and downsampling
+        the larger of each pair to match the smaller.
+        For example, with n_buckets=20, bucket [-1, -0.9) is paired with [0.9, 1],
+        [-0.9, -0.8) with [0.8, 0.9), etc.
+        If n_buckets is odd, the middle bucket straddling 0 is left untouched.
+        """
+        edges = np.linspace(-1, 1, n_buckets + 1)
+        n_pairs = n_buckets // 2
+        has_middle = n_buckets % 2 == 1
+
+        indices_to_keep: list[int] = []
+
+        for i in range(n_pairs):
+            # negative bucket: edges[i] to edges[i+1]
+            neg_mask = (self.values >= edges[i]) & (self.values < edges[i + 1])
+            # positive bucket: edges[n_buckets - 1 - i] to edges[n_buckets - i]
+            j = n_buckets - 1 - i
+            pos_mask = (self.values >= edges[j]) & (self.values <= edges[j + 1] if j + 1 == n_buckets else self.values < edges[j + 1])
+
+            neg_indices = np.where(neg_mask)[0]
+            pos_indices = np.where(pos_mask)[0]
+            target = min(len(neg_indices), len(pos_indices))
+
+            if target == 0:
+                # keep whatever exists in either bucket
+                indices_to_keep.extend(neg_indices.tolist())
+                indices_to_keep.extend(pos_indices.tolist())
+                continue
+
+            for idx_arr in [neg_indices, pos_indices]:
+                if len(idx_arr) > target:
+                    selected = np.random.choice(idx_arr, size=target, replace=False)
+                    indices_to_keep.extend(selected.tolist())
+                else:
+                    indices_to_keep.extend(idx_arr.tolist())
+
+        # middle bucket: leave untouched
+        if has_middle:
+            mid = n_pairs
+            mid_mask = (self.values >= edges[mid]) & (self.values < edges[mid + 1])
+            indices_to_keep.extend(np.where(mid_mask)[0].tolist())
+
+        indices_to_keep = np.array(sorted(indices_to_keep))
+        old_size = len(self)
+        self.states = self.states[indices_to_keep]
+        self.values = self.values[indices_to_keep]
+        self.policies = self.policies[indices_to_keep]
+        self.masks = self.masks[indices_to_keep]
+
+        logger.log(25, f"Symmetric balance ({n_buckets} buckets): {old_size} -> {len(self)} samples")
+
     def clear_values(self) -> None:
         """
         Clear the values in the dataset (set all to 0).

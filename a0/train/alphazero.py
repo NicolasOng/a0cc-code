@@ -264,7 +264,7 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
         return game_data_to_gt_value_training_set(game_data), game_data
     elif config.experiment == "gt_next_value":
         return game_data_to_gt_next_value_training_set(game_data), game_data
-    elif config.experiment == "model_value":
+    elif config.experiment in ["td_2", "td_10"]:
         return game_data_to_model_value_training_set(game_data, player.model), game_data
     else:
         return game_data_to_training_set(game_data), game_data
@@ -447,6 +447,15 @@ def train_alphazero() -> None:
             logger.log(25, f"After balancing: {new_win_count} wins, {new_draw_count} draws, {new_loss_count} losses")
             eb_dataset.print_bucket_distribution()
             logger.log(25, "---")
+        
+        if config.experiment == "td_2":
+            logger.log(25, "Balancing values into 2 buckets (win vs non-win)...")
+            eb_dataset.balance_values_symmetric(n_buckets=2)
+            eb_dataset.print_bucket_distribution()
+        elif config.experiment == "td_10":
+            logger.log(25, "Balancing values into 10 buckets...")
+            eb_dataset.balance_values_symmetric(n_buckets=10)
+            eb_dataset.print_bucket_distribution()
         
         # train the model on the experiences in the replay buffer
         model, train_data = train_model_epochs(
