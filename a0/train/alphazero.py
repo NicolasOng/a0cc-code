@@ -199,6 +199,7 @@ def game_data_to_model_value_training_set(game_data: GameData, model: AlphaZeroM
     board_inputs = [board_to_input(turn.board) for turn in turn_data]
     boards = np.concatenate(board_inputs, axis=0)
     model_values, _ = model.inference(boards)
+    model_values = jax.lax.stop_gradient(model_values)
 
     # compute targets backward from the last state
     num_turns = len(turn_data)
@@ -248,6 +249,7 @@ def game_data_to_td_lambda_training_set(game_data: GameData, model: AlphaZeroMod
     board_inputs = [board_to_input(turn.board) for turn in turn_data]
     boards = np.concatenate(board_inputs, axis=0)
     model_values, _ = model.inference(boards)
+    model_values = jax.lax.stop_gradient(model_values)
 
     num_turns = len(turn_data)
     targets = [0.0] * num_turns
