@@ -344,7 +344,7 @@ def capture_value_diagnostics(
     post_balance_values: np.ndarray,
     gt_eval_boards: np.ndarray,
     gt_eval_values: np.ndarray,
-) -> dict:
+) -> dict[str, list[float]]:
     '''
     Captures value diagnostics for the current training iteration.
     Logs histograms and returns full value lists for later analysis.
@@ -410,7 +410,7 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
         return game_data_to_gt_next_value_training_set(game_data), game_data
     elif config.experiment in ["td_2", "td_10"]:
         return game_data_to_model_value_training_set(game_data, player.model), game_data
-    elif config.experiment in ["tdl_00", "tdl_50", "tdl_75", "tdl_100"]:
+    elif config.experiment in ["td_lambda"]:
         lam = config.td_lambda
         return game_data_to_td_lambda_training_set(game_data, player.model, lam), game_data
     else:
@@ -608,12 +608,12 @@ def train_alphazero() -> None:
             eb_dataset.balance_values_symmetric(n_buckets=10)
             eb_dataset.print_bucket_distribution()
         
-        if config.experiment in ["tdl_00", "tdl_50", "tdl_75", "tdl_100"]:
-            lam = float(config.experiment[len("tdl_"):]) / 100.0
+        if config.experiment in ["td_lambda"]:
+            lam = config.td_lambda
             logger.log(25, f"Using TD(lambda) with lambda={lam:.2f} for value targets.")
             # the dataset already has the TD(lambda) targets in the values field, so just balance them
             # value chosen based on the previous experiments...
-            eb_dataset.balance_values_symmetric(n_buckets=10)
+            eb_dataset.balance_values_symmetric(n_buckets=2)
             eb_dataset.print_bucket_distribution()
         
         # capture value diagnostics: dataset distributions + model predictions on GT eval set
