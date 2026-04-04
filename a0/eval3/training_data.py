@@ -10,10 +10,15 @@ from numpy.typing import NDArray
 from cc.core import Player, Board
 from cc.ground_truth import GroundTruth
 from a0.game import GameData
+from a0.dataset import Dataset
 from a0.train.dataset import DatasetData, stats_from_dataset_data, plot_model_performance
 from a0.eval.plotting import Series, save_series, plot_ridgeline
 from a0.eval.dataset_evaluation import policy_accuracy_function, policy_probability_mass_function
 from a0.eval.training_data import dataset_data_generator, game_data_generator
+from a0.experience_buffer import ExperienceData
+from a0.model_utils import board_to_input, get_legal_move_mask_from_state
+from a0.utils.states import convert_experience_list_to_dataset
+from a0.eval.generate_datasets import save_dataset
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -307,6 +312,62 @@ class AccuracyCollector(Collector):
             self.overall_series.ys["Overall Policy PM NT"].append(self._total_pm_policy_nt / t_nt if t_nt else 0)
         save_series(self.overall_series, f"{config.eval_dir}/{self._name}_overall_acc.pkl")
 
+class ExperiencedDatasetCollector(Collector):
+    '''
+    Collects states with their value/policy into a Dataset.
+    Keeps at most `n_per_iteration` random samples per iteration to bound memory,
+    then selects at most `n_total` random samples in finalize to control dataset size.
+    → {name}_dataset.pkl
+    '''
+
+    def __init__(
+        self,
+        name: str = "gamedata",
+        batch_size: int = 256,
+        n_per_iteration: int | None = None,
+        n_total: int | None = None,
+        get_outcome: Callable[[TurnInfo], float] = lambda ti: ti.experienced_outcome,
+        get_policy: Callable[[TurnInfo], NDArray[np.float32]] = lambda ti: ti.experienced_policy,
+    ):
+        self._name = name
+        self._batch_size = batch_size
+        self._n_per_iteration = n_per_iteration
+        self._n_total = n_total
+        self._get_outcome = get_outcome
+        self._get_policy = get_policy
+        self._experiences: list[ExperienceData] = []
+        self._iteration_buffer: list[ExperienceData] = []
+
+    def on_game(self, gi: GameInfo) -> None:
+        pass
+
+    def on_turn(self, ti: TurnInfo) -> None:
+        board_input = board_to_input(ti.board)  # (1, board_size, board_size, 2)
+        value = self._get_outcome(ti)
+        policy = self._get_policy(ti)
+        mask = get_legal_move_mask_from_state(ti.board, for_model=True)
+        self._iteration_buffer.append(ExperienceData(board_input, value, policy, mask))
+
+    def on_iteration_end(self, iteration: int) -> None:
+        buf = self._iteration_buffer
+        if self._n_per_iteration is not None and len(buf) > self._n_per_iteration:
+            indices = random.sample(range(len(buf)), self._n_per_iteration)
+            buf = [buf[i] for i in indices]
+        self._experiences.extend(buf)
+        self._iteration_buffer = []
+
+    def finalize(self) -> None:
+        exps = self._experiences
+        if self._n_total is not None and len(exps) > self._n_total:
+            indices = random.sample(range(len(exps)), self._n_total)
+            exps = [exps[i] for i in indices]
+        
+        dataset = convert_experience_list_to_dataset(exps, self._batch_size)
+
+        save_dataset(f"{self._name}", dataset)
+
+        logger.info(f"ExperiencedDatasetCollector '{self._name}': saved {len(dataset)} samples to {self._name}.pkl")
+
 class BiasCollector(Collector):
     '''
     Collects per-iteration and overall win/loss/draw percentages.
@@ -378,7 +439,7 @@ def run_collectors() -> None:
     logger.info("Starting training data analyses...")
 
     # TODO: hardcode this string
-    alt_outcome: Callable[[TurnInfo], float] = lambda ti: ti.alternative_targets["td_lambda"]
+    alt_outcome: Callable[[TurnInfo], float] = lambda ti: float(np.sign(ti.alternative_targets["td_lambda"]))
 
     # TODO: create OverGameProgressMetaCollector.
 
@@ -393,7 +454,13 @@ def run_collectors() -> None:
         BiasCollector(
             name="gamedata_alt",
             get_outcome=alt_outcome
-        )
+        ),
+        ExperiencedDatasetCollector(
+            name="experienced_dataset",
+            batch_size=256,
+            n_per_iteration=500,
+            n_total=2000
+        ),
     ]
     traverse_game_data_with_collectors(collectors)
 
