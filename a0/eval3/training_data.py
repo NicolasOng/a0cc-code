@@ -17,8 +17,10 @@ from a0.eval.dataset_evaluation import policy_accuracy_function, policy_probabil
 from a0.eval.training_data import dataset_data_generator, game_data_generator
 from a0.experience_buffer import ExperienceData
 from a0.model_utils import board_to_input, get_legal_move_mask_from_state
-from a0.utils.states import convert_experience_list_to_dataset
+from a0.utils.states import convert_experience_list_to_dataset, get_gtd_from_states
 from a0.eval.generate_datasets import save_dataset
+from a0.utils.misc import get_baseline_accuracy, get_branching_factor
+from a0.eval3.generate_datasets import get_nd_and_nt_datasets_from_state_list
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -83,6 +85,8 @@ class Collector(Protocol):
 
 class GameProgressCollector(Protocol):
     '''Protocol for collectors that track stats per game-progress bucket.'''
+    def init_buckets(self, bucket_upper_bounds: list[int]) -> None: ...
+
     def on_turn(self, ti: TurnInfo, bucket: int) -> None: ...
 
     def on_iteration_end(self, iteration: int) -> None: ...
@@ -320,98 +324,6 @@ class AccuracyCollector(Collector):
             self.overall_series.ys["Overall Policy PM NT"].append(self._total_pm_policy_nt / t_nt if t_nt else 0)
         save_series(self.overall_series, f"{config.eval_dir}/{self._name}_overall_acc.pkl")
 
-class GameProgressMetaCollector(Collector):
-    '''
-    Routes turns to game-progress-bucket-aware sub-collectors.
-    Divides game progress (0-99) into n_buckets equal ranges.
-    '''
-
-    def __init__(self, n_buckets: int, collectors: list[GameProgressCollector]):
-        self._n_buckets = n_buckets
-        self._bucket_size = 100 / n_buckets
-        self._collectors = collectors
-
-    @staticmethod
-    def bucket_upper_bounds(n_buckets: int) -> list[int]:
-        size = 100 / n_buckets
-        return [int((b + 1) * size) for b in range(n_buckets)]
-
-    def _get_bucket_upper(self, progress: int) -> int:
-        bucket_idx = min(int(progress / self._bucket_size), self._n_buckets - 1)
-        return int((bucket_idx + 1) * self._bucket_size)
-
-    def on_game(self, gi: GameInfo) -> None:
-        pass
-
-    def on_turn(self, ti: TurnInfo) -> None:
-        bucket = self._get_bucket_upper(ti.progress)
-        for c in self._collectors:
-            c.on_turn(ti, bucket)
-
-    def on_iteration_end(self, iteration: int) -> None:
-        for c in self._collectors:
-            c.on_iteration_end(iteration)
-
-    def finalize(self) -> None:
-        for c in self._collectors:
-            c.finalize()
-
-class ExperiencedDatasetCollector(Collector):
-    '''
-    Collects states with their value/policy into a Dataset.
-    Keeps at most `n_per_iteration` random samples per iteration to bound memory,
-    then selects at most `n_total` random samples in finalize to control dataset size.
-    → {name}_dataset.pkl
-    '''
-
-    def __init__(
-        self,
-        name: str = "gamedata",
-        batch_size: int = 256,
-        n_per_iteration: int | None = None,
-        n_total: int | None = None,
-        get_outcome: Callable[[TurnInfo], float] = lambda ti: ti.experienced_outcome,
-        get_policy: Callable[[TurnInfo], NDArray[np.float32]] = lambda ti: ti.experienced_policy,
-    ):
-        self._name = name
-        self._batch_size = batch_size
-        self._n_per_iteration = n_per_iteration
-        self._n_total = n_total
-        self._get_outcome = get_outcome
-        self._get_policy = get_policy
-        self._experiences: list[ExperienceData] = []
-        self._iteration_buffer: list[ExperienceData] = []
-
-    def on_game(self, gi: GameInfo) -> None:
-        pass
-
-    def on_turn(self, ti: TurnInfo) -> None:
-        board_input = board_to_input(ti.board)  # (1, board_size, board_size, 2)
-        value = self._get_outcome(ti)
-        policy = self._get_policy(ti)
-        mask = get_legal_move_mask_from_state(ti.board, for_model=True)
-        self._iteration_buffer.append(ExperienceData(board_input, value, policy, mask))
-
-    def on_iteration_end(self, iteration: int) -> None:
-        buf = self._iteration_buffer
-        if self._n_per_iteration is not None and len(buf) > self._n_per_iteration:
-            indices = random.sample(range(len(buf)), self._n_per_iteration)
-            buf = [buf[i] for i in indices]
-        self._experiences.extend(buf)
-        self._iteration_buffer = []
-
-    def finalize(self) -> None:
-        exps = self._experiences
-        if self._n_total is not None and len(exps) > self._n_total:
-            indices = random.sample(range(len(exps)), self._n_total)
-            exps = [exps[i] for i in indices]
-        
-        dataset = convert_experience_list_to_dataset(exps, self._batch_size)
-
-        save_dataset(f"{self._name}", dataset)
-
-        logger.info(f"ExperiencedDatasetCollector '{self._name}': saved {len(dataset)} samples to {self._name}.pkl")
-
 class BiasCollector(Collector):
     '''
     Collects per-iteration and overall win/loss/draw percentages.
@@ -476,7 +388,288 @@ class BiasCollector(Collector):
             self.overall_series.ys["Overall Draw Percent"].append(self._total_draws / t if t else 0)
         save_series(self.overall_series, f"{config.eval_dir}/{self._name}_overall_bias.pkl")
 
-def run_collectors() -> None:
+class ExperiencedDatasetCollector(Collector):
+    '''
+    Collects states with their value/policy into a Dataset.
+    Keeps at most `n_per_iteration` random samples per iteration to bound memory,
+    then selects at most `n_total` random samples in finalize to control dataset size.
+    → {name}_dataset.pkl
+    '''
+
+    def __init__(
+        self,
+        name: str = "gamedata",
+        batch_size: int = 256,
+        n_per_iteration: int | None = None,
+        n_total: int | None = None,
+        get_outcome: Callable[[TurnInfo], float] = lambda ti: ti.experienced_outcome,
+        get_policy: Callable[[TurnInfo], NDArray[np.float32]] = lambda ti: ti.experienced_policy,
+    ):
+        self._name = name
+        self._batch_size = batch_size
+        self._n_per_iteration = n_per_iteration
+        self._n_total = n_total
+        self._get_outcome = get_outcome
+        self._get_policy = get_policy
+        self._experiences: list[ExperienceData] = []
+        self._iteration_buffer: list[ExperienceData] = []
+
+    def on_game(self, gi: GameInfo) -> None:
+        pass
+
+    def on_turn(self, ti: TurnInfo) -> None:
+        board_input = board_to_input(ti.board)  # (1, board_size, board_size, 2)
+        value = self._get_outcome(ti)
+        policy = self._get_policy(ti)
+        mask = get_legal_move_mask_from_state(ti.board, for_model=True)
+        self._iteration_buffer.append(ExperienceData(board_input, value, policy, mask))
+
+    def on_iteration_end(self, iteration: int) -> None:
+        buf = self._iteration_buffer
+        if self._n_per_iteration is not None and len(buf) > self._n_per_iteration:
+            indices = random.sample(range(len(buf)), self._n_per_iteration)
+            buf = [buf[i] for i in indices]
+        self._experiences.extend(buf)
+        self._iteration_buffer = []
+
+    def finalize(self) -> None:
+        exps = self._experiences
+        if self._n_total is not None and len(exps) > self._n_total:
+            indices = random.sample(range(len(exps)), self._n_total)
+            exps = [exps[i] for i in indices]
+        
+        dataset = convert_experience_list_to_dataset(exps, self._batch_size)
+
+        save_dataset(f"{self._name}", dataset)
+
+        logger.info(f"ExperiencedDatasetCollector '{self._name}': saved {len(dataset)} samples to {self._name}.pkl")
+
+class GameProgressMetaCollector(Collector):
+    '''
+    Routes turns to game-progress-bucket-aware sub-collectors.
+    Divides game progress (0-99) into n_buckets equal ranges.
+    '''
+
+    def __init__(self, n_buckets: int, collectors: list[GameProgressCollector]):
+        self._n_buckets = n_buckets
+        self._bucket_size = 100 / n_buckets
+        self._collectors = collectors
+        bounds = self.bucket_upper_bounds(n_buckets)
+        for c in self._collectors:
+            c.init_buckets(bounds)
+
+    @staticmethod
+    def bucket_upper_bounds(n_buckets: int) -> list[int]:
+        size = 100 / n_buckets
+        return [int((b + 1) * size) for b in range(n_buckets)]
+
+    def _get_bucket_upper(self, progress: int) -> int:
+        bucket_idx = min(int(progress / self._bucket_size), self._n_buckets - 1)
+        return int((bucket_idx + 1) * self._bucket_size)
+
+    def on_game(self, gi: GameInfo) -> None:
+        pass
+
+    def on_turn(self, ti: TurnInfo) -> None:
+        bucket = self._get_bucket_upper(ti.progress)
+        for c in self._collectors:
+            c.on_turn(ti, bucket)
+
+    def on_iteration_end(self, iteration: int) -> None:
+        for c in self._collectors:
+            c.on_iteration_end(iteration)
+
+    def finalize(self) -> None:
+        for c in self._collectors:
+            c.finalize()
+
+class StateCountProgressCollector(GameProgressCollector):
+    '''Counts the number of states in each game progress bucket. → {name}_progress_count.pkl'''
+
+    def __init__(self, name: str = "gamedata"):
+        self._name = name
+        self._buckets: list[int] = []
+        self._counts: dict[int, int] = {}
+        self._unique_states: dict[int, set[Board]] = {}
+
+    def init_buckets(self, bucket_upper_bounds: list[int]) -> None:
+        self._buckets = bucket_upper_bounds
+        self._counts = {b: 0 for b in bucket_upper_bounds}
+        self._unique_states = {b: set() for b in bucket_upper_bounds}
+
+    def on_turn(self, ti: TurnInfo, bucket: int) -> None:
+        self._counts[bucket] += 1
+        self._unique_states[bucket].add(ti.board)
+
+    def on_iteration_end(self, iteration: int) -> None:
+        pass
+
+    def finalize(self) -> None:
+        series = Series(["Count", "Unique"])
+        for b in self._buckets:
+            series.x.append(b)
+            series.ys["Count"].append(self._counts[b])
+            series.ys["Unique"].append(len(self._unique_states[b]))
+        save_series(series, f"{config.eval_dir}/{self._name}_progress_count.pkl")
+
+class AccuracyProgressCollector(GameProgressCollector):
+    '''
+    Collects value/policy accuracy per game progress bucket.
+    → {name}_progress_acc.pkl
+    '''
+
+    def __init__(
+        self,
+        name: str = "gamedata",
+        get_outcome: Callable[[TurnInfo], float] = lambda ti: ti.experienced_outcome,
+        get_policy: Callable[[TurnInfo], NDArray[np.float32]] = lambda ti: ti.experienced_policy,
+    ):
+        self._name = name
+        self._get_outcome = get_outcome
+        self._get_policy = get_policy
+        self._buckets: list[int] = []
+        self._stats: dict[int, dict[str, int | float]] = {}
+
+    @staticmethod
+    def _empty_stats() -> dict[str, int | float]:
+        return {
+            'total': 0, 'total_nd': 0, 'total_nt': 0,
+            'correct_value': 0, 'correct_value_nd': 0,
+            'correct_policy': 0, 'pm_policy': 0.0,
+            'correct_policy_nt': 0, 'pm_policy_nt': 0.0,
+        }
+
+    def init_buckets(self, bucket_upper_bounds: list[int]) -> None:
+        self._buckets = bucket_upper_bounds
+        self._stats = {b: self._empty_stats() for b in bucket_upper_bounds}
+
+    def on_turn(self, ti: TurnInfo, bucket: int) -> None:
+        outcome = self._get_outcome(ti)
+        policy = self._get_policy(ti)
+        s = self._stats[bucket]
+
+        value_correct = (ti.gt_outcome == outcome)
+        if value_correct:
+            s['correct_value'] += 1
+
+        is_draw = (outcome == 0.0)
+        if not is_draw:
+            s['total_nd'] += 1
+            if value_correct:
+                s['correct_value_nd'] += 1
+
+        pm = policy_probability_mass_function(policy, ti.gt_policy)
+        policy_correct = policy_accuracy_function(policy, ti.gt_policy)
+        s['pm_policy'] += pm
+        if policy_correct:
+            s['correct_policy'] += 1
+
+        if not ti.is_trivial:
+            s['total_nt'] += 1
+            s['pm_policy_nt'] += pm
+            if policy_correct:
+                s['correct_policy_nt'] += 1
+
+        s['total'] += 1
+
+    def on_iteration_end(self, iteration: int) -> None:
+        pass
+
+    def finalize(self) -> None:
+        series = Series([
+            "Value Accuracy", "Value Accuracy ND",
+            "Policy Accuracy", "Policy PM",
+            "Policy Accuracy NT", "Policy PM NT",
+        ])
+        for b in self._buckets:
+            s = self._stats[b]
+            t, t_nd, t_nt = s['total'], s['total_nd'], s['total_nt']
+            series.x.append(b)
+            series.ys["Value Accuracy"].append(s['correct_value'] / t if t else 0)
+            series.ys["Value Accuracy ND"].append(s['correct_value_nd'] / t_nd if t_nd else 0)
+            series.ys["Policy Accuracy"].append(s['correct_policy'] / t if t else 0)
+            series.ys["Policy PM"].append(s['pm_policy'] / t if t else 0)
+            series.ys["Policy Accuracy NT"].append(s['correct_policy_nt'] / t_nt if t_nt else 0)
+            series.ys["Policy PM NT"].append(s['pm_policy_nt'] / t_nt if t_nt else 0)
+        save_series(series, f"{config.eval_dir}/{self._name}_progress_acc.pkl")
+
+class BoardFunctionProgressCollector(GameProgressCollector):
+    '''
+    Collects boards per game progress bucket, then applies functions
+    to each bucket's board list in finalize. Each function returns a
+    dict[str, float] mapping series labels to values.
+    → {name}_progress_{fn_name}.pkl per function
+    '''
+
+    def __init__(
+        self,
+        name: str,
+        functions: dict[str, Callable[[list[Board]], dict[str, float]]],
+        finalize_functions: list[Callable[[dict[int, list[Board]]], None]] | None = None,
+    ):
+        self._name = name
+        self._functions = functions
+        self._finalize_functions = finalize_functions
+        self._buckets: list[int] = []
+        self._boards: dict[int, list[Board]] = {}
+
+    def init_buckets(self, bucket_upper_bounds: list[int]) -> None:
+        self._buckets = bucket_upper_bounds
+        self._boards = {b: [] for b in bucket_upper_bounds}
+
+    def on_turn(self, ti: TurnInfo, bucket: int) -> None:
+        self._boards[bucket].append(ti.board)
+
+    def on_iteration_end(self, iteration: int) -> None:
+        pass
+
+    def finalize(self) -> None:
+        empty: dict[str, float] = {}
+        for fn_name, fn in self._functions.items():
+            results = {b: fn(self._boards[b]) if self._boards[b] else empty for b in self._buckets}
+            labels = list(next((r for r in results.values() if r), empty).keys())
+            series = Series(labels)
+            for b in self._buckets:
+                series.x.append(b)
+                for label in labels:
+                    series.ys[label].append(results[b].get(label, 0))
+            save_series(series, f"{config.eval_dir}/{self._name}_progress_{fn_name}.pkl")
+        
+        for fn in self._finalize_functions or []:
+            fn(self._boards)
+
+def save_dataset_dict(dataset_dict: dict[int, Dataset], name: str) -> None:
+    output_path = f"{config.dataset_out_dir}/{name}.pkl"
+    with open(output_path, 'wb') as file:
+        pickle.dump(dataset_dict, file)
+    logger.info(f"Saved {name} dataset dict to {output_path}.")
+
+def convert_and_save_state_buckets_to_datasets(state_buckets: dict[int, list[Board]], gt: GroundTruth, n: int, batch_size: int) -> None:
+    datasets_nd: dict[int, Dataset] = {}
+    datasets_nt: dict[int, Dataset] = {}
+    for bucket, boards in state_buckets.items():
+        nd_dataset, nt_dataset = get_nd_and_nt_datasets_from_state_list(boards, gt, n, batch_size)
+        datasets_nd[bucket] = nd_dataset
+        datasets_nt[bucket] = nt_dataset
+    save_dataset_dict(datasets_nd, "game_progress_nd_gtv_datasets")
+    save_dataset_dict(datasets_nt, "game_progress_nt_gtv_datasets")
+
+def baseline_accuracy_fn(boards: list[Board], gt: GroundTruth) -> dict[str, float]:
+    v_acc, p_acc, v_acc_nd, p_acc_nt = get_baseline_accuracy(boards, gt)
+    return {
+        "Value Accuracy": v_acc,
+        "Policy Accuracy": p_acc,
+        "Value Accuracy ND": v_acc_nd,
+        "Policy Accuracy NT": p_acc_nt,
+    }
+
+def get_branching_factor_fn(boards: list[Board], gt: GroundTruth) -> dict[str, float]:
+    bf = get_branching_factor(boards, gt)
+    return {
+        "Branching Factor": bf,
+    }
+
+def run_collectors(gt: GroundTruth) -> None:
     '''
     Runs all training data collectors in a single pass over the game data
     '''
@@ -503,6 +696,24 @@ def run_collectors() -> None:
             n_per_iteration=500,
             n_total=2000
         ),
+        GameProgressMetaCollector(
+            n_buckets=5,
+            collectors=[
+                StateCountProgressCollector(),
+                AccuracyProgressCollector(name="experienced"),
+                AccuracyProgressCollector(name="alt_targets", get_outcome=alt_outcome),
+                BoardFunctionProgressCollector(
+                    name="gamedata",
+                    functions={
+                        "Baseline Accuracy": lambda boards: baseline_accuracy_fn(boards, gt),
+                        "Branching Factor": lambda boards: get_branching_factor_fn(boards, gt)
+                    },
+                    finalize_functions=[
+                        lambda boards: convert_and_save_state_buckets_to_datasets(boards, gt, n=1000, batch_size=256)
+                    ]
+                ),
+            ]
+        ),
     ]
     traverse_game_data_with_collectors(collectors)
 
@@ -515,8 +726,9 @@ def main():
         process_name='training_data'
     )
 
+    gt = GroundTruth()
     get_and_save_avg_training_metrics_per_iteration()
-    run_collectors()
+    run_collectors(gt)
 
 if __name__ == "__main__":
     main()

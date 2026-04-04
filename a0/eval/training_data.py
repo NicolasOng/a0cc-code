@@ -14,6 +14,7 @@ from a0.game import GameData
 from a0.train.dataset import DatasetData, stats_from_dataset_data
 from a0.eval.dataset_evaluation import Series, save_series, policy_accuracy_function, policy_probability_mass_function
 from a0.utils.load_training_data import game_data_generator, dataset_data_generator
+from a0.utils.misc import get_baseline_accuracy, get_branching_factor
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -807,61 +808,6 @@ def trim_progress_bins(training_data_bins: dict[int, list[tuple[Board, Player | 
             # also trim the seen states for that bin down to the boards in the trimmed training data
             seen_states_bins[bin_key] = set(random.sample(list(seen_states_bins[bin_key]), max_size))
 
-def get_baseline_accuracy(boards: list[Board], gt: GroundTruth) -> tuple[float, float, float, float]:
-    '''
-    Returns the baseline accuracy for random guessing.
-    Could do this more efficiently by batching the boards together,
-    but this is simpler to implement and should be fast enough for our purposes.
-    returns:
-    - value accuracy
-    - policy accuracy
-    - value accuracy (non-draws)
-    - policy accuracy (non-trivial boards)
-    '''
-    #from a0.model_utils import Policy
-    total_boards = len(boards)
-    assert total_boards > 0, "No boards provided for baseline accuracy calculation."
-    total_nd = 0
-    total_nt = 0
-    total_acc_policy = 0.0
-    total_acc_value = 0.0
-    total_acc_policy_nt = 0.0
-    total_acc_value_nd = 0.0
-    for board in boards:
-        # policy
-        gt_policy = gt.get_1ply_policy_outcomes_list(board, for_model=False)
-        random_policy = gt.get_random_valid_move_prob_dist_list(board, for_model=False)
-
-        # p_gt = Policy(config.board_size)
-        # p_gt.set_logits(np.array(gt_policy), rotate_180=False)
-
-        # p_r = Policy(config.board_size)
-        # p_r.set_logits(np.array(random_policy), rotate_180=False)
-
-        # moves = gt.cc.generate_moves_for_given_board(board)
-        # gt_probs = p_gt.get_move_probabilities(moves)
-        # random_probs = p_r.get_move_probabilities(moves)
-
-        # print(f"GT Policy: {gt_probs}")
-        # print(f"Random Policy: {random_probs}")
-
-        policy_acc = policy_accuracy_function(np.array(random_policy), np.array(gt_policy))
-        # value
-        gt_outcome = gt.get_outcome(board)
-        random_outcome = random.choice([-1, 1])
-        value_acc = 1.0 if random_outcome == gt_outcome else 0.0
-        # adding to totals
-        total_acc_policy += policy_acc
-        total_acc_value += value_acc
-        if not gt.is_trivial(board):
-            total_acc_policy_nt += policy_acc
-            total_nt += 1
-        if not gt_outcome == 0:
-            total_acc_value_nd += value_acc
-            total_nd += 1
-
-    return total_acc_value / total_boards, total_acc_policy / total_boards, total_acc_value_nd / total_nd if total_nd > 0 else 0, total_acc_policy_nt / total_nt if total_nt > 0 else 0
-
 def baseline_accuracy_over_game_progress(seen_states_bins: dict[int, set[Board]], gt: GroundTruth) -> None:
     num_bins = len(seen_states_bins)
     baseline_acc_over_gp_series = Series(["Baseline Value Accuracy", "Baseline Policy Accuracy", "Baseline Value Accuracy (ND)", "Baseline Policy Accuracy (NT)"])
@@ -946,12 +892,6 @@ def training_data_accuracy_over_game_progress(training_data_bins: dict[int, list
         acc_over_gp_series.ys["Policy Accuracy (NT)"].append(acc_policy_nt)
     
     save_series(acc_over_gp_series, f"{config.eval_dir}/training_data_accuracy_over_game_progress_{num_bins}.pkl")
-
-def get_branching_factor(boards: list[Board], gt: GroundTruth) -> float:
-    total_branching_factor = 0
-    for board in boards:
-        total_branching_factor += sum(gt.get_valid_moves_list(board, for_model=False))
-    return total_branching_factor / len(boards) if boards else 0.0
 
 def branching_factor_over_game_progress(seen_states_bins: dict[int, set[Board]], gt: GroundTruth) -> None:
     num_bins = len(seen_states_bins)
