@@ -4,6 +4,7 @@ import concurrent.futures
 from concurrent.futures import Future, wait, FIRST_COMPLETED
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+import gc
 import pickle
 import dill
 
@@ -246,9 +247,18 @@ def game_data_to_td_lambda_training_set(game_data: GameData, model: AlphaZeroMod
         return training_set
 
     # \hat{v}(S_0), \hat{v}(S_1), ..., \hat{v}(S_{T-1}) via batch inference
+    # pad to fixed batch size so JAX JIT only compiles one kernel for this path
+    FIXED_BATCH_SIZE = 256
     board_inputs = [board_to_input(turn.board) for turn in turn_data]
     boards = np.concatenate(board_inputs, axis=0)
-    model_values, _ = model.inference(boards)
+    num_real = boards.shape[0]
+    if num_real < FIXED_BATCH_SIZE:
+        padding = np.zeros((FIXED_BATCH_SIZE - num_real, *boards.shape[1:]), dtype=boards.dtype)
+        boards_padded = np.concatenate([boards, padding], axis=0)
+    else:
+        boards_padded = boards
+    model_values, _ = model.inference(boards_padded)
+    model_values = model_values[:num_real]
     model_values = jax.lax.stop_gradient(model_values)
 
     num_turns = len(turn_data)
@@ -439,7 +449,7 @@ def self_play(player: A0Player) -> tuple[list[ExperienceData], list[GameData]]:
     training_set: list[ExperienceData] = []
     num_cores = config.num_workers
     logger.info(f"Using {num_cores} cores for self-play.")
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=num_cores, max_tasks_per_child=1) as executor:
         # create a list to hold the futures
         futures: list[Future[tuple[list[ExperienceData], GameData]]] = []
 
@@ -651,7 +661,11 @@ def train_alphazero() -> None:
         # save the model after each iteration
         if config.training_dir:
             save_model(config.training_dir + f'model_{i + 1}.pkl', model)
-    
+
+        # free stale JIT caches and unreferenced GPU memory before the next iteration
+        jax.clear_caches()
+        gc.collect()
+
     # after all iterations, plot all the training data
     plot_model_performance("training_plots/full_a0", train_datas)
 
