@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import pickle
 from tqdm import tqdm
-from typing import Generator, Any
+from typing import Generator, Any, TYPE_CHECKING
 from collections import defaultdict
 import random
 
@@ -11,26 +13,20 @@ import matplotlib.pyplot as plt
 from cc.core import Player, Board
 from cc.ground_truth import GroundTruth
 from a0.game import GameData
-from a0.train.dataset import DatasetData, stats_from_dataset_data
-from a0.eval.dataset_evaluation import Series, save_series, policy_accuracy_function, policy_probability_mass_function
+
+if TYPE_CHECKING:
+    from a0.train.dataset import DatasetData
 
 import sys
 import os
 
-from typing import Generator
-
 from jax import numpy as jnp
 import jax
 import optax
-import pickle
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-import numpy as np
 from numpy.typing import NDArray
 
 from a0.model import AlphaZeroModel, load_model
 from a0.dataset import Dataset
-from a0.eval.plotting import Series, save_series
 
 from config import config
 from utils.log import get_logger, setup_logging
