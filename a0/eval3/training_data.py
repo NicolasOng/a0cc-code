@@ -81,6 +81,14 @@ class Collector(Protocol):
 
     def finalize(self) -> None: ...
 
+class GameProgressCollector(Protocol):
+    '''Protocol for collectors that track stats per game-progress bucket.'''
+    def on_turn(self, ti: TurnInfo, bucket: int) -> None: ...
+
+    def on_iteration_end(self, iteration: int) -> None: ...
+
+    def finalize(self) -> None: ...
+
 def traverse_game_data_with_collectors(collectors: list[Collector]) -> None:
     '''
     Walks all game data once, computing per-turn facts and handing them
@@ -312,6 +320,42 @@ class AccuracyCollector(Collector):
             self.overall_series.ys["Overall Policy PM NT"].append(self._total_pm_policy_nt / t_nt if t_nt else 0)
         save_series(self.overall_series, f"{config.eval_dir}/{self._name}_overall_acc.pkl")
 
+class GameProgressMetaCollector(Collector):
+    '''
+    Routes turns to game-progress-bucket-aware sub-collectors.
+    Divides game progress (0-99) into n_buckets equal ranges.
+    '''
+
+    def __init__(self, n_buckets: int, collectors: list[GameProgressCollector]):
+        self._n_buckets = n_buckets
+        self._bucket_size = 100 / n_buckets
+        self._collectors = collectors
+
+    @staticmethod
+    def bucket_upper_bounds(n_buckets: int) -> list[int]:
+        size = 100 / n_buckets
+        return [int((b + 1) * size) for b in range(n_buckets)]
+
+    def _get_bucket_upper(self, progress: int) -> int:
+        bucket_idx = min(int(progress / self._bucket_size), self._n_buckets - 1)
+        return int((bucket_idx + 1) * self._bucket_size)
+
+    def on_game(self, gi: GameInfo) -> None:
+        pass
+
+    def on_turn(self, ti: TurnInfo) -> None:
+        bucket = self._get_bucket_upper(ti.progress)
+        for c in self._collectors:
+            c.on_turn(ti, bucket)
+
+    def on_iteration_end(self, iteration: int) -> None:
+        for c in self._collectors:
+            c.on_iteration_end(iteration)
+
+    def finalize(self) -> None:
+        for c in self._collectors:
+            c.finalize()
+
 class ExperiencedDatasetCollector(Collector):
     '''
     Collects states with their value/policy into a Dataset.
@@ -440,8 +484,6 @@ def run_collectors() -> None:
 
     # TODO: hardcode this string
     alt_outcome: Callable[[TurnInfo], float] = lambda ti: float(np.sign(ti.alternative_targets["td_lambda"]))
-
-    # TODO: create OverGameProgressMetaCollector.
 
     collectors: list[Collector] = [
         GameStatsCollector(),
