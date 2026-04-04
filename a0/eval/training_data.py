@@ -13,42 +13,11 @@ from cc.ground_truth import GroundTruth
 from a0.game import GameData
 from a0.train.dataset import DatasetData, stats_from_dataset_data
 from a0.eval.dataset_evaluation import Series, save_series, policy_accuracy_function, policy_probability_mass_function
+from a0.utils.load_training_data import game_data_generator, dataset_data_generator
 
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
-
-def game_data_generator(dir: str, n: int) -> Generator[tuple[int, list[GameData]], None, None]:
-    '''
-    Load game data from the given path, from 1 to n inclusive
-    Returns a list of lists of game data, assuming each is named gamedata_<iteration>.pkl
-    Each list corresponds to a single training iteration.
-    If a file doesn't exist, it skips it.
-    '''
-    for i in range(n):
-        file_path = f"{dir}/gamedata_{i + 1}.pkl"
-        try:
-            with open(file_path, 'rb') as file:
-                data: list[GameData] = pickle.load(file)
-                yield i + 1, data
-        except Exception as e:
-            logger.error(f"Failed to load game data {i} at {file_path}: {e}")
-
-def dataset_data_generator(dir: str, n: int) -> Generator[tuple[int, DatasetData], None, None]:
-    '''
-    Load dataset data from the given path.
-    Each dataset data object contains the training data for each iteration.
-    Attempts to load each iteration's dataset data (iteration_stats_{i + 1}.pkl) from 1 to n inclusive
-    Returns a list of dataset data.
-    '''
-    for i in range(n):
-        file_path = f"{dir}/iteration_stats_{i + 1}.pkl"
-        try:
-            with open(file_path, 'rb') as file:
-                data: DatasetData = pickle.load(file)
-                yield i + 1, data
-        except Exception as e:
-            logger.error(f"Failed to load dataset data {i} at {file_path}: {e}")
 
 def check_game_data_accuracy(game_data_lists: list[tuple[int, list[GameData]]]) -> None:
     '''

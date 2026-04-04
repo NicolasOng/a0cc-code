@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 from a0.model import AlphaZeroModel, load_model
 from a0.dataset import Dataset
 from a0.eval.plotting import Series, save_series
+from a0.utils.load_training_data import load_models, models_generator_function
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -341,28 +342,6 @@ def load_dataset_list(datasets_path: str) -> list[Dataset]:
         logger.error(f"Error loading dataset: {e}")
         sys.exit()
     return datasets
-
-def models_generator_function(dir: str, n: int) -> Generator[tuple[int, AlphaZeroModel], None, None]:
-    '''
-    Attempts to load [0 to n] AlphaZeroModels from the given directory.
-    If one doesn't exist, it just skips it.
-    File names are expected to be in the format "model_{i}.pkl" where i is the model number.
-    '''
-    for i in range(n + 1):
-        model_path = f"{dir}/model_{i}.pkl"
-        try:
-            model = load_model(model_path)
-            yield i, model
-        except Exception as e:
-            logger.error(f"Failed to load model {i} at {model_path}: {e}")
-
-def load_models(dir: str, n: int) -> list[tuple[int, AlphaZeroModel]]:
-    '''
-    Returns a list of tuples (model_id, AlphaZeroModel).
-    Attempts to load models from 0 to n (inclusive) - skips missing models.
-    '''
-    logger.info(f"Loading {n} models from {dir}...")
-    return list(models_generator_function(dir, n))
 
 def calculate_dataset_bias(dataset: Dataset) -> tuple[float, float, float]:
     '''

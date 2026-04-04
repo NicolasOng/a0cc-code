@@ -1,94 +1,12 @@
-import numpy as np
-from numpy.typing import NDArray
-from scipy import stats
-
-from a0.eval.plotting import Series, load_series, save_series, plot_shaded_error
+from a0.utils.plotting import (
+    Series,
+    load_series, plot_shaded_error,
+    load_and_merge_series
+)
 
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
-
-def merge_series(series: list[Series], confidence: float = 0.95) -> Series:
-    '''
-    Combines multiple series into one.
-    Assumes that all the series share the same y's.
-    Uses the union of all x-values across series. Stats (mean, std, CI) at each x
-    are computed from whichever series have a value there.
-    The resultant series will contain the mean, standard deviation, and confidence interval for each y in the original series.
-    '''
-    # find the union of all x-values in all the Series objects
-    all_x: set = set()
-    for s in series:
-        all_x |= set(s.x)
-
-    # Sort to maintain order
-    all_x_sorted = sorted(all_x)
-
-    # log how many x-values each series is missing
-    for i, s in enumerate(series):
-        missing_x = set(all_x_sorted) - set(s.x)
-        if missing_x:
-            logger.info(f"Series {i} missing {len(missing_x)} x-values ({missing_x}).")
-
-    # build aligned arrays with NaN where a series doesn't have a given x
-    y_keys = list(series[0].ys.keys())
-    num_x = len(all_x_sorted)
-    num_series = len(series)
-
-    merged_ys: dict[str, NDArray[np.float64]] = {}
-    for y_key in y_keys:
-        y_data = np.full((num_series, num_x), np.nan, dtype=np.float64)
-        for s_idx, s in enumerate(series):
-            x_to_index = {x_val: i for i, x_val in enumerate(s.x)}
-            for x_idx, x_val in enumerate(all_x_sorted):
-                if x_val in x_to_index:
-                    y_data[s_idx, x_idx] = s.ys[y_key][x_to_index[x_val]]
-        merged_ys[y_key] = y_data
-
-    # create a merged series object, where each y in the original Series is replaced with
-    # average, std, and CI
-    merged_series = Series(y_keys + [y_key + "_std" for y_key in y_keys] + [y_key + "_ci" for y_key in y_keys])
-
-    for y_key in y_keys:
-        y_data = merged_ys[y_key]
-        # count of non-NaN values at each x position
-        n = np.sum(~np.isnan(y_data), axis=0)
-
-        # calculate mean and std ignoring NaNs
-        mean = np.nanmean(y_data, axis=0)
-        std = np.nanstd(y_data, axis=0)
-
-        # Calculate confidence interval (per-x degrees of freedom)
-        alpha = 1 - confidence
-        # where n < 2 we can't compute a CI; use NaN
-        df = np.maximum(n - 1, 1)  # avoid 0 df for t.ppf
-        t_value = stats.t.ppf(1 - alpha/2, df=df)
-        confidence_interval = np.where(n >= 2, t_value * std / np.sqrt(n), np.nan)
-
-        # put all these into the merged series object
-        merged_series.x = list(all_x_sorted)
-        merged_series.ys[y_key] = mean.tolist()
-        merged_series.ys[y_key + "_std"] = std.tolist()
-        merged_series.ys[y_key + "_ci"] = confidence_interval.tolist()
-
-    return merged_series
-
-def load_and_merge_series(dirs: list[str], series_fn: str, confidence: float = 0.95, save: bool = True) -> Series:
-    '''
-    Loads and merges series from the specified directories.
-    '''
-    logger.info(f"Loading and merging series {series_fn} from directories: {dirs} with confidence level {confidence}")
-    # load all the series, using the provided directories and series filename.
-    series: list[Series] = []
-    for dir in dirs:
-        series.append(load_series(f"{dir}{series_fn}"))
-
-    merged_series = merge_series(series, confidence)
-
-    if save:
-        save_series(merged_series, f"{config.eval_dir}merged_{series_fn}")
-
-    return merged_series
 
 def main():
     setup_logging(

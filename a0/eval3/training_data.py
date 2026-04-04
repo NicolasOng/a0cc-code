@@ -11,7 +11,7 @@ from cc.core import Player, Board
 from cc.ground_truth import GroundTruth
 from a0.game import GameData
 from a0.train.dataset import DatasetData, stats_from_dataset_data, plot_model_performance
-from a0.eval.plotting import Series, save_series
+from a0.eval.plotting import Series, save_series, plot_ridgeline
 from a0.eval.dataset_evaluation import policy_accuracy_function, policy_probability_mass_function
 from a0.eval.training_data import dataset_data_generator, game_data_generator
 
