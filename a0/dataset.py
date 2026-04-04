@@ -248,6 +248,12 @@ class Dataset:
 
         logger.log(25, f"Symmetric balance ({n_buckets} buckets): {old_size} -> {len(self)} samples")
 
+    def print_shapes(self) -> None:
+        logger.info(f"states:   {self.states.shape}")
+        logger.info(f"values:   {self.values.shape}")
+        logger.info(f"policies: {self.policies.shape}")
+        logger.info(f"masks:    {self.masks.shape}")
+
     def clear_values(self) -> None:
         """
         Clear the values in the dataset (set all to 0).

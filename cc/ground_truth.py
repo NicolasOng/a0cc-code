@@ -73,6 +73,12 @@ class GroundTruth:
         Returns True if draw, False otherwise.
         '''
         return self.l.board_lookup(board) == 0
+
+    def is_terminal(self, board: Board) -> bool:
+        '''
+        Checks if the given board is a terminal state.
+        '''
+        return self.cc.get_done(board)
     
     def get_1ply_policy_moves(self, board: Board) -> tuple[list[Move], list[float]]:
         '''
