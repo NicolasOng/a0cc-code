@@ -248,7 +248,7 @@ def game_data_to_td_lambda_training_set(game_data: GameData, model: AlphaZeroMod
 
     # \hat{v}(S_0), \hat{v}(S_1), ..., \hat{v}(S_{T-1}) via batch inference
     # pad to fixed batch size so JAX JIT only compiles one kernel for this path
-    FIXED_BATCH_SIZE = 256
+    FIXED_BATCH_SIZE = config.turn_limit if config.turn_limit else 64
     board_inputs = [board_to_input(turn.board) for turn in turn_data]
     boards = np.concatenate(board_inputs, axis=0)
     num_real = boards.shape[0]
