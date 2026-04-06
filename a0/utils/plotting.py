@@ -2,11 +2,15 @@ import sys
 import os
 
 import pickle
+from typing import Literal, Optional, overload
+
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
 from scipy import stats
 from scipy.stats import gaussian_kde
+
+from a0.utils.safe_load import safe_load_pickle
 
 from config import config
 from utils.log import get_logger
@@ -32,20 +36,21 @@ def save_series(series: Series, series_path: str) -> None:
     with open(series_path, 'wb') as f:
         pickle.dump(series, f)
 
-def load_series(series_path: str) -> Series:
+@overload
+def load_series(series_path: str) -> Series: ...
+@overload
+def load_series(series_path: str, *, optional: Literal[False]) -> Series: ...
+@overload
+def load_series(series_path: str, *, optional: Literal[True]) -> Optional[Series]: ...
+def load_series(series_path: str, *, optional: bool = False) -> Optional[Series]:
     '''
-    loads a series object from a given path
+    Loads a Series object from the given path.
+    By default exits the process if the file is missing (strict mode, used by
+    the original eval pipeline). Pass optional=True to instead get None back.
     '''
-    logger.info(f"Loading series from {series_path}...")
-    try:
-        with open(series_path, 'rb') as f:
-            series: Series = pickle.load(f)
-        logger.info(f"Loaded series from {series_path}.")
-    except FileNotFoundError:
+    series: Optional[Series] = safe_load_pickle(series_path, "series")  # type: ignore[assignment]
+    if series is None and not optional:
         logger.error(f"Series file not found at {series_path}. Please generate the series first.")
-        sys.exit()
-    except Exception as e:
-        logger.error(f"Error loading series: {e}")
         sys.exit()
     return series
 
@@ -156,18 +161,21 @@ def save_distribution_series(series: DistributionSeries, series_path: str) -> No
     with open(series_path, 'wb') as f:
         pickle.dump(series, f)
 
-def load_distribution_series(series_path: str) -> DistributionSeries:
-    '''Loads a DistributionSeries from the given path.'''
-    logger.info(f"Loading distribution series from {series_path}...")
-    try:
-        with open(series_path, 'rb') as f:
-            series: DistributionSeries = pickle.load(f)
-        logger.info(f"Loaded distribution series from {series_path}.")
-    except FileNotFoundError:
+@overload
+def load_distribution_series(series_path: str) -> DistributionSeries: ...
+@overload
+def load_distribution_series(series_path: str, *, optional: Literal[False]) -> DistributionSeries: ...
+@overload
+def load_distribution_series(series_path: str, *, optional: Literal[True]) -> Optional[DistributionSeries]: ...
+def load_distribution_series(series_path: str, *, optional: bool = False) -> Optional[DistributionSeries]:
+    '''
+    Loads a DistributionSeries from the given path.
+    By default exits the process if the file is missing. Pass optional=True
+    to get None back instead.
+    '''
+    series: Optional[DistributionSeries] = safe_load_pickle(series_path, "distribution series")  # type: ignore[assignment]
+    if series is None and not optional:
         logger.error(f"Distribution series file not found at {series_path}. Please generate it first.")
-        sys.exit()
-    except Exception as e:
-        logger.error(f"Error loading distribution series: {e}")
         sys.exit()
     return series
 

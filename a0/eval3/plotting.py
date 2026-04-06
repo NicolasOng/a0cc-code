@@ -10,7 +10,7 @@ def get_and_save_dataset_diagnostics() -> None:
     `get_and_save_dataset_diagnostics_distributions` and renders each as a
     shaded ridgeline plot. Cross-trial CI bands appear automatically when the
     series has been merged across multiple runs; for a single run only the
-    mean line is drawn.
+    mean line is drawn. Missing series files are skipped with a warning.
     '''
     series_files = [
         ("dataset_pre_balance_distributions", "Dataset Pre Balance Distributions"),
@@ -18,9 +18,11 @@ def get_and_save_dataset_diagnostics() -> None:
     ]
 
     for fn, title in series_files:
-        series = load_distribution_series(f"{config.eval_dir}/{fn}.pkl")
+        series = load_distribution_series(f"{config.eval_dir}/{fn}.pkl", optional=True)
+        if series is None:
+            continue
         if not series.x:
-            logger.error(f"Distribution series {fn} has no iterations; skipping plot.")
+            logger.warning(f"Distribution series {fn} has no iterations; skipping plot.")
             continue
         plot_shaded_ridgeline(
             trials=series.trials,

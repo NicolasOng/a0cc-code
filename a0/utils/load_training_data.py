@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pickle
 from tqdm import tqdm
 from typing import Generator, Any, TYPE_CHECKING
 from collections import defaultdict
@@ -27,6 +26,7 @@ from numpy.typing import NDArray
 
 from a0.model import AlphaZeroModel, load_model
 from a0.dataset import Dataset
+from a0.utils.safe_load import safe_load_pickle
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -34,49 +34,43 @@ logger = get_logger(__name__)
 
 def game_data_generator(dir: str, n: int) -> Generator[tuple[int, list[GameData]], None, None]:
     '''
-    Load game data from the given path, from 1 to n inclusive
-    Returns a list of lists of game data, assuming each is named gamedata_<iteration>.pkl
-    Each list corresponds to a single training iteration.
-    If a file doesn't exist, it skips it.
+    Yields (iteration, game data list) for each gamedata_<iteration>.pkl in 1..n
+    that exists. Missing files are skipped (with a warning).
     '''
     for i in range(n):
         file_path = f"{dir}/gamedata_{i + 1}.pkl"
-        try:
-            with open(file_path, 'rb') as file:
-                data: list[GameData] = pickle.load(file)
-                yield i + 1, data
-        except Exception as e:
-            logger.error(f"Failed to load game data {i} at {file_path}: {e}")
+        data: list[GameData] | None = safe_load_pickle(file_path, f"game data {i + 1}")  # type: ignore[assignment]
+        if data is not None:
+            yield i + 1, data
 
 def dataset_data_generator(dir: str, n: int) -> Generator[tuple[int, DatasetData], None, None]:
     '''
-    Load dataset data from the given path.
-    Each dataset data object contains the training data for each iteration.
-    Attempts to load each iteration's dataset data (iteration_stats_{i + 1}.pkl) from 1 to n inclusive
-    Returns a list of dataset data.
+    Yields (iteration, DatasetData) for each iteration_stats_<iteration>.pkl in 1..n
+    that exists. Missing files are skipped (with a warning).
     '''
     for i in range(n):
         file_path = f"{dir}/iteration_stats_{i + 1}.pkl"
-        try:
-            with open(file_path, 'rb') as file:
-                data: DatasetData = pickle.load(file)
-                yield i + 1, data
-        except Exception as e:
-            logger.error(f"Failed to load dataset data {i} at {file_path}: {e}")
+        data: DatasetData | None = safe_load_pickle(file_path, f"iteration stats {i + 1}")  # type: ignore[assignment]
+        if data is not None:
+            yield i + 1, data
 
 def models_generator_function(dir: str, n: int) -> Generator[tuple[int, AlphaZeroModel], None, None]:
     '''
-    Attempts to load [0 to n] AlphaZeroModels from the given directory.
-    If one doesn't exist, it just skips it.
-    File names are expected to be in the format "model_{i}.pkl" where i is the model number.
+    Yields (i, AlphaZeroModel) for model_<i>.pkl in 0..n that exists.
+    Models go through a custom load path (load_model), so safe_load_pickle isn't
+    used directly; we just check the file exists and let load_model handle the
+    flax restore + log any deserialization errors.
     '''
     for i in range(n + 1):
         model_path = f"{dir}/model_{i}.pkl"
+        if not os.path.exists(model_path):
+            logger.warning(f"model {i} not found at {model_path}; skipping.")
+            continue
         try:
             model = load_model(model_path)
             yield i, model
         except Exception as e:
-            logger.error(f"Failed to load model {i} at {model_path}: {e}")
+            logger.error(f"Failed to load model {i} at {model_path}: {e}; skipping.")
 
 def load_models(dir: str, n: int) -> list[tuple[int, AlphaZeroModel]]:
     '''
@@ -86,13 +80,13 @@ def load_models(dir: str, n: int) -> list[tuple[int, AlphaZeroModel]]:
     logger.info(f"Loading {n} models from {dir}...")
     return list(models_generator_function(dir, n))
 
-def dataset_diagnostics_generator(training_dir: str, n: int):
-    '''Load dataset_diagnostics_{i}.pkl for iterations 1..n.'''
+def dataset_diagnostics_generator(training_dir: str, n: int) -> Generator[tuple[int, dict[str, list[float]]], None, None]:
+    '''
+    Yields (iteration, diagnostics dict) for each dataset_diagnostics_<iteration>.pkl
+    in 1..n that exists. Missing files are skipped.
+    '''
     for i in range(n):
         file_path = f"{training_dir}/dataset_diagnostics_{i + 1}.pkl"
-        try:
-            with open(file_path, 'rb') as f:
-                data: dict[str, list[float]] = pickle.load(f)
-                yield i + 1, data
-        except Exception as e:
-            logger.error(f"Failed to load dataset diagnostics {i + 1} at {file_path}: {e}")
+        data: dict[str, list[float]] | None = safe_load_pickle(file_path, f"dataset diagnostics {i + 1}")  # type: ignore[assignment]
+        if data is not None:
+            yield i + 1, data

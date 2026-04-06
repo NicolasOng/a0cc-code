@@ -1,7 +1,7 @@
 import sys
 import os
 
-from typing import Generator
+from typing import Generator, Literal, Optional, overload
 
 from jax import numpy as jnp
 import jax
@@ -16,6 +16,7 @@ from a0.model import AlphaZeroModel, load_model
 from a0.dataset import Dataset
 from a0.eval.plotting import Series, save_series
 from a0.utils.load_training_data import load_models, models_generator_function
+from a0.utils.safe_load import safe_load_pickle
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -311,35 +312,38 @@ def evaluate_on_all_datasets(model: AlphaZeroModel, datasets: dict[int, Dataset]
     metrics_path = f"{config.eval_dir}/{fn}.pkl"
     save_series(metrics, metrics_path)
 
-def load_dataset(dataset_path: str) -> Dataset:
+@overload
+def load_dataset(dataset_path: str) -> Dataset: ...
+@overload
+def load_dataset(dataset_path: str, *, optional: Literal[False]) -> Dataset: ...
+@overload
+def load_dataset(dataset_path: str, *, optional: Literal[True]) -> Optional[Dataset]: ...
+def load_dataset(dataset_path: str, *, optional: bool = False) -> Optional[Dataset]:
     '''
     Loads a dataset from the given path.
-    Returns a Dataset object.
-    If the file does not exist, it will log an error and exit.
+    By default exits the process if the file is missing. Pass optional=True
+    to get None back instead.
     '''
-    logger.info(f"Loading dataset from {dataset_path}...")
-    try:
-        with open(dataset_path, 'rb') as file:
-            dataset: Dataset = pickle.load(file)
-        logger.info(f"Loaded dataset from {dataset_path}.")
-    except FileNotFoundError:
+    dataset: Optional[Dataset] = safe_load_pickle(dataset_path, "dataset")  # type: ignore[assignment]
+    if dataset is None and not optional:
         logger.error(f"Dataset file not found at {dataset_path}. Please generate the dataset first.")
-        sys.exit()
-    except Exception as e:
-        logger.error(f"Error loading dataset: {e}")
         sys.exit()
     return dataset
 
-def load_dataset_list(datasets_path: str) -> list[Dataset]:
-    try:
-        with open(datasets_path, 'rb') as file:
-            datasets: list[Dataset] = pickle.load(file)
-        logger.info(f"Loaded datasets from {datasets_path}.")
-    except FileNotFoundError:
+@overload
+def load_dataset_list(datasets_path: str) -> list[Dataset]: ...
+@overload
+def load_dataset_list(datasets_path: str, *, optional: Literal[False]) -> list[Dataset]: ...
+@overload
+def load_dataset_list(datasets_path: str, *, optional: Literal[True]) -> Optional[list[Dataset]]: ...
+def load_dataset_list(datasets_path: str, *, optional: bool = False) -> Optional[list[Dataset]]:
+    '''
+    Loads a list of datasets from a single pickle file.
+    Strict by default; pass optional=True to get None on missing.
+    '''
+    datasets: Optional[list[Dataset]] = safe_load_pickle(datasets_path, "dataset list")  # type: ignore[assignment]
+    if datasets is None and not optional:
         logger.error(f"Dataset file not found at {datasets_path}. Please generate the dataset first.")
-        sys.exit()
-    except Exception as e:
-        logger.error(f"Error loading dataset: {e}")
         sys.exit()
     return datasets
 
@@ -361,30 +365,22 @@ def calculate_dataset_bias(dataset: Dataset) -> tuple[float, float, float]:
     #logger.info(f"Dataset bias - Wins: {win_percent:.2%}, Losses: {loss_percent:.2%}, Draws: {draw_percent:.2%}")
     return win_percent, loss_percent, draw_percent
 
-def load_dataset_dict(dataset_path: str) -> dict[int, Dataset]:
+@overload
+def load_dataset_dict(dataset_path: str) -> dict[int, Dataset]: ...
+@overload
+def load_dataset_dict(dataset_path: str, *, optional: Literal[False]) -> dict[int, Dataset]: ...
+@overload
+def load_dataset_dict(dataset_path: str, *, optional: Literal[True]) -> Optional[dict[int, Dataset]]: ...
+def load_dataset_dict(dataset_path: str, *, optional: bool = False) -> Optional[dict[int, Dataset]]:
     '''
-    Args:
-        dataset_path: Path to the dataset file.
-        
-    Returns:
-        A dictionary mapping bin keys (progress percentages) to Dataset objects.
-        For example: {0: Dataset, 10: Dataset, 20: Dataset, ...}
+    Loads a dict of bin-key → Dataset from a pickle file.
+    Strict by default; pass optional=True to get None on missing.
     '''
-    logger.info(f"Loading dataset dict from {dataset_path}...")
-    
-    try:
-        with open(dataset_path, 'rb') as file:
-            datasets = pickle.load(file)
-        
-        logger.info(f"Successfully loaded {len(datasets)} datasets")
-        
-        return datasets
-    except FileNotFoundError:
+    datasets: Optional[dict[int, Dataset]] = safe_load_pickle(dataset_path, "dataset dict")  # type: ignore[assignment]
+    if datasets is None and not optional:
         logger.error(f"Dataset file not found: {dataset_path}")
-        raise
-    except Exception as e:
-        logger.error(f"Error loading datasets: {e}")
-        raise
+        sys.exit()
+    return datasets
 
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='dataset_evaluation')

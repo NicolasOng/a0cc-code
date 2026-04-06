@@ -47,8 +47,11 @@ def get_and_save_avg_training_metrics_per_iteration() -> None:
         series.ys["Value Accuracy"].append(v_acc)
         series.ys["Policy Accuracy"].append(p_acc)
         train_datas.append(dataset_data)
-    
-    plot_model_performance("training_plots/full_a0", train_datas)
+
+    if train_datas:
+        plot_model_performance("training_plots/full_a0", train_datas)
+    else:
+        logger.warning("No iteration_stats files found; skipping training performance plot.")
 
     save_series(series, f"{config.eval_dir}/training_metrics.pkl")
 
