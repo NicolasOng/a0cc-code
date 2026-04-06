@@ -291,98 +291,13 @@ def game_data_to_td_lambda_training_set(game_data: GameData, model: AlphaZeroMod
 
     return training_set
 
-def _log_value_histogram(name: str, values: np.ndarray, n_buckets: int = 10) -> None:
-    '''Logs a histogram of values in [-1, 1], matching Dataset.print_bucket_distribution style.'''
-    total = len(values)
-    if total == 0:
-        logger.log(25, f"{name}: empty")
-        return
-    edges = np.linspace(-1, 1, n_buckets + 1)
-    counts = np.histogram(values, bins=edges)[0]
-    logger.log(25, f"{name} ({n_buckets} buckets, {total} values):")
-    for i in range(n_buckets):
-        lo, hi = edges[i], edges[i + 1]
-        count = int(counts[i])
-        bar = "#" * int(40 * count / max(total, 1))
-        logger.log(25, f"  [{lo:+.2f}, {hi:+.2f}{']' if i == n_buckets - 1 else ')'} {count:6d} ({count/total:.2%}) {bar}")
-
-def generate_balanced_gt_eval_dataset(n_samples: int = 1000) -> tuple[np.ndarray, np.ndarray]:
-    '''
-    Generates a balanced evaluation dataset using ground truth.
-    Samples random board states, gets GT values, and balances to
-    have equal positive (+1) and negative (-1) values.
-    Draws and illegal states are excluded.
-    Returns (board_inputs, gt_values) as numpy arrays.
-    '''
-    gt = GroundTruth()
-    max_rank = gt.get_max_rank()
-
-    rng = np.random.default_rng(42)
-    sample_size = min(n_samples * 5, max_rank)
-    ranks = rng.choice(max_rank, size=sample_size, replace=False)
-
-    boards_list = []
-    values_list = []
-    for rank in ranks:
-        board = gt.unrank(int(rank))
-        if gt.is_illegal(board):
-            continue
-        value = gt.get_outcome(board)
-        if value == 0.0:
-            continue
-        boards_list.append(board_to_input(board))
-        values_list.append(value)
-
-    board_inputs = np.concatenate(boards_list, axis=0)
-    values = np.array(values_list, dtype=np.float32)
-
-    # Balance: equal positive and negative
-    pos_indices = np.where(values > 0)[0]
-    neg_indices = np.where(values < 0)[0]
-    target_per_side = min(len(pos_indices), len(neg_indices), n_samples // 2)
-
-    selected_pos = rng.choice(pos_indices, size=target_per_side, replace=False)
-    selected_neg = rng.choice(neg_indices, size=target_per_side, replace=False)
-    selected = np.concatenate([selected_pos, selected_neg])
-    rng.shuffle(selected)
-
-    logger.log(25, f"Generated balanced GT eval dataset: {target_per_side} pos, {target_per_side} neg ({target_per_side * 2} total)")
-
-    return board_inputs[selected], values[selected]
-
-def capture_value_diagnostics(
-    model: AlphaZeroModel | MultiTrunkAlphaZeroModel,
+def capture_dataset_diagnostics(
     pre_balance_values: np.ndarray,
     post_balance_values: np.ndarray,
-    gt_eval_boards: np.ndarray,
-    gt_eval_values: np.ndarray,
 ) -> dict[str, list[float]]:
-    '''
-    Captures value diagnostics for the current training iteration.
-    Logs histograms and returns full value lists for later analysis.
-    Args:
-        model: the current model to get predictions from
-        pre_balance_values: flat array of dataset target values before balancing
-        post_balance_values: flat array of dataset target values after balancing
-        gt_eval_boards: board inputs from the balanced GT eval dataset
-        gt_eval_values: GT values from the balanced GT eval dataset
-    Returns:
-        dict with full value lists for serialization
-    '''
-    # Model predictions on balanced GT dataset
-    model_preds, _ = model.inference(gt_eval_boards)
-    model_preds = np.array(model_preds).flatten()
-
-    # Log histograms
-    _log_value_histogram("Dataset targets (pre-balance)", pre_balance_values)
-    _log_value_histogram("Dataset targets (post-balance)", post_balance_values)
-    _log_value_histogram("Model predictions on balanced GT eval", model_preds)
-
     return {
         'dataset_values_pre': pre_balance_values.tolist(),
-        'dataset_values_post': post_balance_values.tolist(),
-        'gt_eval_values': gt_eval_values.tolist(),
-        'model_predictions': model_preds.tolist(),
+        'dataset_values_post': post_balance_values.tolist()
     }
 
 def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
@@ -555,9 +470,6 @@ def train_alphazero() -> None:
         config.replay_buffer_size
     )
 
-    # Generate a balanced GT eval dataset once for value diagnostics
-    gt_eval_boards, gt_eval_values = generate_balanced_gt_eval_dataset(n_samples=1000)
-
     iterations = config.training_iterations
     train_datas: list[DatasetData] = []
     logger.log(25, GameDataStats.get_header())
@@ -600,7 +512,7 @@ def train_alphazero() -> None:
         eb_dataset = experience_buffer.get_dataset(config.training_batch_size)
         # print the distribution of values in the dataset
         win_count, draw_count, loss_count = eb_dataset.get_distribution()
-        logger.log(25, f"Experience buffer dataset distribution: {win_count} wins, {draw_count} draws, {loss_count} losses")
+        logger.log(25, f"Training dataset distribution (pre-balancing): {win_count} wins, {draw_count} draws, {loss_count} losses")
         eb_dataset.print_bucket_distribution()
         pre_balance_values = eb_dataset.values.flatten().copy()
         if config.experiment in ["gt", "gt_value", "gt_next_value"]:
@@ -626,17 +538,18 @@ def train_alphazero() -> None:
             # the dataset already has the TD(lambda) targets in the values field, so just balance them
             # value chosen based on the previous experiments...
             eb_dataset.balance_values_symmetric(n_buckets=2)
+            new_win_count, new_draw_count, new_loss_count = eb_dataset.get_distribution()
+            logger.log(25, f"After balancing: {new_win_count} wins, {new_draw_count} draws, {new_loss_count} losses")
             eb_dataset.print_bucket_distribution()
         
-        # capture value diagnostics: dataset distributions + model predictions on GT eval set
+        # capture dataset diagnostics: distributions before and after balancing
         post_balance_values = eb_dataset.values.flatten().copy()
-        value_diagnostics = capture_value_diagnostics(
-            model, pre_balance_values, post_balance_values,
-            gt_eval_boards, gt_eval_values
+        dataset_diagnostics = capture_dataset_diagnostics(
+            pre_balance_values, post_balance_values
         )
         if config.training_dir:
-            with open(config.training_dir + f"value_diagnostics_{i + 1}.pkl", 'wb') as f:
-                pickle.dump(value_diagnostics, f)
+            with open(config.training_dir + f"dataset_diagnostics_{i + 1}.pkl", 'wb') as f:
+                pickle.dump(dataset_diagnostics, f)
 
         # train the model on the experiences in the replay buffer
         model, train_data = train_model_epochs(
