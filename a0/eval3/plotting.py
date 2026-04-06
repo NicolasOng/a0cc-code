@@ -48,7 +48,7 @@ def plot_random_nd_value_distributions() -> None:
         labels=[str(x) for x in series.x],
         title="Model Value Predictions on random_nd",
         x_label="Value", y_label="Iteration",
-        fn="random_nd_value_distributions",
+        fn="random_nd_value_distributions"
     )
 
 

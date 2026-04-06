@@ -7,6 +7,7 @@ from typing import Literal, Optional, overload
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import NDArray
+from scipy.ndimage import gaussian_filter1d
 from scipy import stats
 from scipy.stats import gaussian_kde
 
@@ -15,6 +16,40 @@ from a0.utils.safe_load import safe_load_pickle
 from config import config
 from utils.log import get_logger
 logger = get_logger(__name__)
+
+
+def _density_from_samples(
+    samples: list[float] | NDArray[np.float64],
+    x_grid: NDArray[np.float64],
+    value_range: tuple[float, float],
+    bw: float,
+) -> NDArray[np.float64]:
+    arr = np.asarray(samples, dtype=np.float64)
+    if arr.size == 0:
+        return np.zeros_like(x_grid)
+    if x_grid.size < 2:
+        return np.ones_like(x_grid)
+
+    bins = max(32, min(x_grid.size // 2, 160))
+    hist, edges = np.histogram(arr, bins=bins, range=value_range, density=False)
+    bin_width = edges[1] - edges[0] if len(edges) > 1 else 1.0
+    density = hist.astype(np.float64) / max(arr.size * bin_width, 1e-12)
+
+    sigma_bins = max(1.0, bw * bins * 0.2)
+    smoothed = gaussian_filter1d(density, sigma=sigma_bins, mode="nearest")
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    interpolated = np.interp(
+        x_grid,
+        centers,
+        smoothed,
+        left=float(smoothed[0]),
+        right=float(smoothed[-1]),
+    )
+    if interpolated.max() <= 0:
+        fallback_center = float(np.clip(np.median(arr), value_range[0], value_range[1]))
+        fallback_idx = int(np.argmin(np.abs(x_grid - fallback_center)))
+        interpolated[fallback_idx] = 1.0
+    return interpolated
 
 class Series:
     x: list[int]
@@ -321,9 +356,10 @@ def plot_ridgeline(
     height: float = 1.8,
     bw: float = 0.15,
     grid_points: int = 300,
+    density_method: Literal["kde", "buckets"] = "buckets",
 ) -> None:
     '''
-    Plot a ridgeline chart: one KDE density line per distribution, stacked vertically.
+    Plot a ridgeline chart: one density curve per distribution, stacked vertically.
     Args:
         distributions: list of value lists, one per ridge (bottom to top)
         labels: tick labels for each ridge (same length as distributions)
@@ -331,22 +367,31 @@ def plot_ridgeline(
         x_label: x-axis label
         y_label: y-axis label
         fn: filename (saved under config.plot_dir)
-        value_range: (min, max) for the x-axis and KDE domain
+        value_range: (min, max) for the x-axis and density domain
         overlap: vertical spacing between ridges (lower = more overlap)
         height: how tall each peak-normalized ridge is in y-units (>1 makes
                 them visually exaggerated and overlap more with the next ridge)
-        bw: KDE bandwidth (passed to gaussian_kde bw_method)
-        grid_points: number of points to evaluate the KDE on
+        bw: smoothing strength for the histogram blur
+        grid_points: number of points to evaluate the density on
+        density_method: "kde" for gaussian_kde, "buckets" for smoothed histogram
     '''
     x_grid = np.linspace(value_range[0], value_range[1], grid_points)
     n = len(distributions)
 
     plt.figure(figsize=(8, max(6, n * 0.5)))
     for i, values in enumerate(distributions):
-        arr = np.array(values)
-        kde = gaussian_kde(arr, bw_method=bw)
-        density = kde(x_grid)
-        density = density / density.max()  # normalize peak to 1
+        if density_method == "kde":
+            arr = np.asarray(values, dtype=np.float64)
+            kde = gaussian_kde(arr, bw_method=bw)
+            density = kde(x_grid)
+        elif density_method == "buckets":
+            density = _density_from_samples(values, x_grid, value_range, bw)
+        else:
+            raise ValueError(f"Unknown density_method={density_method}; expected 'kde' or 'buckets'")
+
+        peak = float(density.max())
+        if peak > 0:
+            density = density / peak  # normalize peak to 1
         baseline = i * overlap
 
         # subtle horizontal floor line at this iteration's baseline
@@ -380,22 +425,24 @@ def plot_shaded_ridgeline(
     height: float = 1.8,
     bw: float = 0.15,
     grid_points: int = 300,
+    density_method: Literal["kde", "buckets"] = "buckets",
 ) -> None:
     '''
     Plot a ridgeline chart with cross-trial confidence interval bands.
     For each iteration:
-      - Compute KDE for each trial (peak-normalized to 1)
-      - Plot the mean KDE as a line, with a shaded Student-t CI band
+            - Compute a smoothed histogram for each trial (peak-normalized to 1)
+            - Plot the mean density as a line, with a shaded Student-t CI band
         showing where trials disagree on the density
     Args:
         trials: nested list, trials[t][i] = list of samples for trial t at iteration i.
                 A trial may contain [] for missing iterations (skipped).
         labels: tick labels for each iteration (same length as trials[0])
         confidence: confidence level for the CI band (default 0.95)
-        value_range: (min, max) for the x-axis and KDE domain
+        value_range: (min, max) for the x-axis and density domain
         overlap: vertical spacing between ridges
-        bw: KDE bandwidth (passed to gaussian_kde bw_method)
-        grid_points: number of points to evaluate the KDE on
+        bw: smoothing strength for the histogram blur
+        grid_points: number of points to evaluate the density on
+        density_method: "kde" for gaussian_kde, "buckets" for smoothed histogram
     '''
     if not trials or not trials[0]:
         logger.error(f"plot_shaded_ridgeline: empty trials, skipping {fn}")
@@ -407,15 +454,20 @@ def plot_shaded_ridgeline(
     plt.figure(figsize=(8, max(6, num_iters * 0.5)))
 
     for i in range(num_iters):
-        # one raw KDE per (non-empty) trial at this iteration
+        # one raw smoothed histogram per (non-empty) trial at this iteration
         per_trial_density: list[NDArray[np.float64]] = []
         for trial in trials:
             samples = trial[i]
             if not samples:
                 continue
-            arr = np.array(samples)
-            kde = gaussian_kde(arr, bw_method=bw)
-            per_trial_density.append(kde(x_grid))
+            if density_method == "kde":
+                arr = np.asarray(samples, dtype=np.float64)
+                kde = gaussian_kde(arr, bw_method=bw)
+                per_trial_density.append(kde(x_grid))
+            elif density_method == "buckets":
+                per_trial_density.append(_density_from_samples(samples, x_grid, value_range, bw))
+            else:
+                raise ValueError(f"Unknown density_method={density_method}; expected 'kde' or 'buckets'")
 
         if not per_trial_density:
             continue
