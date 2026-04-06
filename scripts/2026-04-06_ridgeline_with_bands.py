@@ -61,12 +61,18 @@ bw = 0.15
 confidence = 0.95
 
 def per_trial_kdes(iter_idx: int) -> np.ndarray:
-    '''Returns array of shape (N_TRIALS, len(x_grid)), each row a peak-normalized KDE.'''
+    '''
+    Returns array of shape (N_TRIALS, len(x_grid)), with shared per-iteration
+    normalization: all trials divided by the same max so peak-height differences
+    between trials are preserved within the ridge.
+    '''
     out = np.zeros((N_TRIALS, len(x_grid)))
     for t in range(N_TRIALS):
         kde = gaussian_kde(trials[t][iter_idx], bw_method=bw)
-        d = kde(x_grid)
-        out[t] = d / d.max()
+        out[t] = kde(x_grid)
+    shared_max = out.max()
+    if shared_max > 0:
+        out = out / shared_max
     return out
 
 # Student-t critical value matches the convention used in merge_series.

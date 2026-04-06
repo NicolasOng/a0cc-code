@@ -392,7 +392,7 @@ def plot_shaded_ridgeline(
     plt.figure(figsize=(16, max(6, num_iters * 0.5)))
 
     for i in range(num_iters):
-        # one peak-normalized KDE per (non-empty) trial at this iteration
+        # one raw KDE per (non-empty) trial at this iteration
         per_trial_density: list[NDArray[np.float64]] = []
         for trial in trials:
             samples = trial[i]
@@ -400,14 +400,17 @@ def plot_shaded_ridgeline(
                 continue
             arr = np.array(samples)
             kde = gaussian_kde(arr, bw_method=bw)
-            d = kde(x_grid)
-            d = d / d.max()
-            per_trial_density.append(d)
+            per_trial_density.append(kde(x_grid))
 
         if not per_trial_density:
             continue
 
         density_stack = np.stack(per_trial_density)
+        # shared per-iteration normalization: divide all trials by the same scale
+        # so that peak-height differences between trials are preserved within the ridge.
+        shared_max = density_stack.max()
+        if shared_max > 0:
+            density_stack = density_stack / shared_max
         n = density_stack.shape[0]
         mean = density_stack.mean(axis=0)
 
