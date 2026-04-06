@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=aip-nathanst
-#SBATCH --time=6:00:00
+#SBATCH --time=1:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=4G
 
@@ -17,7 +17,4 @@ TRIAL_NO="${2}"
 echo "Using configuration file: $CONFIG_FILE"
 echo "Using trial number: $TRIAL_NO"
 
-time python -m a0.eval3.generate_datasets "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval3.training_data "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval3.dataset_evaluation "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval3.plotting "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval3.combine "$CONFIG_FILE" "$TRIAL_NO"
