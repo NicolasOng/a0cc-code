@@ -6,7 +6,7 @@ from tqdm import tqdm
 from a0.model import AlphaZeroModel
 from a0.dataset import Dataset
 from a0.eval.dataset_evaluation import evaluate_all_models, load_dataset, load_models
-from a0.eval.plotting import DistributionSeries, save_distribution_series
+from a0.utils.plotting import DistributionSeries, save_distribution_series
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -96,32 +96,32 @@ def main():
     num_neighbors = 2
 
     # Non-draw datasets
-    evaluate_if_present(models, load_dataset(f"{config.dataset_out_dir}/seen_nd.pkl",   optional=True), "seen_nd_eval",   n)
-    evaluate_if_present(models, load_dataset(f"{config.dataset_out_dir}/random_nd.pkl", optional=True), "random_nd_eval", n)
+    # evaluate_if_present(models, load_dataset(f"{config.dataset_out_dir}/seen_nd.pkl",   optional=True), "seen_nd_eval",   n)
+    # evaluate_if_present(models, load_dataset(f"{config.dataset_out_dir}/random_nd.pkl", optional=True), "random_nd_eval", n)
     collect_distributions_if_present(
         models,
         load_dataset(f"{config.dataset_out_dir}/random_nd.pkl", optional=True),
         "random_nd_value_distributions",
         n,
     )
-    for i in range(num_neighbors):
-        evaluate_if_present(
-            models,
-            load_dataset(f"{config.dataset_out_dir}/neighbor_{i+1}_nd.pkl", optional=True),
-            f"neighbor_{i+1}_nd_eval",
-            n,
-        )
+    # for i in range(num_neighbors):
+    #     evaluate_if_present(
+    #         models,
+    #         load_dataset(f"{config.dataset_out_dir}/neighbor_{i+1}_nd.pkl", optional=True),
+    #         f"neighbor_{i+1}_nd_eval",
+    #         n,
+    #     )
 
-    # Non-trivial datasets
-    evaluate_if_present(models, load_dataset(f"{config.dataset_out_dir}/seen_nt.pkl",   optional=True), "seen_nt_eval",   n)
-    evaluate_if_present(models, load_dataset(f"{config.dataset_out_dir}/random_nt.pkl", optional=True), "random_nt_eval", n)
-    for i in range(num_neighbors):
-        evaluate_if_present(
-            models,
-            load_dataset(f"{config.dataset_out_dir}/neighbor_{i+1}_nt.pkl", optional=True),
-            f"neighbor_{i+1}_nt_eval",
-            n,
-        )
+    # # Non-trivial datasets
+    # evaluate_if_present(models, load_dataset(f"{config.dataset_out_dir}/seen_nt.pkl",   optional=True), "seen_nt_eval",   n)
+    # evaluate_if_present(models, load_dataset(f"{config.dataset_out_dir}/random_nt.pkl", optional=True), "random_nt_eval", n)
+    # for i in range(num_neighbors):
+    #     evaluate_if_present(
+    #         models,
+    #         load_dataset(f"{config.dataset_out_dir}/neighbor_{i+1}_nt.pkl", optional=True),
+    #         f"neighbor_{i+1}_nt_eval",
+    #         n,
+    #     )
 
     logger.info("Dataset evaluation completed.")
 

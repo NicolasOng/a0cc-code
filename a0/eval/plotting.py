@@ -1,4 +1,3 @@
-from a0.utils.load_training_data import value_diagnostics_generator
 from a0.utils.plotting import (
     Series, save_series, load_series,
     plot_given, plot_given_groups,

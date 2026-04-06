@@ -1,6 +1,6 @@
 from typing import Callable
 
-from a0.eval.plotting import (
+from a0.utils.plotting import (
     load_distribution_series,
     plot_shaded_ridgeline,
 )

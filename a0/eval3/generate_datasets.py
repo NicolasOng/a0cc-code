@@ -160,9 +160,9 @@ if __name__ == "__main__":
     
     gt = GroundTruth()
     get_and_save_random_states_for_evaluation(1000, gt)
-    get_and_save_training_neighbors_gtd(
-        gt,
-        temporary_size=10000,
-        final_size=1000,
-        num_neighbors=2
-    )
+    # get_and_save_training_neighbors_gtd(
+    #     gt,
+    #     temporary_size=10000,
+    #     final_size=1000,
+    #     num_neighbors=2
+    # )
