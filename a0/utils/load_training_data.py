@@ -86,13 +86,13 @@ def load_models(dir: str, n: int) -> list[tuple[int, AlphaZeroModel]]:
     logger.info(f"Loading {n} models from {dir}...")
     return list(models_generator_function(dir, n))
 
-def value_diagnostics_generator(training_dir: str, n: int):
-    '''Load value_diagnostics_{i}.pkl for iterations 1..n.'''
+def dataset_diagnostics_generator(training_dir: str, n: int):
+    '''Load dataset_diagnostics_{i}.pkl for iterations 1..n.'''
     for i in range(n):
-        file_path = f"{training_dir}/value_diagnostics_{i + 1}.pkl"
+        file_path = f"{training_dir}/dataset_diagnostics_{i + 1}.pkl"
         try:
             with open(file_path, 'rb') as f:
                 data: dict[str, list[float]] = pickle.load(f)
                 yield i + 1, data
         except Exception as e:
-            logger.error(f"Failed to load value diagnostics {i + 1} at {file_path}: {e}")
+            logger.error(f"Failed to load dataset diagnostics {i + 1} at {file_path}: {e}")

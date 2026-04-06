@@ -12,9 +12,10 @@ from cc.ground_truth import GroundTruth
 from a0.game import GameData
 from a0.dataset import Dataset
 from a0.train.dataset import DatasetData, stats_from_dataset_data, plot_model_performance
-from a0.eval.plotting import Series, save_series, plot_ridgeline
+from a0.eval.plotting import Series, save_series, plot_ridgeline, DistributionSeries, save_distribution_series
 from a0.eval.dataset_evaluation import policy_accuracy_function, policy_probability_mass_function
 from a0.eval.training_data import dataset_data_generator, game_data_generator
+from a0.utils.load_training_data import dataset_diagnostics_generator
 from a0.experience_buffer import ExperienceData
 from a0.model_utils import board_to_input, get_legal_move_mask_from_state
 from a0.utils.states import convert_experience_list_to_dataset, get_gtd_from_states
@@ -50,6 +51,33 @@ def get_and_save_avg_training_metrics_per_iteration() -> None:
     plot_model_performance("training_plots/full_a0", train_datas)
 
     save_series(series, f"{config.eval_dir}/training_metrics.pkl")
+
+def get_and_save_dataset_diagnostics_distributions() -> None:
+    '''
+    Loads per-iteration dataset diagnostics (pre/post-balance value targets) saved
+    during training and stores them as DistributionSeries — one for the pre-balance
+    distribution and one for the post-balance distribution.
+    → dataset_pre_balance_distributions.pkl
+    → dataset_post_balance_distributions.pkl
+    '''
+    logger.info("Saving dataset diagnostics distributions...")
+    pre = DistributionSeries(name="dataset_values_pre")
+    post = DistributionSeries(name="dataset_values_post")
+
+    found_any = False
+    for iteration, diag in dataset_diagnostics_generator(config.training_dir, config.training_iterations):
+        found_any = True
+        pre.x.append(iteration)
+        pre.trials[0].append(diag['dataset_values_pre'])
+        post.x.append(iteration)
+        post.trials[0].append(diag['dataset_values_post'])
+
+    if not found_any:
+        logger.error("No dataset diagnostics found; skipping distribution series save.")
+        return
+
+    save_distribution_series(pre, f"{config.eval_dir}/dataset_pre_balance_distributions.pkl")
+    save_distribution_series(post, f"{config.eval_dir}/dataset_post_balance_distributions.pkl")
 
 @dataclass
 class TurnInfo:
@@ -728,6 +756,7 @@ def main():
 
     gt = GroundTruth()
     get_and_save_avg_training_metrics_per_iteration()
+    get_and_save_dataset_diagnostics_distributions()
     run_collectors(gt)
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ import os
 import pickle
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.typing import NDArray
+from scipy import stats
 from scipy.stats import gaussian_kde
 
 from config import config
@@ -126,6 +128,84 @@ def load_and_merge_series(dirs: list[str], series_fn: str, confidence: float = 0
 
     if save:
         save_series(merged_series, f"{config.eval_dir}merged_{series_fn}")
+
+    return merged_series
+
+class DistributionSeries:
+    '''
+    A series of distributions over iterations, e.g. model value predictions
+    or dataset value targets at each training iteration.
+
+    Each "trial" is one independent run of the experiment, and contains a
+    distribution (list of samples) at each x-value. A single eval run produces
+    a series with one trial; merging across runs concatenates the trial dimension.
+    '''
+    x: list[int]
+    trials: list[list[list[float]]]   # trials[t][i] = samples for trial t at x[i]
+    name: str
+
+    def __init__(self, name: str = "", num_trials: int = 1):
+        self.x = []
+        self.trials = [[] for _ in range(num_trials)]
+        self.name = name
+
+def save_distribution_series(series: DistributionSeries, series_path: str) -> None:
+    '''Saves a DistributionSeries to the given path.'''
+    logger.info(f"Saving distribution series to {series_path}...")
+    os.makedirs(os.path.dirname(series_path), exist_ok=True)
+    with open(series_path, 'wb') as f:
+        pickle.dump(series, f)
+
+def load_distribution_series(series_path: str) -> DistributionSeries:
+    '''Loads a DistributionSeries from the given path.'''
+    logger.info(f"Loading distribution series from {series_path}...")
+    try:
+        with open(series_path, 'rb') as f:
+            series: DistributionSeries = pickle.load(f)
+        logger.info(f"Loaded distribution series from {series_path}.")
+    except FileNotFoundError:
+        logger.error(f"Distribution series file not found at {series_path}. Please generate it first.")
+        sys.exit()
+    except Exception as e:
+        logger.error(f"Error loading distribution series: {e}")
+        sys.exit()
+    return series
+
+def merge_distribution_series(series: list[DistributionSeries]) -> DistributionSeries:
+    '''
+    Combines multiple DistributionSeries into one. Each input series can have
+    one or more trials; the output series concatenates all trials from all inputs.
+
+    Trials are aligned to the union of x-values across all inputs. For x-values
+    a trial doesn't have, an empty distribution [] is inserted as a placeholder
+    (the plotting layer should skip empty distributions).
+    '''
+    all_x = sorted({x for s in series for x in s.x})
+    merged = DistributionSeries(name=series[0].name, num_trials=0)
+    merged.x = all_x
+
+    for s_idx, s in enumerate(series):
+        missing_x = set(all_x) - set(s.x)
+        if missing_x:
+            logger.info(f"DistributionSeries {s_idx} missing {len(missing_x)} x-values ({missing_x}).")
+        x_to_idx = {x_val: i for i, x_val in enumerate(s.x)}
+        for trial in s.trials:
+            aligned = [trial[x_to_idx[x_val]] if x_val in x_to_idx else [] for x_val in all_x]
+            merged.trials.append(aligned)
+
+    return merged
+
+def load_and_merge_distribution_series(dirs: list[str], series_fn: str, save: bool = True) -> DistributionSeries:
+    '''Loads and merges distribution series from the specified directories.'''
+    logger.info(f"Loading and merging distribution series {series_fn} from directories: {dirs}")
+    series: list[DistributionSeries] = []
+    for dir in dirs:
+        series.append(load_distribution_series(f"{dir}{series_fn}"))
+
+    merged_series = merge_distribution_series(series)
+
+    if save:
+        save_distribution_series(merged_series, f"{config.eval_dir}merged_{series_fn}")
 
     return merged_series
 
@@ -265,6 +345,92 @@ def plot_ridgeline(
         [i * overlap for i in range(n)],
         labels,
     )
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.xlim(value_range[0], value_range[1])
+    plt.title(title)
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}{fn}.png")
+    plt.close()
+
+def plot_shaded_ridgeline(
+    trials: list[list[list[float]]],
+    labels: list[str],
+    title: str,
+    x_label: str,
+    y_label: str,
+    fn: str,
+    confidence: float = 0.95,
+    value_range: tuple[float, float] = (-1, 1),
+    overlap: float = 0.6,
+    bw: float = 0.15,
+    grid_points: int = 300,
+) -> None:
+    '''
+    Plot a ridgeline chart with cross-trial confidence interval bands.
+    For each iteration:
+      - Compute KDE for each trial (peak-normalized to 1)
+      - Plot the mean KDE as a line, with a shaded Student-t CI band
+        showing where trials disagree on the density
+    Args:
+        trials: nested list, trials[t][i] = list of samples for trial t at iteration i.
+                A trial may contain [] for missing iterations (skipped).
+        labels: tick labels for each iteration (same length as trials[0])
+        confidence: confidence level for the CI band (default 0.95)
+        value_range: (min, max) for the x-axis and KDE domain
+        overlap: vertical spacing between ridges
+        bw: KDE bandwidth (passed to gaussian_kde bw_method)
+        grid_points: number of points to evaluate the KDE on
+    '''
+    if not trials or not trials[0]:
+        logger.error(f"plot_shaded_ridgeline: empty trials, skipping {fn}")
+        return
+
+    num_iters = len(trials[0])
+    x_grid = np.linspace(value_range[0], value_range[1], grid_points)
+
+    plt.figure(figsize=(16, max(6, num_iters * 0.5)))
+
+    for i in range(num_iters):
+        # one peak-normalized KDE per (non-empty) trial at this iteration
+        per_trial_density: list[NDArray[np.float64]] = []
+        for trial in trials:
+            samples = trial[i]
+            if not samples:
+                continue
+            arr = np.array(samples)
+            kde = gaussian_kde(arr, bw_method=bw)
+            d = kde(x_grid)
+            d = d / d.max()
+            per_trial_density.append(d)
+
+        if not per_trial_density:
+            continue
+
+        density_stack = np.stack(per_trial_density)
+        n = density_stack.shape[0]
+        mean = density_stack.mean(axis=0)
+
+        baseline = i * overlap
+
+        # CI band only if we have at least 2 trials
+        if n >= 2:
+            std = density_stack.std(axis=0, ddof=1)
+            alpha = 1 - confidence
+            t_value = stats.t.ppf(1 - alpha / 2, df=n - 1)
+            ci = t_value * std / np.sqrt(n)
+            plt.fill_between(
+                x_grid,
+                baseline + mean - ci,
+                baseline + mean + ci,
+                alpha=0.30,
+                color="C0",
+                linewidth=0,
+            )
+
+        plt.plot(x_grid, baseline + mean, color="black", linewidth=1.0, alpha=0.85)
+
+    plt.yticks([i * overlap for i in range(num_iters)], labels)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.xlim(value_range[0], value_range[1])
