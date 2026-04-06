@@ -318,6 +318,7 @@ def plot_ridgeline(
     fn: str,
     value_range: tuple[float, float] = (-1, 1),
     overlap: float = 0.6,
+    height: float = 1.8,
     bw: float = 0.15,
     grid_points: int = 300,
 ) -> None:
@@ -332,20 +333,27 @@ def plot_ridgeline(
         fn: filename (saved under config.plot_dir)
         value_range: (min, max) for the x-axis and KDE domain
         overlap: vertical spacing between ridges (lower = more overlap)
+        height: how tall each peak-normalized ridge is in y-units (>1 makes
+                them visually exaggerated and overlap more with the next ridge)
         bw: KDE bandwidth (passed to gaussian_kde bw_method)
         grid_points: number of points to evaluate the KDE on
     '''
     x_grid = np.linspace(value_range[0], value_range[1], grid_points)
     n = len(distributions)
 
-    plt.figure(figsize=(16, max(6, n * 0.5)))
+    plt.figure(figsize=(8, max(6, n * 0.5)))
     for i, values in enumerate(distributions):
         arr = np.array(values)
         kde = gaussian_kde(arr, bw_method=bw)
         density = kde(x_grid)
         density = density / density.max()  # normalize peak to 1
         baseline = i * overlap
-        plt.plot(x_grid, baseline + density, color='black', linewidth=1.0, alpha=0.7)
+
+        # subtle horizontal floor line at this iteration's baseline
+        plt.plot([value_range[0], value_range[1]], [baseline, baseline],
+                 color="grey", linewidth=0.5, alpha=0.4, zorder=0)
+
+        plt.plot(x_grid, baseline + density * height, color='black', linewidth=1.0, alpha=0.7)
 
     plt.yticks(
         [i * overlap for i in range(n)],
@@ -369,6 +377,7 @@ def plot_shaded_ridgeline(
     confidence: float = 0.95,
     value_range: tuple[float, float] = (-1, 1),
     overlap: float = 0.6,
+    height: float = 1.8,
     bw: float = 0.15,
     grid_points: int = 300,
 ) -> None:
@@ -395,7 +404,7 @@ def plot_shaded_ridgeline(
     num_iters = len(trials[0])
     x_grid = np.linspace(value_range[0], value_range[1], grid_points)
 
-    plt.figure(figsize=(16, max(6, num_iters * 0.5)))
+    plt.figure(figsize=(8, max(6, num_iters * 0.5)))
 
     for i in range(num_iters):
         # one raw KDE per (non-empty) trial at this iteration
@@ -422,6 +431,10 @@ def plot_shaded_ridgeline(
 
         baseline = i * overlap
 
+        # subtle horizontal floor line at this iteration's baseline
+        plt.plot([value_range[0], value_range[1]], [baseline, baseline],
+                 color="grey", linewidth=0.5, alpha=0.4, zorder=0)
+
         # CI band only if we have at least 2 trials
         if n >= 2:
             std = density_stack.std(axis=0, ddof=1)
@@ -430,14 +443,14 @@ def plot_shaded_ridgeline(
             ci = t_value * std / np.sqrt(n)
             plt.fill_between(
                 x_grid,
-                baseline + mean - ci,
-                baseline + mean + ci,
+                baseline + (mean - ci) * height,
+                baseline + (mean + ci) * height,
                 alpha=0.30,
                 color="C0",
                 linewidth=0,
             )
 
-        plt.plot(x_grid, baseline + mean, color="black", linewidth=1.0, alpha=0.85)
+        plt.plot(x_grid, baseline + mean * height, color="black", linewidth=1.0, alpha=0.85)
 
     plt.yticks([i * overlap for i in range(num_iters)], labels)
     plt.xlabel(x_label)

@@ -57,6 +57,7 @@ trials = [simulate_trial(seed) for seed in range(N_TRIALS)]
 x_grid = np.linspace(-1, 1, 300)
 labels = [str(i) for i in range(N_ITERATIONS)]
 overlap = 0.6
+height = 1.8
 bw = 0.15
 confidence = 0.95
 
@@ -80,7 +81,7 @@ alpha = 1 - confidence
 df = max(N_TRIALS - 1, 1)
 t_value = student_t.ppf(1 - alpha / 2, df=df)
 
-fig, ax = plt.subplots(figsize=(10, 12))
+fig, ax = plt.subplots(figsize=(8, 12))
 
 for i in range(N_ITERATIONS):
     per_trial = per_trial_kdes(i)         # shape (N_TRIALS, len(x_grid))
@@ -91,15 +92,16 @@ for i in range(N_ITERATIONS):
     hi = mean + ci
 
     baseline = i * overlap
+    ax.plot([-1, 1], [baseline, baseline], color="grey", linewidth=0.5, alpha=0.4, zorder=0)
     ax.fill_between(
         x_grid,
-        baseline + lo,
-        baseline + hi,
+        baseline + lo * height,
+        baseline + hi * height,
         alpha=0.30,
         color="C0",
         linewidth=0,
     )
-    ax.plot(x_grid, baseline + mean, color="black", linewidth=1.0, alpha=0.85)
+    ax.plot(x_grid, baseline + mean * height, color="black", linewidth=1.0, alpha=0.85)
 
 ax.set_yticks([i * overlap for i in range(N_ITERATIONS)])
 ax.set_yticklabels(labels)
@@ -110,7 +112,6 @@ ax.set_title(
     "Band width = cross-trial uncertainty in the density at each value"
 )
 ax.set_xlim(-1.05, 1.05)
-ax.axvline(0, color="grey", linewidth=0.5, linestyle=":")
 
 plt.tight_layout()
 
