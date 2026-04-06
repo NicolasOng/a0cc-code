@@ -321,13 +321,12 @@ def load_dataset(dataset_path: str, *, optional: Literal[True]) -> Optional[Data
 def load_dataset(dataset_path: str, *, optional: bool = False) -> Optional[Dataset]:
     '''
     Loads a dataset from the given path.
-    By default exits the process if the file is missing. Pass optional=True
-    to get None back instead.
+    By default raises FileNotFoundError if the file is missing. Pass
+    optional=True to get None back instead.
     '''
     dataset: Optional[Dataset] = safe_load_pickle(dataset_path, "dataset")  # type: ignore[assignment]
     if dataset is None and not optional:
-        logger.error(f"Dataset file not found at {dataset_path}. Please generate the dataset first.")
-        sys.exit()
+        raise FileNotFoundError(f"Dataset file not found at {dataset_path}.")
     return dataset
 
 @overload
@@ -339,12 +338,11 @@ def load_dataset_list(datasets_path: str, *, optional: Literal[True]) -> Optiona
 def load_dataset_list(datasets_path: str, *, optional: bool = False) -> Optional[list[Dataset]]:
     '''
     Loads a list of datasets from a single pickle file.
-    Strict by default; pass optional=True to get None on missing.
+    Strict by default (raises FileNotFoundError); pass optional=True to get None on missing.
     '''
     datasets: Optional[list[Dataset]] = safe_load_pickle(datasets_path, "dataset list")  # type: ignore[assignment]
     if datasets is None and not optional:
-        logger.error(f"Dataset file not found at {datasets_path}. Please generate the dataset first.")
-        sys.exit()
+        raise FileNotFoundError(f"Dataset file not found at {datasets_path}.")
     return datasets
 
 def calculate_dataset_bias(dataset: Dataset) -> tuple[float, float, float]:
@@ -374,12 +372,11 @@ def load_dataset_dict(dataset_path: str, *, optional: Literal[True]) -> Optional
 def load_dataset_dict(dataset_path: str, *, optional: bool = False) -> Optional[dict[int, Dataset]]:
     '''
     Loads a dict of bin-key → Dataset from a pickle file.
-    Strict by default; pass optional=True to get None on missing.
+    Strict by default (raises FileNotFoundError); pass optional=True to get None on missing.
     '''
     datasets: Optional[dict[int, Dataset]] = safe_load_pickle(dataset_path, "dataset dict")  # type: ignore[assignment]
     if datasets is None and not optional:
-        logger.error(f"Dataset file not found: {dataset_path}")
-        sys.exit()
+        raise FileNotFoundError(f"Dataset file not found: {dataset_path}")
     return datasets
 
 def main():

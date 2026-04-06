@@ -1,38 +1,56 @@
-from a0.eval.plotting import load_distribution_series, plot_shaded_ridgeline
+from typing import Callable
+
+from a0.eval.plotting import (
+    load_distribution_series,
+    plot_shaded_ridgeline,
+)
 
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def get_and_save_dataset_diagnostics() -> None:
-    '''
-    Loads the pre/post-balance dataset distribution series saved by
-    `get_and_save_dataset_diagnostics_distributions` and renders each as a
-    shaded ridgeline plot. Cross-trial CI bands appear automatically when the
-    series has been merged across multiple runs; for a single run only the
-    mean line is drawn. Missing series files are skipped with a warning.
-    '''
-    series_files = [
-        ("dataset_pre_balance_distributions", "Dataset Pre Balance Distributions"),
-        ("dataset_post_balance_distributions", "Dataset Post Balance Distributions"),
-    ]
 
-    for fn, title in series_files:
-        series = load_distribution_series(f"{config.eval_dir}/{fn}.pkl", optional=True)
-        if series is None:
-            continue
-        if not series.x:
-            logger.warning(f"Distribution series {fn} has no iterations; skipping plot.")
-            continue
-        plot_shaded_ridgeline(
-            trials=series.trials,
-            labels=[str(x) for x in series.x],
-            title=title,
-            x_label="Value",
-            y_label="Iteration",
-            fn=fn,
-        )
-        logger.info(f"Saved shaded ridgeline plot for {fn}")
+def safeplot(plot_callable: Callable[[], None]) -> None:
+    '''Run a plot function. If anything raises (missing file, missing key,
+    bad shape, etc.), log a warning and continue with the next plot.'''
+    try:
+        plot_callable()
+    except Exception as e:
+        logger.warning(f"safeplot: skipping {plot_callable.__name__}: {type(e).__name__}: {e}")
+
+
+def plot_dataset_pre_balance_distributions() -> None:
+    series = load_distribution_series(f"{config.eval_dir}/dataset_pre_balance_distributions.pkl")
+    plot_shaded_ridgeline(
+        trials=series.trials,
+        labels=[str(x) for x in series.x],
+        title="Dataset Pre Balance Distributions",
+        x_label="Value", y_label="Iteration",
+        fn="dataset_pre_balance_distributions",
+    )
+
+
+def plot_dataset_post_balance_distributions() -> None:
+    series = load_distribution_series(f"{config.eval_dir}/dataset_post_balance_distributions.pkl")
+    plot_shaded_ridgeline(
+        trials=series.trials,
+        labels=[str(x) for x in series.x],
+        title="Dataset Post Balance Distributions",
+        x_label="Value", y_label="Iteration",
+        fn="dataset_post_balance_distributions",
+    )
+
+
+def plot_random_nd_value_distributions() -> None:
+    series = load_distribution_series(f"{config.eval_dir}/random_nd_value_distributions.pkl")
+    plot_shaded_ridgeline(
+        trials=series.trials,
+        labels=[str(x) for x in series.x],
+        title="Model Value Predictions on random_nd",
+        x_label="Value", y_label="Iteration",
+        fn="random_nd_value_distributions",
+    )
+
 
 def main():
     setup_logging(
@@ -42,7 +60,10 @@ def main():
     )
     logger.info("plotting...")
 
-    get_and_save_dataset_diagnostics()
+    safeplot(plot_dataset_pre_balance_distributions)
+    safeplot(plot_dataset_post_balance_distributions)
+    safeplot(plot_random_nd_value_distributions)
+
 
 if __name__ == "__main__":
     main()

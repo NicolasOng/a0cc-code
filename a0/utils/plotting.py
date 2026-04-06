@@ -45,13 +45,12 @@ def load_series(series_path: str, *, optional: Literal[True]) -> Optional[Series
 def load_series(series_path: str, *, optional: bool = False) -> Optional[Series]:
     '''
     Loads a Series object from the given path.
-    By default exits the process if the file is missing (strict mode, used by
-    the original eval pipeline). Pass optional=True to instead get None back.
+    By default raises FileNotFoundError if the file is missing (strict mode);
+    pass optional=True to get None back instead.
     '''
     series: Optional[Series] = safe_load_pickle(series_path, "series")  # type: ignore[assignment]
     if series is None and not optional:
-        logger.error(f"Series file not found at {series_path}. Please generate the series first.")
-        sys.exit()
+        raise FileNotFoundError(f"Series file not found at {series_path}.")
     return series
 
 def merge_series(series: list[Series], confidence: float = 0.95) -> Series:
@@ -170,13 +169,12 @@ def load_distribution_series(series_path: str, *, optional: Literal[True]) -> Op
 def load_distribution_series(series_path: str, *, optional: bool = False) -> Optional[DistributionSeries]:
     '''
     Loads a DistributionSeries from the given path.
-    By default exits the process if the file is missing. Pass optional=True
-    to get None back instead.
+    By default raises FileNotFoundError if the file is missing; pass
+    optional=True to get None back instead.
     '''
     series: Optional[DistributionSeries] = safe_load_pickle(series_path, "distribution series")  # type: ignore[assignment]
     if series is None and not optional:
-        logger.error(f"Distribution series file not found at {series_path}. Please generate it first.")
-        sys.exit()
+        raise FileNotFoundError(f"Distribution series file not found at {series_path}.")
     return series
 
 def merge_distribution_series(series: list[DistributionSeries]) -> DistributionSeries:
