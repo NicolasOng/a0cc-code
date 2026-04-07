@@ -25,15 +25,18 @@ LAMBDA_DIRS: list[tuple[float, str]] = [
 ]
 
 # (label, merged-series filename stem)
-SERIES: list[tuple[str, str]] = [
+VALUE_SERIES: list[tuple[str, str]] = [
     ("Seen",       "merged_training_gtv_eval"),
-    ("Random",     "merged_random_gtv_eval"),
     ("Neighbor 1", "merged_neighbor_1_gtv_eval"),
     ("Neighbor 2", "merged_neighbor_2_gtv_eval"),
+    ("Random",     "merged_random_gtv_eval"),
+]
+
+POLICY_SERIES: list[tuple[str, str]] = [
     ("Seen NT",       "merged_training_nt_gtv_eval"),
-    ("Random NT",     "merged_random_nt_gtv_eval"),
     ("Neighbor 1 NT", "merged_neighbor_1_nt_gtv_eval"),
     ("Neighbor 2 NT", "merged_neighbor_2_nt_gtv_eval"),
+    ("Random NT",     "merged_random_nt_gtv_eval"),
 ]
 
 
@@ -48,7 +51,15 @@ def build_combined_series(y_key: str) -> Series:
     '''
     series = Series()
     series.x = [lam for lam, _ in LAMBDA_DIRS]  # type: ignore[assignment]
-    for label, stem in SERIES:
+
+    if y_key == "value_accuracy":
+        the_series = VALUE_SERIES
+    elif y_key == "policy_accuracy":
+        the_series = POLICY_SERIES
+    else:
+        raise ValueError(f"Unexpected y_key: {y_key}")
+
+    for label, stem in the_series:
         means: list[float] = []
         cis: list[float] = []
         for _, dirname in LAMBDA_DIRS:
@@ -73,11 +84,19 @@ def build_combined_series(y_key: str) -> Series:
 
 
 def series_to_plot_input(
-    series: Series,
+    series: Series, y_key: str
 ) -> list[tuple[str, str, list[float], list[float], list[float]]]:
     '''Drop NaN entries per dataset before passing to plot_shaded_error.'''
     out: list[tuple[str, str, list[float], list[float], list[float]]] = []
-    for label, _ in SERIES:
+    
+    if y_key == "value_accuracy":
+        the_series = VALUE_SERIES
+    elif y_key == "policy_accuracy":
+        the_series = POLICY_SERIES
+    else:
+        raise ValueError(f"Unexpected y_key: {y_key}")
+
+    for label, _ in the_series:
         means_full = series.ys[label]
         cis_full = series.ys[f"{label}_ci"]
         lambdas: list[float] = []
@@ -102,11 +121,10 @@ def main() -> None:
     save_series(value_series, f"{OUTPUTS_PARENT_DIR}/lambda_sweep_value_accuracy.pkl")
     plot_shaded_error(
         "Final Iteration Value Head Accuracy over td_lambda",
-        series_to_plot_input(value_series),  # type: ignore[arg-type]
+        series_to_plot_input(value_series, "value_accuracy"),  # type: ignore[arg-type]
         x_label="td_lambda",
         y_label="Accuracy",
         fn="final_iter_value_accuracy_over_lambda",
-        y_lim=(0, 1),
     )
 
     print("Building policy-head plot...")
@@ -114,11 +132,10 @@ def main() -> None:
     save_series(policy_series, f"{OUTPUTS_PARENT_DIR}/lambda_sweep_policy_accuracy.pkl")
     plot_shaded_error(
         "Final Iteration Policy Head Accuracy over td_lambda",
-        series_to_plot_input(policy_series),  # type: ignore[arg-type]
+        series_to_plot_input(policy_series, "policy_accuracy"),  # type: ignore[arg-type]
         x_label="td_lambda",
         y_label="Accuracy",
         fn="final_iter_policy_accuracy_over_lambda",
-        y_lim=(0, 1),
     )
 
 
