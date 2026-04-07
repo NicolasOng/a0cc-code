@@ -13,7 +13,7 @@ import math
 from a0.utils.plotting import Series, load_series, save_series, plot_shaded_error
 
 # ── Edit me ──────────────────────────────────────────────────────────────────
-OUTPUTS_PARENT_DIR = "output"  # parent folder containing output-td00/, output-td25/, ...
+OUTPUTS_PARENT_DIR = "."  # parent folder containing output-td00/, output-td25/, ...
 
 # (lambda, dirname) — one per run
 LAMBDA_DIRS: list[tuple[float, str]] = [

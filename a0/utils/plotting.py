@@ -23,6 +23,7 @@ def _density_from_samples(
     x_grid: NDArray[np.float64],
     value_range: tuple[float, float],
     bw: float,
+    num_buckets: int,
 ) -> NDArray[np.float64]:
     arr = np.asarray(samples, dtype=np.float64)
     if arr.size == 0:
@@ -30,12 +31,11 @@ def _density_from_samples(
     if x_grid.size < 2:
         return np.ones_like(x_grid)
 
-    bins = max(32, min(x_grid.size // 2, 160))
-    hist, edges = np.histogram(arr, bins=bins, range=value_range, density=False)
+    hist, edges = np.histogram(arr, bins=num_buckets, range=value_range, density=False)
     bin_width = edges[1] - edges[0] if len(edges) > 1 else 1.0
     density = hist.astype(np.float64) / max(arr.size * bin_width, 1e-12)
 
-    sigma_bins = max(1.0, bw * bins * 0.2)
+    sigma_bins = max(0.25, bw * num_buckets * 0.2)
     smoothed = gaussian_filter1d(density, sigma=sigma_bins, mode="nearest")
     centers = 0.5 * (edges[:-1] + edges[1:])
     interpolated = np.interp(
@@ -357,6 +357,7 @@ def plot_ridgeline(
     bw: float = 0.15,
     grid_points: int = 300,
     density_method: Literal["kde", "buckets"] = "buckets",
+    num_buckets: int = 20,
 ) -> None:
     '''
     Plot a ridgeline chart: one density curve per distribution, stacked vertically.
@@ -374,6 +375,7 @@ def plot_ridgeline(
         bw: smoothing strength for the histogram blur
         grid_points: number of points to evaluate the density on
         density_method: "kde" for gaussian_kde, "buckets" for smoothed histogram
+        num_buckets: number of histogram buckets for density_method="buckets"
     '''
     x_grid = np.linspace(value_range[0], value_range[1], grid_points)
     n = len(distributions)
@@ -385,7 +387,7 @@ def plot_ridgeline(
             kde = gaussian_kde(arr, bw_method=bw)
             density = kde(x_grid)
         elif density_method == "buckets":
-            density = _density_from_samples(values, x_grid, value_range, bw)
+            density = _density_from_samples(values, x_grid, value_range, bw, num_buckets)
         else:
             raise ValueError(f"Unknown density_method={density_method}; expected 'kde' or 'buckets'")
 
@@ -427,6 +429,7 @@ def plot_shaded_ridgeline(
     bw: float = 0.15,
     grid_points: int = 300,
     density_method: Literal["kde", "buckets"] = "buckets",
+    num_buckets: int = 20,
 ) -> None:
     '''
     Plot a ridgeline chart with cross-trial confidence interval bands.
@@ -444,6 +447,7 @@ def plot_shaded_ridgeline(
         bw: smoothing strength for the histogram blur
         grid_points: number of points to evaluate the density on
         density_method: "kde" for gaussian_kde, "buckets" for smoothed histogram
+        num_buckets: number of histogram buckets for density_method="buckets"
     '''
     if not trials or not trials[0]:
         logger.error(f"plot_shaded_ridgeline: empty trials, skipping {fn}")
@@ -466,7 +470,7 @@ def plot_shaded_ridgeline(
                 kde = gaussian_kde(arr, bw_method=bw)
                 per_trial_density.append(kde(x_grid))
             elif density_method == "buckets":
-                per_trial_density.append(_density_from_samples(samples, x_grid, value_range, bw))
+                per_trial_density.append(_density_from_samples(samples, x_grid, value_range, bw, num_buckets))
             else:
                 raise ValueError(f"Unknown density_method={density_method}; expected 'kde' or 'buckets'")
 
