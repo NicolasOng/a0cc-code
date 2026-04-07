@@ -30,7 +30,13 @@ def _get_trial_dirs() -> list[str]:
     '''Build the per-trial eval directory list from config.output_dir.'''
     eval_sub = "/eval/"
     output_dir = config.output_dir[:-1]  # strip trailing slash
-    return [f"{output_dir}{i+1}{eval_sub}" for i in range(config.num_trials)]
+
+    trial_dirs: list[str] = []
+    for i in range(config.num_trials):
+        #if i + 1 in []: continue
+        trial_dir = f"{output_dir}{i+1}{eval_sub}"
+        trial_dirs.append(trial_dir)
+    return trial_dirs
 
 
 def merge_all_distribution_series() -> None:
