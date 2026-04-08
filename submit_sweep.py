@@ -174,6 +174,11 @@ def main():
     with open(os.path.join(sweep_dir, "sweep.json"), "w") as f:
         json.dump(spec, f, indent=2)
 
+    # 3b. Make a slurm logs dir co-located with the sweep so all per-task .out
+    # files land here instead of cluttering the working directory.
+    slurm_logs = os.path.join(sweep_dir, "slurm_logs")
+    os.makedirs(slurm_logs, exist_ok=True)
+
     # In dry-run we use placeholder job IDs so the printed sbatch commands still
     # show the dependency wiring.
     placeholder = "<train_jid>"
@@ -182,7 +187,9 @@ def main():
     # 4. Submit train array.
     print(f"\nSubmitting train array ({n_tasks} tasks)...")
     train_job = sbatch(
-        [f"--array=1-{n_tasks}", TRAIN_SCRIPT, tasks_file],
+        [f"--array=1-{n_tasks}",
+         f"--output={slurm_logs}/train_%A_%a.out",
+         TRAIN_SCRIPT, tasks_file],
         args.dry_run,
     )
 
@@ -190,7 +197,9 @@ def main():
     print(f"\nSubmitting combine array ({n_hps} tasks)...")
     train_dep = train_job if train_job is not None else placeholder
     combine_job = sbatch(
-        [f"--array=1-{n_hps}", f"--dependency=afterany:{train_dep}",
+        [f"--array=1-{n_hps}",
+         f"--output={slurm_logs}/combine_%A_%a.out",
+         f"--dependency=afterany:{train_dep}",
          COMBINE_SCRIPT, hp_list_file],
         args.dry_run,
     )
@@ -200,7 +209,9 @@ def main():
         print(f"\nSubmitting sweep aggregate...")
         combine_dep = combine_job if combine_job is not None else placeholder_combine
         sbatch(
-            [f"--dependency=afterany:{combine_dep}", AGGREGATE_SCRIPT, sweep_dir],
+            [f"--output={slurm_logs}/aggregate_%j.out",
+             f"--dependency=afterany:{combine_dep}",
+             AGGREGATE_SCRIPT, sweep_dir],
             args.dry_run,
         )
     else:
