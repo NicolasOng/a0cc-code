@@ -21,3 +21,4 @@ fi
 echo "Aggregating sweep: $SWEEP_DIR"
 
 time python aggregate_sweep.py "$SWEEP_DIR"
+time python plot_sweep.py "$SWEEP_DIR"
