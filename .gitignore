@@ -25,6 +25,7 @@ policy_results.p
 default/
 
 output/
+sweep-output/
 input/
 
 memory/

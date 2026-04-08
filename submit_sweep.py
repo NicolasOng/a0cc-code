@@ -44,7 +44,7 @@ import subprocess
 import sys
 
 
-SWEEP_ROOT = "output"
+SWEEP_ROOT = "sweep-output"
 TRAIN_SCRIPT = "train_a0_gpu.sh"
 COMBINE_SCRIPT = "combine_a0.sh"
 AGGREGATE_SCRIPT = "aggregate_sweep.sh"  # built in Stage C/D
