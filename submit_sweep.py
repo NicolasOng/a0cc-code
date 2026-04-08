@@ -174,6 +174,11 @@ def main():
     with open(os.path.join(sweep_dir, "sweep.json"), "w") as f:
         json.dump(spec, f, indent=2)
 
+    # In dry-run we use placeholder job IDs so the printed sbatch commands still
+    # show the dependency wiring.
+    placeholder = "<train_jid>"
+    placeholder_combine = "<combine_jid>"
+
     # 4. Submit train array.
     print(f"\nSubmitting train array ({n_tasks} tasks)...")
     train_job = sbatch(
@@ -183,22 +188,19 @@ def main():
 
     # 5. Submit combine array, dependent on train.
     print(f"\nSubmitting combine array ({n_hps} tasks)...")
-    combine_dep_args = []
-    if train_job is not None:
-        combine_dep_args = [f"--dependency=afterany:{train_job}"]
+    train_dep = train_job if train_job is not None else placeholder
     combine_job = sbatch(
-        [f"--array=1-{n_hps}"] + combine_dep_args + [COMBINE_SCRIPT, hp_list_file],
+        [f"--array=1-{n_hps}", f"--dependency=afterany:{train_dep}",
+         COMBINE_SCRIPT, hp_list_file],
         args.dry_run,
     )
 
     # 6. Submit sweep aggregate (Stage C/D).
     if os.path.exists(AGGREGATE_SCRIPT):
         print(f"\nSubmitting sweep aggregate...")
-        aggregate_dep_args = []
-        if combine_job is not None:
-            aggregate_dep_args = [f"--dependency=afterany:{combine_job}"]
+        combine_dep = combine_job if combine_job is not None else placeholder_combine
         sbatch(
-            aggregate_dep_args + [AGGREGATE_SCRIPT, sweep_dir],
+            [f"--dependency=afterany:{combine_dep}", AGGREGATE_SCRIPT, sweep_dir],
             args.dry_run,
         )
     else:
