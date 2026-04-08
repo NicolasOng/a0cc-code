@@ -1,0 +1,8 @@
+{
+    "name": "example_lr_sweep",
+    "base_config": "config/config.json",
+    "num_trials": 8,
+    "grid": {
+        "learning_rate": [1e-5, 5e-5, 1e-4, 5e-4]
+    }
+}

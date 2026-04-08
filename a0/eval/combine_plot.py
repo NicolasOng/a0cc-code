@@ -1,65 +1,28 @@
+"""
+Per-HP combined plots.
+
+Loads the merged_*.pkl series produced by combine_merge.py from
+`<config.eval_dir>/` and produces the per-HP comparison plots.
+"""
+
 from a0.utils.plotting import (
     Series,
     load_series, plot_shaded_error,
-    load_and_merge_series
 )
 
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
+
 def main():
     setup_logging(
         level=20,
         log_dir=config.log_dir,
-        process_name="combining"
+        process_name="combining_plot"
     )
 
-    # create a list of the output dirs to pull from
-    eval_dir = "/eval/"
-    output_dir = config.output_dir[:-1]
-    outputs: list[str] = []
-    for i in range(config.num_trials):
-        outputs.append(f"{output_dir}{i+1}{eval_dir}")
-
-    # choose the confidence level for all the plots
-    confidence = 0.95
-
-    # load and merge all the series (also save them)
-    load_and_merge_series(outputs, "training_gtv_eval.pkl", confidence)
-    load_and_merge_series(outputs, "random_gtv_eval.pkl", confidence)
-    load_and_merge_series(outputs, "training_ev_eval.pkl", confidence)
-    for i in range(2):
-        load_and_merge_series(outputs, f"neighbor_{i+1}_gtv_eval.pkl", confidence)
-    
-    load_and_merge_series(outputs, "training_nt_gtv_eval.pkl", confidence)
-    load_and_merge_series(outputs, "random_nt_gtv_eval.pkl", confidence)
-    load_and_merge_series(outputs, "training_nt_ev_eval.pkl", confidence)
-    for i in range(2):
-        load_and_merge_series(outputs, f"neighbor_{i+1}_nt_gtv_eval.pkl", confidence)
-
-    load_and_merge_series(outputs, "gamedata_stats.pkl", confidence)
-    load_and_merge_series(outputs, "gamedata_acc.pkl", confidence)
-    load_and_merge_series(outputs, "gamedata_overall_acc.pkl", confidence)
-    load_and_merge_series(outputs, "training_metrics.pkl", confidence)
-    load_and_merge_series(outputs, "gamedata_bias.pkl", confidence)
-    load_and_merge_series(outputs, "gamedata_overall_bias.pkl", confidence)
-    load_and_merge_series(outputs, "gamedata_progress_acc_100.pkl", confidence)
-    load_and_merge_series(outputs, "gamedata_progress_acc_10.pkl", confidence)
-    load_and_merge_series(outputs, "state_progress_gtv_datasets_eval.pkl", confidence)
-    load_and_merge_series(outputs, "state_progress_nt_gtv_datasets_eval.pkl", confidence)
-    load_and_merge_series(outputs, "state_progress_state_nums.pkl", confidence)
-
-    num_bins_list = [10]
-    for num_bins in num_bins_list:
-        load_and_merge_series(outputs, f"num_states_over_game_progress_{num_bins}.pkl", confidence)
-        load_and_merge_series(outputs, f"num_unique_states_over_game_progress_{num_bins}.pkl", confidence)
-        load_and_merge_series(outputs, f"baseline_accuracy_over_game_progress_{num_bins}.pkl", confidence)
-        load_and_merge_series(outputs, f"training_data_accuracy_over_game_progress_{num_bins}.pkl", confidence)
-        load_and_merge_series(outputs, f"branching_factor_over_game_progress_{num_bins}.pkl", confidence)
-    
     # load the merged series from disk
-    # this step is seperated in case I don't want to recalculate all the series
     train_gt_series = load_series(f"{config.eval_dir}/merged_training_gtv_eval.pkl")
     random_gt_series = load_series(f"{config.eval_dir}/merged_random_gtv_eval.pkl")
     train_ev_series = load_series(f"{config.eval_dir}/merged_training_ev_eval.pkl")
@@ -100,8 +63,7 @@ def main():
         n_baseline_acc_over_gp_series.append(load_series(f"{config.eval_dir}/merged_baseline_accuracy_over_game_progress_{num_bins}.pkl"))
         n_acc_over_gp_series.append(load_series(f"{config.eval_dir}/merged_training_data_accuracy_over_game_progress_{num_bins}.pkl"))
         n_branching_factor_series.append(load_series(f"{config.eval_dir}/merged_branching_factor_over_game_progress_{num_bins}.pkl"))
-    
-    # try plotting
+
     plot_shaded_error("Value Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
                           ("Seen Accuracy", "±1σ", train_gt_series.x, train_gt_series.ys["value_accuracy"], train_gt_series.ys["value_accuracy_std"]),
@@ -123,7 +85,7 @@ def main():
                           ("Training Data Accuracy ND", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy ND"], gd_accuracy_series.ys["Iteration Value Accuracy ND_ci"]),
                           ("Training Data Overall Accuracy ND", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Value Accuracy ND"], gd_overall_acc_series.ys["Overall Value Accuracy ND_ci"]),
                       ], "Iterations", "Accuracy", "merged_full_accuracy_value_ci", (0, 1))
-    
+
     plot_shaded_error("Value Head Model Performance on Ground Truth of Non-Trivial States and Training Data Accuracy",
                       [
                           ("Seen Accuracy", "±95% CI", train_nt_gt_series.x, train_nt_gt_series.ys["value_accuracy"], train_nt_gt_series.ys["value_accuracy_ci"]),
@@ -133,7 +95,7 @@ def main():
                           ("Training Data Accuracy", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Value Accuracy"], gd_accuracy_series.ys["Iteration Value Accuracy_ci"]),
                           ("Training Data Overall Accuracy", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Value Accuracy"], gd_overall_acc_series.ys["Overall Value Accuracy_ci"]),
                       ], "Iterations", "Accuracy", "merged_full_accuracy_value_nt_ci", (0, 1))
-    
+
     plot_shaded_error("Policy Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
                           ("Seen Accuracy", "±95% CI", train_gt_series.x, train_gt_series.ys["policy_accuracy"], train_gt_series.ys["policy_accuracy_ci"]),
@@ -149,7 +111,7 @@ def main():
                           ("Training Data Accuracy NT", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy NT"], gd_accuracy_series.ys["Iteration Policy Accuracy NT_ci"]),
                           ("Training Data Overall Accuracy NT", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Policy Accuracy NT"], gd_overall_acc_series.ys["Overall Policy Accuracy NT_ci"]),
                       ], "Iterations", "Accuracy", "merged_full_full_accuracy_policy_ci", (0, 1))
-    
+
     plot_shaded_error("Policy Head Model Performance on Ground Truth of States and Training Data Accuracy",
                       [
                           #("Seen Accuracy", "±95% CI", train_gt_series.x, train_gt_series.ys["policy_accuracy"], train_gt_series.ys["policy_accuracy_ci"]),
@@ -165,7 +127,7 @@ def main():
                           ("Training Data Accuracy NT", "±95% CI", gd_accuracy_series.x, gd_accuracy_series.ys["Iteration Policy Accuracy NT"], gd_accuracy_series.ys["Iteration Policy Accuracy NT_ci"]),
                           ("Training Data Overall Accuracy NT", "±95% CI", gd_overall_acc_series.x, gd_overall_acc_series.ys["Overall Policy Accuracy NT"], gd_overall_acc_series.ys["Overall Policy Accuracy NT_ci"]),
                       ], "Iterations", "Accuracy", "merged_full_accuracy_policy_ci", (0, 1))
-    
+
     plot_shaded_error("Training Data Value Accuracy Over Game Progress (10 & 100 bins)",
                       [
                             ("Value Accuracy (100 bins)", "±95% CI", gd_prog_acc_100.x, gd_prog_acc_100.ys["Value Accuracy"], gd_prog_acc_100.ys["Value Accuracy_ci"]),
@@ -177,7 +139,7 @@ def main():
                    ("Value Accuracy", "±95% CI", state_progress_gtv.x, state_progress_gtv.ys["value_accuracy"], state_progress_gtv.ys["value_accuracy_ci"]),
                    #("Policy Accuracy", state_progress_gtv.x, state_progress_gtv.ys["policy_accuracy"])
                ], "State Progress (%)", "Accuracy", "state_progress_gtv", (0, 1))
-    
+
     plot_shaded_error("Number of States in Each Progress Bin",
             [
                 ("Num States", "±95% CI", state_progress_state_nums.x, state_progress_state_nums.ys["Num States"], state_progress_state_nums.ys["Num States_ci"]),
@@ -190,7 +152,7 @@ def main():
                        ("Num States", "±95% CI", n_num_states_series[i].x, n_num_states_series[i].ys["Num States"], n_num_states_series[i].ys["Num States_ci"]),
                        ("Num Unique States", "±95% CI", n_num_unique_states_series[i].x, n_num_unique_states_series[i].ys["Num Unique States"], n_num_unique_states_series[i].ys["Num Unique States_ci"])
                    ], "Game Progress (%)", "Number of States", f"gp_merged_num_states_over_game_progress_{num_bin}")
-        
+
         plot_shaded_error(f"Baseline Accuracy Over Game Progress (Num Bins: {num_bin})",
                    [
                         ("Value Accuracy", "±95% CI", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Value Accuracy"], n_baseline_acc_over_gp_series[i].ys["Baseline Value Accuracy_ci"]),
@@ -198,7 +160,7 @@ def main():
                         ("Policy Accuracy", "±95% CI", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy"], n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy_ci"]),
                         ("Policy Accuracy (NT)", "±95% CI", n_baseline_acc_over_gp_series[i].x, n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy (NT)"], n_baseline_acc_over_gp_series[i].ys["Baseline Policy Accuracy (NT)_ci"])
                    ], "Game Progress (%)", "Baseline Accuracy", f"gp_merged_baseline_accuracy_over_game_progress_{num_bin}")
-        
+
         plot_shaded_error(f"Training Data Accuracy Over Game Progress (Num Bins: {num_bin})",
                    [
                         ("Value Accuracy", "±95% CI", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Value Accuracy"], n_acc_over_gp_series[i].ys["Value Accuracy_ci"]),
@@ -206,11 +168,12 @@ def main():
                         ("Policy Accuracy", "±95% CI", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Policy Accuracy"], n_acc_over_gp_series[i].ys["Policy Accuracy_ci"]),
                         ("Policy Accuracy (NT)", "±95% CI", n_acc_over_gp_series[i].x, n_acc_over_gp_series[i].ys["Policy Accuracy (NT)"], n_acc_over_gp_series[i].ys["Policy Accuracy (NT)_ci"]),
                    ], "Game Progress (%)", "Training Data Accuracy", f"gp_merged_training_data_accuracy_over_game_progress_{num_bin}")
-        
+
         plot_shaded_error(f"Branching Factor Over Game Progress (Num Bins: {num_bin})",
                    [
                        ("Average Branching Factor", "±95% CI", n_branching_factor_series[i].x, n_branching_factor_series[i].ys["Average Branching Factor"], n_branching_factor_series[i].ys["Average Branching Factor_ci"])
                    ], "Game Progress (%)", "Branching Factor", f"gp_merged_branching_factor_over_game_progress_{num_bin}")
+
 
 if __name__ == "__main__":
     main()

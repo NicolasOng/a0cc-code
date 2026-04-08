@@ -2,6 +2,16 @@ import os
 import sys
 import json
 
+
+def _lazy_dir(suffix: str, base_attr: str = "output_dir") -> property:
+    """Property factory: returns `<self.base_attr>/<suffix>/`, creating it on first access."""
+    def getter(self: "Config") -> str:
+        path: str = getattr(self, base_attr) + suffix
+        os.makedirs(path, exist_ok=True)
+        return path
+    return property(getter)
+
+
 class Config:
     path: str
 
@@ -91,30 +101,27 @@ class Config:
         self.num_spots = self.board_size * self.board_size
 
         if trial_num != "":
-            self.output_dir = self.output_dir.rstrip("/") + str(trial_num) + "/"
+            self.output_dir = self.output_dir.rstrip("/") + "/trial_" + str(trial_num) + "/"
 
-        # create output and other directories if they do not exist
-        os.makedirs(self.output_dir, exist_ok=True)
-        self.training_dir = self.output_dir + "training/"
-        os.makedirs(self.training_dir, exist_ok=True)
-        self.log_dir = self.output_dir + "logs/"
-        os.makedirs(self.log_dir, exist_ok=True)
-        self.plot_dir = self.output_dir + "plots/"
-        os.makedirs(self.plot_dir, exist_ok=True)
-        self.eval_dir = self.output_dir + "eval/"
-        os.makedirs(self.eval_dir, exist_ok=True)
-        self.validation_dir = self.output_dir + "validations/"
-        os.makedirs(self.validation_dir, exist_ok=True)
-        self.stats_dir = self.output_dir + "stats/"
-        os.makedirs(self.stats_dir, exist_ok=True)
-        self.dataset_out_dir = self.output_dir + "datasets/"
-        os.makedirs(self.dataset_out_dir, exist_ok=True)
+        # NOTE: directories are NOT created here. Each *_dir attribute below is
+        # a property that lazily mkdir's its path on first access. This avoids
+        # creating empty directories that the current invocation never writes to
+        # (e.g., a per-HP combine job doesn't need training/, validations/, etc.).
 
-        os.makedirs(self.input_dir, exist_ok=True)
-        self.dataset_dir = self.input_dir + "datasets/"
-        os.makedirs(self.dataset_dir, exist_ok=True)
-        self.solvedata_dir = self.input_dir + "solvedata/"
-        os.makedirs(self.solvedata_dir, exist_ok=True)
+    # ----- lazy directory properties -----
+    # Each *_dir creates its directory on first access (and any missing parent
+    # dirs, since os.makedirs uses exist_ok=True). Subsequent reads are
+    # essentially free — exist_ok=True makes makedirs a no-op when the
+    # directory already exists.
+    training_dir   = _lazy_dir("training/")
+    log_dir        = _lazy_dir("logs/")
+    plot_dir       = _lazy_dir("plots/")
+    eval_dir       = _lazy_dir("eval/")
+    validation_dir = _lazy_dir("validations/")
+    stats_dir      = _lazy_dir("stats/")
+    dataset_out_dir = _lazy_dir("datasets/")
+    dataset_dir    = _lazy_dir("datasets/", base_attr="input_dir")
+    solvedata_dir  = _lazy_dir("solvedata/", base_attr="input_dir")
 
 config_path = sys.argv[1] if len(sys.argv) > 1 else "config/config.json"
 trial_num = sys.argv[2] if len(sys.argv) > 2 else ""
