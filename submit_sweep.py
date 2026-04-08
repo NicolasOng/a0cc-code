@@ -122,6 +122,19 @@ def write_hp_list_file(hp_list_file: str, hp_config_paths: list[str]) -> int:
     return len(hp_config_paths)
 
 
+def write_hp_index_file(hp_index_file: str, hp_ids: list[str], points: list[dict[str, object]]) -> None:
+    """Write a human-readable hash -> HP overrides mapping for quick lookup.
+
+    Format: one line per HP point, e.g.
+        f2cd5e30ca   learning_rate=1e-05
+        e3b74957d8   learning_rate=5e-05  td_lambda=0.5
+    """
+    with open(hp_index_file, "w") as f:
+        for hp_id, overrides in zip(hp_ids, points):
+            kv = "  ".join(f"{k}={v}" for k, v in overrides.items())
+            f.write(f"{hp_id}   {kv}\n")
+
+
 def sbatch(args: list[str], dry_run: bool) -> str | None:
     """Run sbatch with the given args, return the parsed job id (or None if dry-run)."""
     cmd = ["sbatch"] + args
@@ -156,19 +169,24 @@ def main():
 
     # 1. Materialize per-HP configs.
     hp_config_paths: list[str] = []
+    hp_ids: list[str] = []
     for overrides in points:
         hp_id = hp_id_for(overrides)
         cfg_path = write_per_hp_config(base_config, overrides, sweep_dir, hp_id)
         hp_config_paths.append(cfg_path)
+        hp_ids.append(hp_id)
         print(f"  {hp_id}: {overrides}  ->  {cfg_path}")
 
-    # 2. Write tasks.txt and hp_list.txt.
+    # 2. Write tasks.txt, hp_list.txt, and a human-readable hp_index.txt.
     tasks_file = os.path.join(sweep_dir, "tasks.txt")
     hp_list_file = os.path.join(sweep_dir, "hp_list.txt")
+    hp_index_file = os.path.join(sweep_dir, "hp_index.txt")
     n_tasks = write_tasks_file(tasks_file, hp_config_paths, num_trials)
     n_hps = write_hp_list_file(hp_list_file, hp_config_paths)
+    write_hp_index_file(hp_index_file, hp_ids, points)
     print(f"Wrote {tasks_file} ({n_tasks} lines)")
     print(f"Wrote {hp_list_file} ({n_hps} lines)")
+    print(f"Wrote {hp_index_file} ({n_hps} lines)")
 
     # 3. Save a copy of the sweep spec next to the outputs for reproducibility.
     with open(os.path.join(sweep_dir, "sweep.json"), "w") as f:
