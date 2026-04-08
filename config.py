@@ -46,6 +46,7 @@ class Config:
 
     learning_rate: float
     weight_decay: float
+    value_loss_weight: float
 
     eval_neighbors: int
     eval_mcts_samples: list[int]

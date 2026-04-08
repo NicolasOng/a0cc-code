@@ -144,7 +144,7 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     policy_accuracy = policy_accuracy_function(masked_pred_logits, masked_label_policy)
     
     # calculate the total loss
-    total_loss = value_loss + policy_loss
+    total_loss = config.value_loss_weight * value_loss + policy_loss
 
     # JAX requires the loss function to return a tuple of (loss, aux)
     # where aux can be any additional information you want to return

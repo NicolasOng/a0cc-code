@@ -23,6 +23,7 @@
     "num_trials": 8,
     "learning_rate": 0.00005,
     "weight_decay": 1e-4,
+    "value_loss_weight": 1.0,
     "eval_neighbors": 2,
     "eval_mcts_samples": [64, 128],
     "model_training": false,
