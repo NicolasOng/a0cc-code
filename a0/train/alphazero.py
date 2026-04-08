@@ -300,11 +300,12 @@ def capture_dataset_diagnostics(
         'dataset_values_post': post_balance_values.tolist()
     }
 
-def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
+def _play(serialized_player: bytes, cancel_event: Optional[Any] = None) -> tuple[list[ExperienceData], GameData]:
     '''
     Plays a game of chinese checkers with the given players,
     then converts the game data into a training set.
     This function returns both the training set and the game data.
+    If cancel_event is provided, the game will exit early (between turns) when it is set.
     '''
     # first, set up logging (since this is a separate process)
     setup_logging(
@@ -327,7 +328,7 @@ def _play(serialized_player: bytes) -> tuple[list[ExperienceData], GameData]:
         no_side_moves=not game_has_side_moves
     )
     player: A0Player = dill.loads(serialized_player)
-    game_data = play(game, [player, player], config.turn_limit)
+    game_data = play(game, [player, player], config.turn_limit, cancel_event=cancel_event)
 
     if config.experiment == "gt":
         return game_data_to_gt_training_set(game_data), game_data
@@ -364,53 +365,57 @@ def self_play(player: A0Player) -> tuple[list[ExperienceData], list[GameData]]:
     training_set: list[ExperienceData] = []
     num_cores = config.num_workers
     logger.info(f"Using {num_cores} cores for self-play.")
-    with concurrent.futures.ProcessPoolExecutor(max_workers=num_cores, max_tasks_per_child=1) as executor:
-        # create a list to hold the futures
-        futures: list[Future[tuple[list[ExperienceData], GameData]]] = []
+    # Manager outlives the executor so the cancel_event proxy stays valid
+    # until all worker processes have finished.
+    with multiprocessing.Manager() as manager:
+        cancel_event = manager.Event()
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_cores, max_tasks_per_child=1) as executor:
+            # create a list to hold the futures
+            futures: list[Future[tuple[list[ExperienceData], GameData]]] = []
 
-        # create a function to start a game
-        def start_game() -> None:
-            future = executor.submit(
-                _play,
-                serialized_player=player_serialized
-            )
-            futures.append(future)
-        
-        # start a game for each core
-        for _ in range(num_cores):
-            start_game()
-        
-        while True:
-            logger.info(f"Current training set size: {len(training_set)}/{config.training_samples}")
-            # when a game (or games) finish(es),
-            done, _ = wait(futures, return_when=FIRST_COMPLETED)
+            # create a function to start a game
+            def start_game() -> None:
+                future = executor.submit(
+                    _play,
+                    serialized_player=player_serialized,
+                    cancel_event=cancel_event
+                )
+                futures.append(future)
 
-            # for each finished game,
-            for future in done:
-                # remove it from the list of futures
-                futures.remove(future)
-                # get the training data and game data from the game
-                game_training_set, game_data = future.result()
-                # add the training data to the training set
-                training_set.extend(game_training_set)
-                # and the game data to the list of game data
-                game_data_list.append(game_data)
-                # if the training set is not full yet, start a new game
-                if len(training_set) < config.training_samples:
-                    start_game()
-            
-            # stop when the training set is full
-            if len(training_set) >= config.training_samples:
-                logger.info("Training set is full, cancelling all games.")
-                # cancel any submitted but not yet started games
-                for future in futures:
-                    future.cancel()
-                # note the following does not immediately stop all processes,
-                # but prevents new tasks from being started
-                # and frees this main process to continue
-                # the remaining games/processes finish in the background
-                # executor.shutdown(wait=False)
-                break
+            # start a game for each core
+            for _ in range(num_cores):
+                start_game()
+
+            while True:
+                logger.info(f"Current training set size: {len(training_set)}/{config.training_samples}")
+                # when a game (or games) finish(es),
+                done, _ = wait(futures, return_when=FIRST_COMPLETED)
+
+                # for each finished game,
+                for future in done:
+                    # remove it from the list of futures
+                    futures.remove(future)
+                    # get the training data and game data from the game
+                    game_training_set, game_data = future.result()
+                    # add the training data to the training set
+                    training_set.extend(game_training_set)
+                    # and the game data to the list of game data
+                    game_data_list.append(game_data)
+                    # if the training set is not full yet, start a new game
+                    if len(training_set) < config.training_samples:
+                        start_game()
+
+                # stop when the training set is full
+                if len(training_set) >= config.training_samples:
+                    logger.info("Training set is full, cancelling all games.")
+                    # signal already-running games to exit early (checked between turns)
+                    cancel_event.set()
+                    # cancel any submitted but not yet started games
+                    for future in futures:
+                        future.cancel()
+                    # the executor's __exit__ will wait for running workers to finish,
+                    # but they now bail out quickly thanks to cancel_event
+                    break
     
     logger.info(f"Generated training set of size: {len(training_set)}/{config.training_samples}")
     return training_set, game_data_list

@@ -31,11 +31,12 @@ class GameData:
         self.time: float = 0.0 # seconds
         self.final_board: Optional[Board] = None
 
-def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = None) -> GameData:
+def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = None, cancel_event: Optional[Any] = None) -> GameData:
     '''
     Plays a game of chinese checkers with the given players.
     The players should implement the Player protocol, which requires a select_move method.
     The game will continue until it ends or the turn limit is reached.
+    If cancel_event is provided, the game will exit early (between turns) when it is set.
     This function returns data about the game and each turn.
     '''
     logger.info("Game started.")
@@ -45,6 +46,9 @@ def play(game: Game, players: list[PlayerClass], turn_limit: Optional[int] = Non
 
     turn = 0
     while not game.end and (turn_limit is None or turn < turn_limit):
+        if cancel_event is not None and cancel_event.is_set():
+            logger.info("Game cancelled via cancel_event.")
+            break
         player = players[turn % len(players)]
 
         moves = game.start_turn()
