@@ -91,7 +91,7 @@ class Config:
         self.num_spots = self.board_size * self.board_size
 
         if trial_num != "":
-            self.output_dir = self.output_dir.rstrip("/") + str(trial_num) + "/"
+            self.output_dir = self.output_dir.rstrip("/") + "/trial_" + str(trial_num) + "/"
 
         # create output and other directories if they do not exist
         os.makedirs(self.output_dir, exist_ok=True)

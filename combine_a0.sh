@@ -12,9 +12,8 @@ pip install --no-index -r requirements_drac.txt
 
 # Set the configuration file path, defaulting to config/config.json if not provided
 CONFIG_FILE="${1:-config/config.json}"
-TRIAL_NO="${2}"
 
 echo "Using configuration file: $CONFIG_FILE"
-echo "Using trial number: $TRIAL_NO"
 
-time python -m a0.eval.combine "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval.combine_merge "$CONFIG_FILE"
+time python -m a0.eval.combine_plot "$CONFIG_FILE"
