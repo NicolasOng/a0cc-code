@@ -150,19 +150,25 @@ def get_and_save_training_neighbors_gtd(gt: GroundTruth, temporary_size: int | N
             fn_nt=f"neighbor_{i+1}_nt"
         )
 
+def main():
+    '''
+    Generates nd & nt variants of the the datasets:
+    seen, random, and neighbor_[1 to k]
+    '''
+    logger.info("Starting dataset generation...")
+    gt = GroundTruth()
+    get_and_save_random_states_for_evaluation(1000, gt)
+    get_and_save_training_neighbors_gtd(
+        gt,
+        temporary_size=10000,
+        final_size=1000,
+        num_neighbors=2
+    )
+
 if __name__ == "__main__":
     setup_logging(
         level=20,
         log_dir=config.log_dir,
         process_name='gen_datasets'
     )
-    logger.info("Starting dataset generation...")
-    
-    gt = GroundTruth()
-    get_and_save_random_states_for_evaluation(1000, gt)
-    # get_and_save_training_neighbors_gtd(
-    #     gt,
-    #     temporary_size=10000,
-    #     final_size=1000,
-    #     num_neighbors=2
-    # )
+    main()

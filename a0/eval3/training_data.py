@@ -541,12 +541,12 @@ class StateCountProgressCollector(GameProgressCollector):
             series.x.append(b)
             series.ys["Count"].append(self._counts[b])
             series.ys["Unique"].append(len(self._unique_states[b]))
-        save_series(series, f"{config.eval_dir}/{self._name}_progress_count.pkl")
+        save_series(series, f"{config.eval_dir}/{self._name}_{len(self._buckets)}_progress_count.pkl")
 
 class AccuracyProgressCollector(GameProgressCollector):
     '''
     Collects value/policy accuracy per game progress bucket.
-    → {name}_progress_acc.pkl
+    → {name}_{n_buckets}_progress_acc.pkl
     '''
 
     def __init__(
@@ -622,7 +622,7 @@ class AccuracyProgressCollector(GameProgressCollector):
             series.ys["Policy PM"].append(s['pm_policy'] / t if t else 0)
             series.ys["Policy Accuracy NT"].append(s['correct_policy_nt'] / t_nt if t_nt else 0)
             series.ys["Policy PM NT"].append(s['pm_policy_nt'] / t_nt if t_nt else 0)
-        save_series(series, f"{config.eval_dir}/{self._name}_progress_acc.pkl")
+        save_series(series, f"{config.eval_dir}/{self._name}_{len(self._buckets)}_progress_acc.pkl")
 
 class BoardFunctionProgressCollector(GameProgressCollector):
     '''
@@ -636,7 +636,7 @@ class BoardFunctionProgressCollector(GameProgressCollector):
         self,
         name: str,
         functions: dict[str, Callable[[list[Board]], dict[str, float]]],
-        finalize_functions: list[Callable[[dict[int, list[Board]]], None]] | None = None,
+        finalize_functions: list[Callable[[dict[int, list[Board]], int], None]] | None = None,
     ):
         self._name = name
         self._functions = functions
@@ -667,7 +667,7 @@ class BoardFunctionProgressCollector(GameProgressCollector):
             save_series(series, f"{config.eval_dir}/{self._name}_progress_{fn_name}.pkl")
         
         for fn in self._finalize_functions or []:
-            fn(self._boards)
+            fn(self._boards, len(self._buckets))
 
 def save_dataset_dict(dataset_dict: dict[int, Dataset], name: str) -> None:
     output_path = f"{config.dataset_out_dir}/{name}.pkl"
@@ -675,15 +675,15 @@ def save_dataset_dict(dataset_dict: dict[int, Dataset], name: str) -> None:
         pickle.dump(dataset_dict, file)
     logger.info(f"Saved {name} dataset dict to {output_path}.")
 
-def convert_and_save_state_buckets_to_datasets(state_buckets: dict[int, list[Board]], gt: GroundTruth, n: int, batch_size: int) -> None:
+def convert_and_save_state_buckets_to_datasets(state_buckets: dict[int, list[Board]], n_buckets: int, gt: GroundTruth, n: int, batch_size: int) -> None:
     datasets_nd: dict[int, Dataset] = {}
     datasets_nt: dict[int, Dataset] = {}
     for bucket, boards in state_buckets.items():
         nd_dataset, nt_dataset = get_nd_and_nt_datasets_from_state_list(boards, gt, n, batch_size)
         datasets_nd[bucket] = nd_dataset
         datasets_nt[bucket] = nt_dataset
-    save_dataset_dict(datasets_nd, "game_progress_nd_gtv_datasets")
-    save_dataset_dict(datasets_nt, "game_progress_nt_gtv_datasets")
+    save_dataset_dict(datasets_nd, f"game_progress_{n_buckets}_nd")
+    save_dataset_dict(datasets_nt, f"game_progress_{n_buckets}_nt")
 
 def baseline_accuracy_fn(boards: list[Board], gt: GroundTruth) -> dict[str, float]:
     v_acc, p_acc, v_acc_nd, p_acc_nt = get_baseline_accuracy(boards, gt)
@@ -702,7 +702,20 @@ def get_branching_factor_fn(boards: list[Board], gt: GroundTruth) -> dict[str, f
 
 def run_collectors(gt: GroundTruth) -> None:
     '''
-    Runs all training data collectors in a single pass over the game data
+    Runs all training data collectors in a single pass over the game data.
+    Generates the following data:
+    - gamedata_stats.pkl: per-iteration game outcome stats
+    - overall and per iteration accuracy and bias files for
+        both experienced and alternative targets (x8)
+    - dataset of states with the experienced value/policy (or alt targets)
+    - gamedata_{n_buckets}_progress_count.pkl:
+        count of states in each game progress bucket
+    - gamedata_{n_buckets}_progress_acc.pkl:
+        accuracy vs ground truth in each game progress bucket (experienced and alt targets)
+    - gamedata_{n_buckets}_progress_{fn_name}.pkl:
+        - baseline accuracy
+        - branching factor
+        - game_progress_{n_buckets}_nd.pkl (and nt)
     '''
     logger.info("Starting training data analyses...")
 
@@ -727,8 +740,15 @@ def run_collectors(gt: GroundTruth) -> None:
             n_per_iteration=500,
             n_total=2000
         ),
+        ExperiencedDatasetCollector(
+            name="alt_targets_dataset",
+            batch_size=256,
+            n_per_iteration=500,
+            n_total=2000,
+            get_outcome=alt_outcome,
+        ),
         GameProgressMetaCollector(
-            n_buckets=5,
+            n_buckets=10,
             collectors=[
                 StateCountProgressCollector(),
                 AccuracyProgressCollector(name="experienced"),
@@ -740,7 +760,7 @@ def run_collectors(gt: GroundTruth) -> None:
                         "Branching Factor": lambda boards: get_branching_factor_fn(boards, gt)
                     },
                     finalize_functions=[
-                        lambda boards: convert_and_save_state_buckets_to_datasets(boards, gt, n=1000, batch_size=256)
+                        lambda boards, n_buckets: convert_and_save_state_buckets_to_datasets(boards, n_buckets, gt, n=1000, batch_size=256)
                     ]
                 ),
             ]
@@ -757,10 +777,10 @@ def main():
         process_name='training_data'
     )
 
-    # gt = GroundTruth()
+    gt = GroundTruth()
     get_and_save_avg_training_metrics_per_iteration()
     get_and_save_dataset_diagnostics_distributions()
-    # run_collectors(gt)
+    run_collectors(gt)
 
 if __name__ == "__main__":
     main()
