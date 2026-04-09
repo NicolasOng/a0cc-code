@@ -1,8 +1,16 @@
 from typing import Callable
 
 from a0.utils.plotting import (
+    Series,
+    load_series,
     load_distribution_series,
+    plot_given,
+    plot_given_groups,
+    plot_stacked,
+    plot_stacked_proportional,
+    plot_std_error,
     plot_shaded_ridgeline,
+    plot_bar,
 )
 
 from config import config
@@ -18,6 +26,8 @@ def safeplot(plot_callable: Callable[[], None]) -> None:
     except Exception as e:
         logger.warning(f"safeplot: skipping {plot_callable.__name__}: {type(e).__name__}: {e}")
 
+
+# === distribution series plots ===
 
 def plot_dataset_pre_balance_distributions() -> None:
     series = load_distribution_series(f"{config.eval_dir}/dataset_pre_balance_distributions.pkl")
@@ -48,21 +58,410 @@ def plot_random_nd_value_distributions() -> None:
         labels=[str(x) for x in series.x],
         title="Model Value Predictions on random_nd",
         x_label="Value", y_label="Iteration",
-        fn="random_nd_value_distributions"
+        fn="random_nd_value_distributions",
+    )
+
+
+# === training metrics ===
+
+def plot_training_metrics_accuracy() -> None:
+    s = load_series(f"{config.eval_dir}/training_metrics.pkl")
+    plot_given(
+        "Training Performance Metrics",
+        [
+            ("Value Accuracy", s.x, s.ys["Value Accuracy"]),
+            ("Policy Accuracy", s.x, s.ys["Policy Accuracy"]),
+        ],
+        "Iteration", "Performance", "training_metrics",
+    )
+
+
+def plot_training_metrics_with_losses() -> None:
+    s = load_series(f"{config.eval_dir}/training_metrics.pkl")
+    plot_given(
+        "Training Performance Metrics (with losses)",
+        [
+            ("Loss", s.x, s.ys["Loss"]),
+            ("Value Loss", s.x, s.ys["Value Loss"]),
+            ("Policy Loss", s.x, s.ys["Policy Loss"]),
+            ("Value Accuracy", s.x, s.ys["Value Accuracy"]),
+            ("Policy Accuracy", s.x, s.ys["Policy Accuracy"]),
+        ],
+        "Iteration", "Performance", "training_metrics_w_losses",
+    )
+
+
+# === gamedata stats ===
+
+def plot_gamedata_total_games() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_stats.pkl")
+    plot_given(
+        "Total Games Played by Training Iteration",
+        [("Total Games", s.x, s.ys["Total Games"])],
+        "Training Iteration", "Total Games", "gamedata_total_games",
+    )
+
+
+def plot_gamedata_outcomes_stacked() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_stats.pkl")
+    plot_stacked(
+        "Game Outcomes by Training Iteration", s.x,
+        [
+            ("Player X Wins", s.ys["Player X Wins"]),
+            ("Player O Wins", s.ys["Player O Wins"]),
+            ("Draws (Repeat)", s.ys["Draws (Repeat)"]),
+            ("Draws (Timeout)", s.ys["Draws (Timeout)"]),
+        ],
+        "Training Iteration", "Number of Games", "gamedata_outcomes_stacked",
+    )
+
+
+def plot_gamedata_outcomes_stacked_proportional() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_stats.pkl")
+    plot_stacked_proportional(
+        "Game Outcomes by Training Iteration (Proportional)",
+        s.x, s.ys["Total Games"],
+        [
+            ("Player X Wins", s.ys["Player X Wins"]),
+            ("Player O Wins", s.ys["Player O Wins"]),
+            ("Draws (Repeat)", s.ys["Draws (Repeat)"]),
+            ("Draws (Timeout)", s.ys["Draws (Timeout)"]),
+        ],
+        "Training Iteration", "Proportion of Games", "gamedata_outcomes_stacked_proportional",
+    )
+
+
+def plot_gamedata_outcomes_lines() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_stats.pkl")
+    plot_given(
+        "Game Outcomes by Training Iteration",
+        [
+            ("Player X Wins", s.x, s.ys["Player X Wins"]),
+            ("Player O Wins", s.x, s.ys["Player O Wins"]),
+            ("Draws (Repeat)", s.x, s.ys["Draws (Repeat)"]),
+            ("Draws (Timeout)", s.x, s.ys["Draws (Timeout)"]),
+        ],
+        "Training Iteration", "Number of Games", "gamedata_outcomes_lines",
+    )
+
+
+def plot_gamedata_game_length() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_stats.pkl")
+    plot_std_error(
+        "Average Game Length (Turns) by Training Iteration",
+        s.x, s.ys["Avg Game Length"], s.ys["Std Game Length"],
+        "Training Iteration", "Length (Turns)", "game_length_turns",
+    )
+
+
+def plot_gamedata_game_time() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_stats.pkl")
+    plot_std_error(
+        "Average Game Time by Training Iteration",
+        s.x, s.ys["Avg Game Time"], s.ys["Std Game Time"],
+        "Training Iteration", "Time (s)", "game_length_time",
+    )
+
+
+# === gamedata accuracy & bias (experienced + alt-target variants) ===
+
+def _plot_iteration_accuracy(iteration: Series, overall: Series, title: str, fn: str) -> None:
+    plot_given(
+        title,
+        [
+            ("Overall Value Accuracy", overall.x, overall.ys["Overall Value Accuracy"]),
+            ("Overall Value Accuracy ND", overall.x, overall.ys["Overall Value Accuracy ND"]),
+            ("Overall Policy Accuracy", overall.x, overall.ys["Overall Policy Accuracy"]),
+            ("Overall Policy PM", overall.x, overall.ys["Overall Policy PM"]),
+            ("Overall Policy Accuracy NT", overall.x, overall.ys["Overall Policy Accuracy NT"]),
+            ("Overall Policy PM NT", overall.x, overall.ys["Overall Policy PM NT"]),
+            ("Value Accuracy", iteration.x, iteration.ys["Iteration Value Accuracy"]),
+            ("Value Accuracy ND", iteration.x, iteration.ys["Iteration Value Accuracy ND"]),
+            ("Policy Accuracy", iteration.x, iteration.ys["Iteration Policy Accuracy"]),
+            ("Policy PM", iteration.x, iteration.ys["Iteration Policy PM"]),
+            ("Policy Accuracy NT", iteration.x, iteration.ys["Iteration Policy Accuracy NT"]),
+            ("Policy PM NT", iteration.x, iteration.ys["Iteration Policy PM NT"]),
+        ],
+        "Iterations", "Accuracy", fn,
+    )
+
+
+def _plot_iteration_bias(iteration: Series, overall: Series, title: str, fn: str) -> None:
+    plot_given(
+        title,
+        [
+            ("Win Percentage", iteration.x, iteration.ys["Iteration Win Percent"]),
+            ("Loss Percentage", iteration.x, iteration.ys["Iteration Loss Percent"]),
+            ("Draw Percentage", iteration.x, iteration.ys["Iteration Draw Percent"]),
+            ("Overall Win Percentage", overall.x, overall.ys["Overall Win Percent"]),
+            ("Overall Loss Percentage", overall.x, overall.ys["Overall Loss Percent"]),
+            ("Overall Draw Percentage", overall.x, overall.ys["Overall Draw Percent"]),
+        ],
+        "Training Iteration", "Percentage", fn,
+    )
+
+
+def plot_gamedata_accuracy() -> None:
+    iteration = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
+    overall = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
+    _plot_iteration_accuracy(iteration, overall, "Training Data Accuracy by Iteration", "training_data_accuracy")
+
+
+def plot_gamedata_alt_accuracy() -> None:
+    iteration = load_series(f"{config.eval_dir}/gamedata_alt_acc.pkl")
+    overall = load_series(f"{config.eval_dir}/gamedata_alt_overall_acc.pkl")
+    _plot_iteration_accuracy(iteration, overall, "Alt-Target Training Data Accuracy by Iteration", "training_data_alt_accuracy")
+
+
+def plot_gamedata_bias() -> None:
+    iteration = load_series(f"{config.eval_dir}/gamedata_bias.pkl")
+    overall = load_series(f"{config.eval_dir}/gamedata_overall_bias.pkl")
+    _plot_iteration_bias(iteration, overall, "Training Data Bias by Iteration", "gamedata_bias")
+
+
+def plot_gamedata_alt_bias() -> None:
+    iteration = load_series(f"{config.eval_dir}/gamedata_alt_bias.pkl")
+    overall = load_series(f"{config.eval_dir}/gamedata_alt_overall_bias.pkl")
+    _plot_iteration_bias(iteration, overall, "Alt-Target Training Data Bias by Iteration", "gamedata_alt_bias")
+
+
+# === game progress (over buckets) ===
+
+def plot_gp_state_count() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_10_progress_count.pkl")
+    plot_bar(
+        "Number of States in Each Game Progress Bucket",
+        ("Count", s.x, s.ys["Count"]),
+        "Game Progress (%)", "Count", "gp_state_count",
+    )
+
+
+def plot_gp_unique_state_count() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_10_progress_count.pkl")
+    plot_bar(
+        "Number of Unique States in Each Game Progress Bucket",
+        ("Unique", s.x, s.ys["Unique"]),
+        "Game Progress (%)", "Unique Count", "gp_unique_state_count",
+    )
+
+
+def _plot_gp_target_accuracy(name: str, label: str, fn: str) -> None:
+    s = load_series(f"{config.eval_dir}/{name}_10_progress_acc.pkl")
+    plot_given_groups(
+        f"{label} Accuracy by Game Progress",
+        [
+            [
+                ("Value Accuracy", s.x, s.ys["Value Accuracy"]),
+                ("Value Accuracy ND", s.x, s.ys["Value Accuracy ND"]),
+            ],
+            [
+                ("Policy Accuracy", s.x, s.ys["Policy Accuracy"]),
+                ("Policy Accuracy NT", s.x, s.ys["Policy Accuracy NT"]),
+                ("Policy PM", s.x, s.ys["Policy PM"]),
+                ("Policy PM NT", s.x, s.ys["Policy PM NT"]),
+            ],
+        ],
+        "Game Progress (%)", "Accuracy", fn,
+    )
+
+
+def plot_gp_experienced_accuracy() -> None:
+    _plot_gp_target_accuracy("experienced", "Experienced Targets", "gp_experienced_accuracy")
+
+
+def plot_gp_alt_targets_accuracy() -> None:
+    _plot_gp_target_accuracy("alt_targets", "Alt Targets", "gp_alt_targets_accuracy")
+
+
+def plot_gp_baseline_accuracy() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_progress_Baseline Accuracy.pkl")
+    plot_given_groups(
+        "Baseline Accuracy by Game Progress",
+        [
+            [
+                ("Value Accuracy", s.x, s.ys["Value Accuracy"]),
+                ("Value Accuracy ND", s.x, s.ys["Value Accuracy ND"]),
+            ],
+            [
+                ("Policy Accuracy", s.x, s.ys["Policy Accuracy"]),
+                ("Policy Accuracy NT", s.x, s.ys["Policy Accuracy NT"]),
+            ],
+        ],
+        "Game Progress (%)", "Accuracy", "gp_baseline_accuracy",
+    )
+
+
+def plot_gp_branching_factor() -> None:
+    s = load_series(f"{config.eval_dir}/gamedata_progress_Branching Factor.pkl")
+    plot_given(
+        "Average Branching Factor by Game Progress",
+        [("Branching Factor", s.x, s.ys["Branching Factor"])],
+        "Game Progress (%)", "Branching Factor", "gp_branching_factor",
+    )
+
+
+# === per-dataset model evaluation ===
+
+def _plot_dataset_eval(name: str, title: str) -> None:
+    s = load_series(f"{config.eval_dir}/{name}_eval.pkl")
+    plot_given(
+        title,
+        [
+            ("Value Accuracy", s.x, s.ys["value_accuracy"]),
+            ("Policy Accuracy", s.x, s.ys["policy_accuracy"]),
+        ],
+        "Iteration", "Accuracy", f"{name}_eval",
+    )
+
+
+def plot_seen_nd_eval()   -> None: _plot_dataset_eval("seen_nd",   "Model Performance on Ground Truth (seen, no draws)")
+def plot_random_nd_eval() -> None: _plot_dataset_eval("random_nd", "Model Performance on Ground Truth (random, no draws)")
+def plot_seen_nt_eval()   -> None: _plot_dataset_eval("seen_nt",   "Model Performance on Ground Truth (seen, non-trivial)")
+def plot_random_nt_eval() -> None: _plot_dataset_eval("random_nt", "Model Performance on Ground Truth (random, non-trivial)")
+
+
+def plot_neighbor_nd_evals() -> None:
+    for i in range(2):
+        _plot_dataset_eval(f"neighbor_{i+1}_nd", f"Model Performance on Ground Truth (neighbor {i+1}, no draws)")
+
+
+def plot_neighbor_nt_evals() -> None:
+    for i in range(2):
+        _plot_dataset_eval(f"neighbor_{i+1}_nt", f"Model Performance on Ground Truth (neighbor {i+1}, non-trivial)")
+
+
+def plot_experienced_dataset_eval() -> None:
+    _plot_dataset_eval("experienced_dataset", "Model Performance on Experienced Targets Dataset")
+
+
+def plot_alt_targets_dataset_eval() -> None:
+    _plot_dataset_eval("alt_targets_dataset", "Model Performance on Alt Targets Dataset")
+
+
+# === per-bucket dataset evaluation (last model) ===
+
+def plot_game_progress_10_nd_eval() -> None:
+    s = load_series(f"{config.eval_dir}/game_progress_10_nd_eval.pkl")
+    plot_given(
+        "Final Model Accuracy by Game Progress (no draws)",
+        [
+            ("Value Accuracy", s.x, s.ys["value_accuracy"]),
+            ("Policy Accuracy", s.x, s.ys["policy_accuracy"]),
+        ],
+        "Game Progress (%)", "Accuracy", "game_progress_10_nd_eval",
+    )
+
+
+def plot_game_progress_10_nt_eval() -> None:
+    s = load_series(f"{config.eval_dir}/game_progress_10_nt_eval.pkl")
+    plot_given(
+        "Final Model Accuracy by Game Progress (non-trivial)",
+        [
+            ("Value Accuracy", s.x, s.ys["value_accuracy"]),
+            ("Policy Accuracy", s.x, s.ys["policy_accuracy"]),
+        ],
+        "Game Progress (%)", "Accuracy", "game_progress_10_nt_eval",
+    )
+
+
+# === combined model + training-data plots ===
+
+def plot_full_value_accuracy() -> None:
+    seen      = load_series(f"{config.eval_dir}/seen_nd_eval.pkl")
+    random_   = load_series(f"{config.eval_dir}/random_nd_eval.pkl")
+    n1        = load_series(f"{config.eval_dir}/neighbor_1_nd_eval.pkl")
+    n2        = load_series(f"{config.eval_dir}/neighbor_2_nd_eval.pkl")
+    iteration = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
+    overall   = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
+    plot_given(
+        "Value Head Performance on Ground Truth and Training Data",
+        [
+            ("Seen", seen.x, seen.ys["value_accuracy"]),
+            ("Neighbor 1", n1.x, n1.ys["value_accuracy"]),
+            ("Neighbor 2", n2.x, n2.ys["value_accuracy"]),
+            ("Random", random_.x, random_.ys["value_accuracy"]),
+            ("Training Data", iteration.x, iteration.ys["Iteration Value Accuracy"]),
+            ("Training Data ND", iteration.x, iteration.ys["Iteration Value Accuracy ND"]),
+            ("Overall Training Data", overall.x, overall.ys["Overall Value Accuracy"]),
+            ("Overall Training Data ND", overall.x, overall.ys["Overall Value Accuracy ND"]),
+        ],
+        "Iteration", "Accuracy", "full_value_accuracy",
+    )
+
+
+def plot_full_policy_accuracy() -> None:
+    seen_nt   = load_series(f"{config.eval_dir}/seen_nt_eval.pkl")
+    random_nt = load_series(f"{config.eval_dir}/random_nt_eval.pkl")
+    n1_nt     = load_series(f"{config.eval_dir}/neighbor_1_nt_eval.pkl")
+    n2_nt     = load_series(f"{config.eval_dir}/neighbor_2_nt_eval.pkl")
+    iteration = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
+    overall   = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
+    plot_given(
+        "Policy Head Performance on Ground Truth (NT) and Training Data",
+        [
+            ("Seen NT", seen_nt.x, seen_nt.ys["policy_accuracy"]),
+            ("Neighbor 1 NT", n1_nt.x, n1_nt.ys["policy_accuracy"]),
+            ("Neighbor 2 NT", n2_nt.x, n2_nt.ys["policy_accuracy"]),
+            ("Random NT", random_nt.x, random_nt.ys["policy_accuracy"]),
+            ("Training Data NT", iteration.x, iteration.ys["Iteration Policy Accuracy NT"]),
+            ("Overall Training Data NT", overall.x, overall.ys["Overall Policy Accuracy NT"]),
+        ],
+        "Iteration", "Accuracy", "full_policy_accuracy",
     )
 
 
 def main():
-    setup_logging(
-        level=20,
-        log_dir=config.log_dir,
-        process_name="plotting"
-    )
+    setup_logging(level=20, log_dir=config.log_dir, process_name="plotting")
     logger.info("plotting...")
 
+    # distribution series
     safeplot(plot_dataset_pre_balance_distributions)
     safeplot(plot_dataset_post_balance_distributions)
     safeplot(plot_random_nd_value_distributions)
+
+    # training metrics
+    safeplot(plot_training_metrics_accuracy)
+    safeplot(plot_training_metrics_with_losses)
+
+    # gamedata stats
+    safeplot(plot_gamedata_total_games)
+    safeplot(plot_gamedata_outcomes_stacked)
+    safeplot(plot_gamedata_outcomes_stacked_proportional)
+    safeplot(plot_gamedata_outcomes_lines)
+    safeplot(plot_gamedata_game_length)
+    safeplot(plot_gamedata_game_time)
+
+    # gamedata accuracy & bias (experienced + alt targets)
+    safeplot(plot_gamedata_accuracy)
+    safeplot(plot_gamedata_alt_accuracy)
+    safeplot(plot_gamedata_bias)
+    safeplot(plot_gamedata_alt_bias)
+
+    # game progress
+    safeplot(plot_gp_state_count)
+    safeplot(plot_gp_unique_state_count)
+    safeplot(plot_gp_experienced_accuracy)
+    safeplot(plot_gp_alt_targets_accuracy)
+    safeplot(plot_gp_baseline_accuracy)
+    safeplot(plot_gp_branching_factor)
+
+    # per-dataset model evaluation
+    safeplot(plot_seen_nd_eval)
+    safeplot(plot_random_nd_eval)
+    safeplot(plot_seen_nt_eval)
+    safeplot(plot_random_nt_eval)
+    safeplot(plot_neighbor_nd_evals)
+    safeplot(plot_neighbor_nt_evals)
+    safeplot(plot_experienced_dataset_eval)
+    safeplot(plot_alt_targets_dataset_eval)
+
+    # per-bucket dataset evaluation
+    safeplot(plot_game_progress_10_nd_eval)
+    safeplot(plot_game_progress_10_nt_eval)
+
+    # combined plots
+    safeplot(plot_full_value_accuracy)
+    safeplot(plot_full_policy_accuracy)
 
 
 if __name__ == "__main__":
