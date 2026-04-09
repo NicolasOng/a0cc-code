@@ -1,3 +1,4 @@
+import os
 import pickle
 import random
 from dataclasses import dataclass
@@ -49,6 +50,9 @@ def get_and_save_avg_training_metrics_per_iteration() -> None:
         train_datas.append(dataset_data)
 
     if train_datas:
+        # plot_model_performance writes to "{plot_dir}/training_plots/full_a0.png"
+        # but doesn't create the training_plots/ subdir itself, so make it here.
+        os.makedirs(f"{config.plot_dir}/training_plots", exist_ok=True)
         plot_model_performance("training_plots/full_a0", train_datas)
     else:
         logger.warning("No iteration_stats files found; skipping training performance plot.")
