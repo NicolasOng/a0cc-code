@@ -49,15 +49,19 @@ def get_and_save_avg_training_metrics_per_iteration() -> None:
         series.ys["Policy Accuracy"].append(p_acc)
         train_datas.append(dataset_data)
 
+    logger.info(f"Loaded training metrics for {len(train_datas)} iterations.")
+
     if train_datas:
         # plot_model_performance writes to "{plot_dir}/training_plots/full_a0.png"
         # but doesn't create the training_plots/ subdir itself, so make it here.
         os.makedirs(f"{config.plot_dir}/training_plots", exist_ok=True)
+        logger.info("Plotting full a0 training performance...")
         plot_model_performance("training_plots/full_a0", train_datas)
     else:
         logger.warning("No iteration_stats files found; skipping training performance plot.")
 
     save_series(series, f"{config.eval_dir}/training_metrics.pkl")
+    logger.info(f"Saved training_metrics.pkl ({len(series.x)} points).")
 
 def get_and_save_dataset_diagnostics_distributions() -> None:
     '''
@@ -83,8 +87,10 @@ def get_and_save_dataset_diagnostics_distributions() -> None:
         logger.error("No dataset diagnostics found; skipping distribution series save.")
         return
 
+    logger.info(f"Loaded dataset diagnostics for {len(pre.x)} iterations.")
     save_distribution_series(pre, f"{config.eval_dir}/dataset_pre_balance_distributions.pkl")
     save_distribution_series(post, f"{config.eval_dir}/dataset_post_balance_distributions.pkl")
+    logger.info("Saved dataset_pre_balance_distributions.pkl and dataset_post_balance_distributions.pkl.")
 
 @dataclass
 class TurnInfo:
@@ -133,11 +139,20 @@ def traverse_game_data_with_collectors(collectors: list[Collector]) -> None:
     Walks all game data once, computing per-turn facts and handing them
     to each collector.
     '''
+    logger.info(f"traverse_game_data_with_collectors: {len(collectors)} collectors")
+    for c in collectors:
+        logger.info(f"  - {type(c).__name__}")
+
     gt = GroundTruth()
     gd_gen = game_data_generator(config.training_dir, config.training_iterations)
 
+    total_iterations = 0
+    total_games = 0
+    total_turns = 0
     for i, game_data_list in tqdm(gd_gen, desc="Iterations"):
+        total_iterations += 1
         for game_data in game_data_list:
+            total_games += 1
             game_length = len(game_data.turn_data)
             winner = game_data.winner
 
@@ -152,6 +167,7 @@ def traverse_game_data_with_collectors(collectors: list[Collector]) -> None:
                 c.on_game(game_info)
 
             for turn_idx, turn in enumerate(game_data.turn_data):
+                total_turns += 1
                 board = turn.board
                 gt_outcome = gt.get_outcome(board)
                 experienced_outcome = 0.0 if winner is None else 1.0 if winner == board.current_player else -1.0
@@ -178,8 +194,12 @@ def traverse_game_data_with_collectors(collectors: list[Collector]) -> None:
         for c in collectors:
             c.on_iteration_end(i)
 
+    logger.info(f"traverse_game_data_with_collectors: traversal done — {total_iterations} iterations, {total_games} games, {total_turns} turns")
+    logger.info("Finalizing collectors...")
     for c in collectors:
+        logger.info(f"  finalizing {type(c).__name__}...")
         c.finalize()
+    logger.info("All collectors finalized.")
 
 class GameStatsCollector(Collector):
     '''Collects per-iteration game outcome stats → gamedata_stats.pkl'''
@@ -235,6 +255,7 @@ class GameStatsCollector(Collector):
 
     def finalize(self) -> None:
         save_series(self.series, f"{config.eval_dir}/gamedata_stats.pkl")
+        logger.info(f"GameStatsCollector: saved gamedata_stats.pkl ({len(self.series.x)} iterations).")
 
 class AccuracyCollector(Collector):
     '''
@@ -358,6 +379,14 @@ class AccuracyCollector(Collector):
             self.overall_series.ys["Overall Policy Accuracy NT"].append(self._total_correct_policy_nt / t_nt if t_nt else 0)
             self.overall_series.ys["Overall Policy PM NT"].append(self._total_pm_policy_nt / t_nt if t_nt else 0)
         save_series(self.overall_series, f"{config.eval_dir}/{self._name}_overall_acc.pkl")
+        logger.info(
+            f"AccuracyCollector '{self._name}': saved {self._name}_acc.pkl + {self._name}_overall_acc.pkl. "
+            f"Overall: value_acc={self._total_correct_value / t if t else 0:.2%} "
+            f"value_acc_nd={self._total_correct_value_nd / t_nd if t_nd else 0:.2%} "
+            f"policy_acc={self._total_correct_policy / t if t else 0:.2%} "
+            f"policy_acc_nt={self._total_correct_policy_nt / t_nt if t_nt else 0:.2%} "
+            f"(n={t}, n_nd={t_nd}, n_nt={t_nt})"
+        )
 
 class BiasCollector(Collector):
     '''
@@ -422,6 +451,13 @@ class BiasCollector(Collector):
             self.overall_series.ys["Overall Loss Percent"].append(self._total_losses / t if t else 0)
             self.overall_series.ys["Overall Draw Percent"].append(self._total_draws / t if t else 0)
         save_series(self.overall_series, f"{config.eval_dir}/{self._name}_overall_bias.pkl")
+        logger.info(
+            f"BiasCollector '{self._name}': saved {self._name}_bias.pkl + {self._name}_overall_bias.pkl. "
+            f"Overall: win={self._total_wins / t if t else 0:.2%} "
+            f"loss={self._total_losses / t if t else 0:.2%} "
+            f"draw={self._total_draws / t if t else 0:.2%} "
+            f"(n={t})"
+        )
 
 class ExperiencedDatasetCollector(Collector):
     '''
@@ -546,6 +582,11 @@ class StateCountProgressCollector(GameProgressCollector):
             series.ys["Count"].append(self._counts[b])
             series.ys["Unique"].append(len(self._unique_states[b]))
         save_series(series, f"{config.eval_dir}/{self._name}_{len(self._buckets)}_progress_count.pkl")
+        logger.info(
+            f"StateCountProgressCollector '{self._name}': saved {self._name}_{len(self._buckets)}_progress_count.pkl. "
+            f"per-bucket counts: {[self._counts[b] for b in self._buckets]} "
+            f"per-bucket unique: {[len(self._unique_states[b]) for b in self._buckets]}"
+        )
 
 class AccuracyProgressCollector(GameProgressCollector):
     '''
@@ -627,6 +668,11 @@ class AccuracyProgressCollector(GameProgressCollector):
             series.ys["Policy Accuracy NT"].append(s['correct_policy_nt'] / t_nt if t_nt else 0)
             series.ys["Policy PM NT"].append(s['pm_policy_nt'] / t_nt if t_nt else 0)
         save_series(series, f"{config.eval_dir}/{self._name}_{len(self._buckets)}_progress_acc.pkl")
+        logger.info(
+            f"AccuracyProgressCollector '{self._name}': saved "
+            f"{self._name}_{len(self._buckets)}_progress_acc.pkl "
+            f"(n per bucket: {[self._stats[b]['total'] for b in self._buckets]})"
+        )
 
 class BoardFunctionProgressCollector(GameProgressCollector):
     '''
@@ -634,6 +680,12 @@ class BoardFunctionProgressCollector(GameProgressCollector):
     to each bucket's board list in finalize. Each function returns a
     dict[str, float] mapping series labels to values.
     → {name}_progress_{fn_name}.pkl per function
+
+    If `n` is given, each bucket is downsampled to at most `n` boards before
+    being passed to the per-bucket functions. The same sample is reused across
+    all functions in a single finalize call so their outputs are comparable.
+    `finalize_functions` always receive the full (un-sampled) bucket map — they
+    handle their own sampling if they need it.
     '''
 
     def __init__(
@@ -641,10 +693,12 @@ class BoardFunctionProgressCollector(GameProgressCollector):
         name: str,
         functions: dict[str, Callable[[list[Board]], dict[str, float]]],
         finalize_functions: list[Callable[[dict[int, list[Board]], int], None]] | None = None,
+        n: int | None = None,
     ):
         self._name = name
         self._functions = functions
         self._finalize_functions = finalize_functions
+        self._n = n
         self._buckets: list[int] = []
         self._boards: dict[int, list[Board]] = {}
 
@@ -655,13 +709,37 @@ class BoardFunctionProgressCollector(GameProgressCollector):
     def on_turn(self, ti: TurnInfo, bucket: int) -> None:
         self._boards[bucket].append(ti.board)
 
+    def _sampled_boards(self) -> dict[int, list[Board]]:
+        '''
+        Returns a per-bucket sample of at most self._n boards for the
+        per-bucket functions. If self._n is None, returns the full lists.
+        '''
+        if self._n is None:
+            return self._boards
+        sampled: dict[int, list[Board]] = {}
+        for b, boards in self._boards.items():
+            if len(boards) > self._n:
+                sampled[b] = random.sample(boards, self._n)
+                logger.info(f"BoardFunctionProgressCollector '{self._name}': sampled bucket {b} down to {self._n}/{len(boards)} boards")
+            else:
+                sampled[b] = boards
+        return sampled
+
     def on_iteration_end(self, iteration: int) -> None:
         pass
 
     def finalize(self) -> None:
+        logger.info(f"BoardFunctionProgressCollector '{self._name}': finalizing ({len(self._functions)} functions, {len(self._buckets)} buckets)...")
+        sampled = self._sampled_boards()
+
         empty: dict[str, float] = {}
         for fn_name, fn in self._functions.items():
-            results = {b: fn(self._boards[b]) if self._boards[b] else empty for b in self._buckets}
+            logger.info(f"BoardFunctionProgressCollector '{self._name}': running '{fn_name}' on {len(self._buckets)} buckets...")
+            results: dict[int, dict[str, float]] = {}
+            for b in self._buckets:
+                boards = sampled[b]
+                results[b] = fn(boards) if boards else empty
+                logger.info(f"  bucket {b}: {len(boards)} boards → {results[b]}")
             labels = list(next((r for r in results.values() if r), empty).keys())
             series = Series(labels)
             for b in self._buckets:
@@ -669,8 +747,9 @@ class BoardFunctionProgressCollector(GameProgressCollector):
                 for label in labels:
                     series.ys[label].append(results[b].get(label, 0))
             save_series(series, f"{config.eval_dir}/{self._name}_progress_{fn_name}.pkl")
-        
+
         for fn in self._finalize_functions or []:
+            logger.info(f"BoardFunctionProgressCollector '{self._name}': running finalize function {getattr(fn, '__name__', repr(fn))}...")
             fn(self._boards, len(self._buckets))
 
 def save_dataset_dict(dataset_dict: dict[int, Dataset], name: str) -> None:
@@ -680,12 +759,15 @@ def save_dataset_dict(dataset_dict: dict[int, Dataset], name: str) -> None:
     logger.info(f"Saved {name} dataset dict to {output_path}.")
 
 def convert_and_save_state_buckets_to_datasets(state_buckets: dict[int, list[Board]], n_buckets: int, gt: GroundTruth, n: int, batch_size: int) -> None:
+    logger.info(f"convert_and_save_state_buckets_to_datasets: {n_buckets} buckets, target n={n} per bucket")
     datasets_nd: dict[int, Dataset] = {}
     datasets_nt: dict[int, Dataset] = {}
     for bucket, boards in state_buckets.items():
+        logger.info(f"  bucket {bucket}: building nd+nt datasets from {len(boards)} boards...")
         nd_dataset, nt_dataset = get_nd_and_nt_datasets_from_state_list(boards, gt, n, batch_size)
         datasets_nd[bucket] = nd_dataset
         datasets_nt[bucket] = nt_dataset
+        logger.info(f"  bucket {bucket}: nd={len(nd_dataset)}, nt={len(nt_dataset)}")
     save_dataset_dict(datasets_nd, f"game_progress_{n_buckets}_nd")
     save_dataset_dict(datasets_nt, f"game_progress_{n_buckets}_nt")
 
@@ -721,7 +803,7 @@ def run_collectors(gt: GroundTruth) -> None:
         - branching factor
         - game_progress_{n_buckets}_nd.pkl (and nt)
     '''
-    logger.info("Starting training data analyses...")
+    logger.info("run_collectors: building collector list...")
 
     # TODO: hardcode this string
     alt_outcome: Callable[[TurnInfo], float] = lambda ti: float(np.sign(ti.alternative_targets["td_lambda"]))
@@ -765,14 +847,16 @@ def run_collectors(gt: GroundTruth) -> None:
                     },
                     finalize_functions=[
                         lambda boards, n_buckets: convert_and_save_state_buckets_to_datasets(boards, n_buckets, gt, n=1000, batch_size=256)
-                    ]
+                    ],
+                    n=2000,
                 ),
             ]
         ),
     ]
+    logger.info(f"run_collectors: built {len(collectors)} collectors, starting traversal...")
     traverse_game_data_with_collectors(collectors)
 
-    logger.info("Training data analyses completed.")
+    logger.info("run_collectors: training data analyses completed.")
 
 def main():
     setup_logging(
@@ -781,10 +865,26 @@ def main():
         process_name='training_data'
     )
 
+    logger.info("=" * 60)
+    logger.info("training_data.py: starting all training-data analyses")
+    logger.info(f"  training_dir       = {config.training_dir}")
+    logger.info(f"  eval_dir           = {config.eval_dir}")
+    logger.info(f"  dataset_out_dir    = {config.dataset_out_dir}")
+    logger.info(f"  training_iterations = {config.training_iterations}")
+    logger.info("=" * 60)
+
     gt = GroundTruth()
+
+    logger.info("[1/3] avg training metrics per iteration")
     get_and_save_avg_training_metrics_per_iteration()
+
+    logger.info("[2/3] dataset diagnostics distributions")
     get_and_save_dataset_diagnostics_distributions()
+
+    logger.info("[3/3] traversal-based collectors")
     run_collectors(gt)
+
+    logger.info("training_data.py: all analyses complete")
 
 if __name__ == "__main__":
     main()
