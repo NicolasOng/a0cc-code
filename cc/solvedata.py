@@ -10,11 +10,11 @@ class Outcome(Enum):
     ILLEGAL = 3
 
 class SolveData:
-    def __init__(self, filename: str):
-        self.entries, self.mem = self.read_solve_data_file(filename)
-    
+    def __init__(self, filename: str, mmap: bool = False):
+        self.entries, self.mem = self.read_solve_data_file(filename, mmap)
+
     @staticmethod
-    def read_solve_data_file(filename: str) -> tuple[int, npt.NDArray[np.uint64]]:
+    def read_solve_data_file(filename: str, mmap: bool = False) -> tuple[int, npt.NDArray[np.uint64]]:
         '''
         reads a file from disk.
         format of file:
@@ -32,13 +32,15 @@ class SolveData:
             # Use little-endian for unpacking
             entries, memory_size = struct.unpack('<QQ', header)
 
-            # Read packed memory data
-            data_bytes = f.read(memory_size * 8)
-            if len(data_bytes) != memory_size * 8:
-                raise ValueError("File too short for expected memory content.")
-
-            # Use little-endian for numpy array
-            mem = np.frombuffer(data_bytes, dtype='<u8')
+        if mmap:
+            mem = np.memmap(filename, dtype='<u8', mode='r', offset=16, shape=(memory_size,))
+        else:
+            with open(filename, 'rb') as f:
+                f.seek(16)
+                data_bytes = f.read(memory_size * 8)
+                if len(data_bytes) != memory_size * 8:
+                    raise ValueError("File too short for expected memory content.")
+                mem = np.frombuffer(data_bytes, dtype='<u8')
 
         return entries, mem
     
@@ -49,9 +51,10 @@ class SolveData:
         assuming 2-bit packing in the uint64 elements.
         based on NBitArray<2>::Get in NBitArray.cpp
         '''
+        index = int(index)
         word_index = index >> 5 # index // 32
         bit_offset = (index & 0x1F) << 1 # (index % 32) * 2
-        return (mem[word_index] >> bit_offset) & 0x3
+        return (int(mem[word_index]) >> bit_offset) & 0x3
     
     def get(self, index: int) -> int:
         '''
