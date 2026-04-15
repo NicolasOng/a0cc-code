@@ -187,7 +187,7 @@ def game_data_to_model_value_training_set(game_data: GameData, model: AlphaZeroM
     The last state's target is the true game outcome. For all earlier states, the target
     is the negated model value of the next state (negated because players alternate).
     The policy is kept as the MCTS policy.
-    Also populates turn.alternative_targets["model_value"] on each turn so that
+    Also populates turn.alternative_value_target
     the model's predictions are saved with the game data.
     '''
     training_set: list[ExperienceData] = []
@@ -218,7 +218,7 @@ def game_data_to_model_value_training_set(game_data: GameData, model: AlphaZeroM
         targets[t] = -float(model_values[t + 1][0])
 
     for turn, board_input, target in zip(turn_data, board_inputs, targets):
-        turn.alternative_targets["model_value"] = target
+        turn.alternative_value_target = target
 
         legal_move_mask = get_legal_move_mask_from_state(turn.board, for_model=True)
         training_example = ExperienceData(
@@ -279,7 +279,7 @@ def game_data_to_td_lambda_training_set(game_data: GameData, model: AlphaZeroMod
         targets[t] = -(1 - lam) * v_next - lam * targets[t + 1]
 
     for turn, board_input, target in zip(turn_data, board_inputs, targets):
-        turn.alternative_targets["td_lambda"] = target
+        turn.alternative_value_target = target
         legal_move_mask = get_legal_move_mask_from_state(turn.board, for_model=True)
         training_example = ExperienceData(
             board=board_input,
@@ -330,15 +330,15 @@ def _play(serialized_player: bytes, cancel_event: Optional[Any] = None) -> tuple
     player: A0Player = dill.loads(serialized_player)
     game_data = play(game, [player, player], config.turn_limit, cancel_event=cancel_event)
 
-    if config.experiment == "gt":
+    if config.alternative_target == "gt":
         return game_data_to_gt_training_set(game_data), game_data
-    elif config.experiment == "gt_value":
+    elif config.alternative_target == "gt_value":
         return game_data_to_gt_value_training_set(game_data), game_data
-    elif config.experiment == "gt_next_value":
+    elif config.alternative_target == "gt_next_value":
         return game_data_to_gt_next_value_training_set(game_data), game_data
-    elif config.experiment in ["td_2", "td_10"]:
+    elif config.alternative_target == "td_0":
         return game_data_to_model_value_training_set(game_data, player.model), game_data
-    elif config.experiment in ["td_lambda"]:
+    elif config.alternative_target == "td_lambda":
         lam = config.td_lambda
         return game_data_to_td_lambda_training_set(game_data, player.model, lam), game_data
     else:
@@ -520,29 +520,10 @@ def train_alphazero() -> None:
         logger.log(25, f"Training dataset distribution (pre-balancing): {win_count} wins, {draw_count} draws, {loss_count} losses")
         eb_dataset.print_bucket_distribution()
         pre_balance_values = eb_dataset.values.flatten().copy()
-        if config.experiment in ["gt", "gt_value", "gt_next_value"]:
-            # and remove the bias
-            eb_dataset.balance_values()
-            new_win_count, new_draw_count, new_loss_count = eb_dataset.get_distribution()
-            logger.log(25, f"After balancing: {new_win_count} wins, {new_draw_count} draws, {new_loss_count} losses")
-            eb_dataset.print_bucket_distribution()
-            logger.log(25, "---")
         
-        if config.experiment == "td_2":
-            logger.log(25, "Balancing values into 2 buckets (win vs non-win)...")
-            eb_dataset.balance_values_symmetric(n_buckets=2)
-            eb_dataset.print_bucket_distribution()
-        elif config.experiment == "td_10":
-            logger.log(25, "Balancing values into 10 buckets...")
-            eb_dataset.balance_values_symmetric(n_buckets=10)
-            eb_dataset.print_bucket_distribution()
-        
-        if config.experiment in ["td_lambda"]:
-            lam = config.td_lambda
-            logger.log(25, f"Using TD(lambda) with lambda={lam:.2f} for value targets.")
-            # the dataset already has the TD(lambda) targets in the values field, so just balance them
-            # value chosen based on the previous experiments...
-            eb_dataset.balance_values_symmetric(n_buckets=2)
+        if config.dataset_balance_method == "buckets":
+            logger.log(25, f"Balancing values into {config.num_buckets_for_balance} buckets (win vs non-win)...")
+            eb_dataset.balance_values_symmetric(n_buckets=config.num_buckets_for_balance)
             new_win_count, new_draw_count, new_loss_count = eb_dataset.get_distribution()
             logger.log(25, f"After balancing: {new_win_count} wins, {new_draw_count} draws, {new_loss_count} losses")
             eb_dataset.print_bucket_distribution()

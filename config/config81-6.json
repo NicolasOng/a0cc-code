@@ -27,5 +27,9 @@
     "eval_neighbors": 2,
     "eval_mcts_samples": [64, 128],
     "model_training": false,
-    "td_lambda": 0.0
+    "td_lambda": 0.0,
+    "alternative_target": "normal",
+    "dataset_balance_method": "none",
+    "num_buckets_for_balance": 2,
+    "use_weighted_loss": false
 }

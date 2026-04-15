@@ -5,6 +5,8 @@ from cc.core import Game, Board, Move, Player
 
 from typing import Protocol, Optional, Any
 
+import numpy as np
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,8 @@ class TurnData:
         self.moves: list[Move] = moves
         self.move: Move = move
         self.player_data: Any = player_data
-        self.alternative_targets: dict[str, Any] = {}
+        self.alternative_value_target: float | None = None
+        self.alternative_policy_target: np.ndarray | None = None
 
 class GameData:
     def __init__(self, game: Game, turn_limit: Optional[int] = None):

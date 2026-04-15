@@ -65,6 +65,11 @@ class Config:
     experiment: str
     td_lambda: float
 
+    alternative_target: str  # "gt" | "gt_value" | "gt_next_value" | "td_0" | "td_lambda" | "normal"
+    dataset_balance_method: str  # "buckets" | "none"
+    num_buckets_for_balance: int
+    use_weighted_loss: bool
+
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
         Initialize the configuration from a JSON file.

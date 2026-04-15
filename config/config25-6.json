@@ -34,5 +34,9 @@
     "self_play_batch_size": 32,
     "illegal_moves": true,
     "experiment": "td_lambda",
-    "td_lambda": 0.0
+    "td_lambda": 0.0,
+    "alternative_target": "normal",
+    "dataset_balance_method": "none",
+    "num_buckets_for_balance": 2,
+    "use_weighted_loss": false
 }
