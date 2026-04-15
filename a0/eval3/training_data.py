@@ -873,16 +873,16 @@ def main():
     logger.info(f"  training_iterations = {config.training_iterations}")
     logger.info("=" * 60)
 
-    gt = GroundTruth()
+    # gt = GroundTruth()
 
-    logger.info("[1/3] avg training metrics per iteration")
-    get_and_save_avg_training_metrics_per_iteration()
+    # logger.info("[1/3] avg training metrics per iteration")
+    # get_and_save_avg_training_metrics_per_iteration()
 
     logger.info("[2/3] dataset diagnostics distributions")
     get_and_save_dataset_diagnostics_distributions()
 
-    logger.info("[3/3] traversal-based collectors")
-    run_collectors(gt)
+    # logger.info("[3/3] traversal-based collectors")
+    # run_collectors(gt)
 
     logger.info("training_data.py: all analyses complete")
 

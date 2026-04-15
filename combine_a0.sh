@@ -31,3 +31,5 @@ echo "Using configuration file: $CONFIG_FILE"
 time python -m a0.eval.combine_merge "$CONFIG_FILE"
 time python -m a0.eval.combine_plot "$CONFIG_FILE"
 time python -m a0.eval.combine_summary "$CONFIG_FILE"
+
+time python -m a0.eval3.combine "$CONFIG_FILE"

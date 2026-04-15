@@ -39,3 +39,8 @@ time python -m a0.eval.dataset_evaluation "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.training_data "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.plotting "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.extract_summary "$CONFIG_FILE" "$TRIAL_NO"
+
+time python -m a0.eval3.training_data "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval3.generate_datasets "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval3.dataset_evaluation "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval3.plotting "$CONFIG_FILE" "$TRIAL_NO"
