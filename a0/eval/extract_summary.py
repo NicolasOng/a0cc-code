@@ -20,18 +20,24 @@ logger = get_logger(__name__)
 
 
 # Each entry: (metric_name, source_pkl_filename, series_y_key, reduction)
-# reduction is "last" or "max".
+# reduction is "last", "max", or "last20pct" (mean of final 20% of samples).
 METRICS: list[tuple[str, str, str, str]] = [
-    ("train_gtv_value_acc_final", "training_gtv_eval.pkl",     "value_accuracy",  "last"),
-    ("train_gtv_value_acc_max",   "training_gtv_eval.pkl",     "value_accuracy",  "max"),
-    ("train_nt_policy_acc_final", "training_nt_gtv_eval.pkl",  "policy_accuracy", "last"),
-    ("train_nt_policy_acc_max",   "training_nt_gtv_eval.pkl",  "policy_accuracy", "max"),
-    ("random_value_acc_final",    "random_gtv_eval.pkl",       "value_accuracy",  "last"),
-    ("random_value_acc_max",      "random_gtv_eval.pkl",       "value_accuracy",  "max"),
-    ("random_nt_policy_acc_final","random_nt_gtv_eval.pkl",    "policy_accuracy", "last"),
-    ("random_nt_policy_acc_max",  "random_nt_gtv_eval.pkl",    "policy_accuracy", "max"),
-    ("gamedata_value_acc_final",  "gamedata_overall_acc.pkl",  "Overall Value Accuracy",  "last"),
-    ("gamedata_policy_acc_final", "gamedata_overall_acc.pkl",  "Overall Policy Accuracy", "last"),
+    ("train_gtv_value_acc_final",     "training_gtv_eval.pkl",     "value_accuracy",  "last"),
+    ("train_gtv_value_acc_max",       "training_gtv_eval.pkl",     "value_accuracy",  "max"),
+    ("train_gtv_value_acc_last20pct", "training_gtv_eval.pkl",     "value_accuracy",  "last20pct"),
+    ("train_nt_policy_acc_final",     "training_nt_gtv_eval.pkl",  "policy_accuracy", "last"),
+    ("train_nt_policy_acc_max",       "training_nt_gtv_eval.pkl",  "policy_accuracy", "max"),
+    ("train_nt_policy_acc_last20pct", "training_nt_gtv_eval.pkl",  "policy_accuracy", "last20pct"),
+    ("random_value_acc_final",        "random_gtv_eval.pkl",       "value_accuracy",  "last"),
+    ("random_value_acc_max",          "random_gtv_eval.pkl",       "value_accuracy",  "max"),
+    ("random_value_acc_last20pct",    "random_gtv_eval.pkl",       "value_accuracy",  "last20pct"),
+    ("random_nt_policy_acc_final",    "random_nt_gtv_eval.pkl",    "policy_accuracy", "last"),
+    ("random_nt_policy_acc_max",      "random_nt_gtv_eval.pkl",    "policy_accuracy", "max"),
+    ("random_nt_policy_acc_last20pct","random_nt_gtv_eval.pkl",    "policy_accuracy", "last20pct"),
+    ("gamedata_value_acc_final",      "gamedata_overall_acc.pkl",  "Overall Value Accuracy",  "last"),
+    ("gamedata_value_acc_last20pct",  "gamedata_overall_acc.pkl",  "Overall Value Accuracy",  "last20pct"),
+    ("gamedata_policy_acc_final",     "gamedata_overall_acc.pkl",  "Overall Policy Accuracy", "last"),
+    ("gamedata_policy_acc_last20pct", "gamedata_overall_acc.pkl",  "Overall Policy Accuracy", "last20pct"),
 ]
 
 
@@ -47,6 +53,10 @@ def reduce_series_values(values: list[float], reduction: str) -> float | None:
         return clean[-1]
     if reduction == "max":
         return max(clean)
+    if reduction == "last20pct":
+        k = max(1, len(clean) // 5)
+        tail = clean[-k:]
+        return sum(tail) / len(tail)
     raise ValueError(f"unknown reduction: {reduction}")
 
 

@@ -10,6 +10,8 @@ from a0.utils.plotting import (
     plot_stacked_proportional,
     plot_std_error,
     plot_shaded_ridgeline,
+    plot_percentile_bands,
+    plot_value_proportions,
     plot_bar,
 )
 
@@ -29,36 +31,51 @@ def safeplot(plot_callable: Callable[[], None]) -> None:
 
 # === distribution series plots ===
 
-def plot_dataset_pre_balance_distributions() -> None:
-    series = load_distribution_series(f"{config.eval_dir}/dataset_pre_balance_distributions.pkl")
+def _plot_distribution_variants(series_fn: str, title: str, fn_base: str) -> None:
+    '''Render ridgeline + percentile bands + value-proportion plots for one distribution series.'''
+    series = load_distribution_series(f"{config.eval_dir}/{series_fn}")
+    labels = [str(x) for x in series.x]
     plot_shaded_ridgeline(
-        trials=series.trials,
-        labels=[str(x) for x in series.x],
-        title="Dataset Pre Balance Distributions",
+        trials=series.trials, labels=labels,
+        title=title,
         x_label="Value", y_label="Iteration",
-        fn="dataset_pre_balance_distributions",
+        fn=fn_base,
+    )
+    plot_percentile_bands(
+        trials=series.trials, labels=labels,
+        title=f"{title} (percentile bands)",
+        x_label="Iteration", y_label="Value",
+        fn=f"{fn_base}_bands",
+    )
+    plot_value_proportions(
+        trials=series.trials, labels=labels,
+        title=f"{title} (value-bin proportions)",
+        x_label="Iteration", y_label="Proportion of samples",
+        fn=f"{fn_base}_proportions",
+    )
+
+
+def plot_dataset_pre_balance_distributions() -> None:
+    _plot_distribution_variants(
+        "dataset_pre_balance_distributions.pkl",
+        "Dataset Pre Balance Distributions",
+        "dataset_pre_balance_distributions",
     )
 
 
 def plot_dataset_post_balance_distributions() -> None:
-    series = load_distribution_series(f"{config.eval_dir}/dataset_post_balance_distributions.pkl")
-    plot_shaded_ridgeline(
-        trials=series.trials,
-        labels=[str(x) for x in series.x],
-        title="Dataset Post Balance Distributions",
-        x_label="Value", y_label="Iteration",
-        fn="dataset_post_balance_distributions",
+    _plot_distribution_variants(
+        "dataset_post_balance_distributions.pkl",
+        "Dataset Post Balance Distributions",
+        "dataset_post_balance_distributions",
     )
 
 
 def plot_random_nd_value_distributions() -> None:
-    series = load_distribution_series(f"{config.eval_dir}/random_nd_value_distributions.pkl")
-    plot_shaded_ridgeline(
-        trials=series.trials,
-        labels=[str(x) for x in series.x],
-        title="Model Value Predictions on random_nd",
-        x_label="Value", y_label="Iteration",
-        fn="random_nd_value_distributions",
+    _plot_distribution_variants(
+        "random_nd_value_distributions.pkl",
+        "Model Value Predictions on random_nd",
+        "random_nd_value_distributions",
     )
 
 

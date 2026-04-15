@@ -519,6 +519,143 @@ def plot_shaded_ridgeline(
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.close()
 
+def _pool_samples_per_iter(trials: list[list[list[float]]]) -> list[list[float]]:
+    '''Pool samples across trials at each iteration. Empty trial slots skipped.'''
+    num_iters = len(trials[0])
+    pooled: list[list[float]] = [[] for _ in range(num_iters)]
+    for trial in trials:
+        for i in range(num_iters):
+            if trial[i]:
+                pooled[i].extend(trial[i])
+    return pooled
+
+
+def plot_percentile_bands(
+    trials: list[list[list[float]]],
+    labels: list[str],
+    title: str,
+    x_label: str,
+    y_label: str,
+    fn: str,
+    value_range: tuple[float, float] = (-1, 1),
+) -> None:
+    '''
+    Percentile-band + mean overlay summary of a DistributionSeries.
+    For each iteration, pools samples across all trials and plots:
+        - shaded 5-95% band (outer)
+        - shaded 25-75% IQR band (inner)
+        - median line (solid)
+        - mean line (dashed)
+    Robust to non-normal cases (bimodal, degenerate, discrete).
+    '''
+    if not trials or not trials[0]:
+        logger.error(f"plot_percentile_bands: empty trials, skipping {fn}")
+        return
+
+    pooled = _pool_samples_per_iter(trials)
+    num_iters = len(pooled)
+    positions = np.arange(num_iters)
+
+    pct = np.full((num_iters, 5), np.nan)
+    mean = np.full(num_iters, np.nan)
+    for i, samples in enumerate(pooled):
+        if not samples:
+            continue
+        arr = np.asarray(samples, dtype=np.float64)
+        pct[i] = np.percentile(arr, [5, 25, 50, 75, 95])
+        mean[i] = arr.mean()
+
+    valid = ~np.isnan(mean)
+    if not valid.any():
+        logger.error(f"plot_percentile_bands: no non-empty iterations, skipping {fn}")
+        return
+
+    x = positions[valid]
+    p5, p25, p50, p75, p95 = (pct[valid, k] for k in range(5))
+
+    plt.figure(figsize=(16, 9))
+    plt.fill_between(x, p5, p95, color="C0", alpha=0.18, label="5-95%")
+    plt.fill_between(x, p25, p75, color="C0", alpha=0.38, label="25-75% (IQR)")
+    plt.plot(x, p50, color="black", linewidth=1.6, label="median")
+    plt.plot(x, mean[valid], color="crimson", linewidth=1.4, linestyle="--", label="mean")
+
+    plt.xticks(positions, labels, rotation=45 if len(labels) > 15 else 0)
+    plt.title(title)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    margin = 0.05 * (value_range[1] - value_range[0])
+    plt.ylim(value_range[0] - margin, value_range[1] + margin)
+    plt.grid(True, alpha=0.3)
+    plt.legend(loc="lower right")
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}{fn}.png")
+    plt.close()
+
+
+def plot_value_proportions(
+    trials: list[list[list[float]]],
+    labels: list[str],
+    title: str,
+    x_label: str,
+    y_label: str,
+    fn: str,
+    value_range: tuple[float, float] = (-1, 1),
+    n_bins: int = 10,
+) -> None:
+    '''
+    Stacked value-proportion summary of a DistributionSeries.
+    For each iteration, pools samples across trials and shows the fraction
+    falling into each of n_bins equal-width bins over value_range.
+    Bins are colored by bin center (RdBu_r: blue = negative, red = positive),
+    with a colorbar. Best view for discrete or bimodal distributions.
+    '''
+    if not trials or not trials[0]:
+        logger.error(f"plot_value_proportions: empty trials, skipping {fn}")
+        return
+
+    pooled = _pool_samples_per_iter(trials)
+    num_iters = len(pooled)
+    positions = np.arange(num_iters)
+    edges = np.linspace(value_range[0], value_range[1], n_bins + 1)
+
+    props = np.zeros((n_bins, num_iters))
+    valid = np.zeros(num_iters, dtype=bool)
+    for i, samples in enumerate(pooled):
+        if not samples:
+            continue
+        arr = np.clip(np.asarray(samples, dtype=np.float64), value_range[0], value_range[1])
+        counts, _ = np.histogram(arr, bins=edges)
+        props[:, i] = counts / arr.size
+        valid[i] = True
+
+    if not valid.any():
+        logger.error(f"plot_value_proportions: no non-empty iterations, skipping {fn}")
+        return
+
+    cmap = plt.get_cmap("RdBu_r")
+    norm = plt.Normalize(vmin=value_range[0], vmax=value_range[1])
+    bin_centers = 0.5 * (edges[:-1] + edges[1:])
+    bin_colors = [cmap(norm(c)) for c in bin_centers]
+
+    x = positions[valid]
+    fig, ax = plt.subplots(figsize=(16, 9))
+    ax.stackplot(x, props[:, valid], colors=bin_colors, edgecolor="none")
+    ax.set_title(title)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_ylim(0, 1)
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, rotation=45 if len(labels) > 15 else 0)
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar = fig.colorbar(sm, ax=ax, fraction=0.035, pad=0.02)
+    cbar.set_label("bin center (value)")
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}{fn}.png")
+    plt.close()
+
+
 def plot_bar(title: str, series: tuple[str, list[int], list[float]], x_label: str, y_label: str, fn: str) -> None:
     plt.figure(figsize=(16, 9))
     
