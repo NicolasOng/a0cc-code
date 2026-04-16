@@ -38,5 +38,5 @@
     "alternative_target": "normal",
     "dataset_balance_method": "none",
     "num_buckets_for_balance": 2,
-    "use_weighted_loss": false
+    "max_weight_ratio": 10.0
 }

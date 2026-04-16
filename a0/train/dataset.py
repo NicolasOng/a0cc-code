@@ -53,11 +53,16 @@ class DatasetData:
     def __init__(self):
         self.epoch_data = []
 
-def value_loss_function(pred_values: jnp.ndarray, values_label: jnp.ndarray) -> jnp.ndarray:
+def value_loss_function(pred_values: jnp.ndarray, values_label: jnp.ndarray, sample_weights: Optional[jnp.ndarray] = None) -> jnp.ndarray:
     """
     Computes the L2 loss between predicted values and ground truth values.
+    If sample_weights is provided (shape broadcastable to the per-element loss),
+    computes a weighted mean; otherwise a plain mean.
     """
-    return jnp.mean(optax.l2_loss(pred_values, values_label)).astype(jnp.float32)
+    per_elem = optax.l2_loss(pred_values, values_label)
+    if sample_weights is None:
+        return jnp.mean(per_elem).astype(jnp.float32)
+    return jnp.mean(per_elem * sample_weights).astype(jnp.float32)
 
 def value_accuracy_function(pred_values: jnp.ndarray, values_label: jnp.ndarray) -> float:
     '''
@@ -117,12 +122,13 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     value_label: jnp.ndarray = batch['value']
     policy_label: jnp.ndarray = batch['policy']
     policy_mask: jnp.ndarray = batch['mask']
+    sample_weights: Optional[jnp.ndarray] = batch.get('weights')
 
     # get the model's predictions
     value, policy = model.train_inference(board_input)
 
     # calculate the value loss and accuracy
-    value_loss = value_loss_function(value, value_label)
+    value_loss = value_loss_function(value, value_label, sample_weights)
     value_accuracy = value_accuracy_function(value, value_label)
 
     # get the mask for valid moves in the policy
@@ -183,12 +189,13 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
 
     for ts, batch in enumerate(batches):
         # convert the batch to a dictionary
-        board_batch, value_batch, policy_batch, mask_batch = batch
+        board_batch, value_batch, policy_batch, mask_batch, weights_batch = batch
         batch = {
             'board': board_batch,  # (N, board_size, board_size)
             'value': value_batch,  # (N, 1)
             'policy': policy_batch,  # (N, board_size ** 4)
-            'mask': mask_batch  # (N, board_size ** 4)
+            'mask': mask_batch,  # (N, board_size ** 4)
+            'weights': weights_batch  # (N, 1)
         }
         loss, value_loss, policy_loss, value_accuracy, policy_accuracy = train_step(model, optimizer, batch)
         logger.info(f"Training Step {ts}/{num_batches}, "

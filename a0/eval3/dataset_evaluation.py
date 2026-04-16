@@ -26,7 +26,7 @@ def collect_value_predictions(model: AlphaZeroModel, evaluation_dataset: Dataset
     '''
     predictions: list[float] = []
     for batch in evaluation_dataset.jnp_batches():
-        board_input, _, _, _ = batch
+        board_input, _, _, _, _ = batch
         value, _ = model.inference(board_input)
         predictions.extend(np.array(value, dtype=np.float32).flatten().tolist())
     return predictions

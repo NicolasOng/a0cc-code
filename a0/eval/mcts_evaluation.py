@@ -52,7 +52,7 @@ def evaluate_model_mcts(player: A0Player, evaluation_dataset: Dataset):
     
     for ts, batch in tqdm(enumerate(batches)):
         # get the board input, value label, policy label, and mask from the batch
-        board_input, value_label, policy_label, policy_mask = batch
+        board_input, value_label, policy_label, policy_mask, _ = batch
 
         # convert the board input to a Board object
         if board_input.shape[1] == 1:

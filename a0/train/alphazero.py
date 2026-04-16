@@ -521,12 +521,18 @@ def train_alphazero() -> None:
         eb_dataset.print_bucket_distribution()
         pre_balance_values = eb_dataset.values.flatten().copy()
         
-        if config.dataset_balance_method == "buckets":
+        if config.dataset_balance_method == "subsample_buckets":
             logger.log(25, f"Balancing values into {config.num_buckets_for_balance} buckets (win vs non-win)...")
             eb_dataset.balance_values_symmetric(n_buckets=config.num_buckets_for_balance)
             new_win_count, new_draw_count, new_loss_count = eb_dataset.get_distribution()
             logger.log(25, f"After balancing: {new_win_count} wins, {new_draw_count} draws, {new_loss_count} losses")
             eb_dataset.print_bucket_distribution()
+        elif config.dataset_balance_method == "weighted_buckets":
+            logger.log(25, f"Computing symmetric-pair value weights ({config.num_buckets_for_balance} buckets, max_ratio={config.max_weight_ratio})...")
+            eb_dataset.compute_value_weights_symmetric(
+                n_buckets=config.num_buckets_for_balance,
+                max_weight_ratio=config.max_weight_ratio,
+            )
         
         # capture dataset diagnostics: distributions before and after balancing
         post_balance_values = eb_dataset.values.flatten().copy()

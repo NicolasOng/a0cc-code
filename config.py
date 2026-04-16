@@ -66,9 +66,9 @@ class Config:
     td_lambda: float
 
     alternative_target: str  # "gt" | "gt_value" | "gt_next_value" | "td_0" | "td_lambda" | "normal"
-    dataset_balance_method: str  # "buckets" | "none"
+    dataset_balance_method: str  # "none" | "subsample_buckets" | "weighted_buckets"
     num_buckets_for_balance: int
-    use_weighted_loss: bool
+    max_weight_ratio: float
 
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''

@@ -167,7 +167,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[
     
     for ts, batch in tqdm(enumerate(batches)):
         # get the board input, value label, and policy label from the batch
-        board_input, value_label, policy_label, policy_mask = batch
+        board_input, value_label, policy_label, policy_mask, _ = batch
 
         # get the model's predictions, and convert them to numpy arrays
         value, policy = model.inference(board_input)
