@@ -26,6 +26,7 @@ from a0.eval.training_data import GameDataStats, game_data_list_stats
 from a0.experience_buffer import ExperienceBuffer, ExperienceData
 
 from utils.log import get_logger, setup_logging
+from utils.system_metrics import SystemMetricsLogger
 logger = get_logger(__name__)
 
 def game_data_to_training_set(game_data: GameData) -> list[ExperienceData]:
@@ -635,20 +636,34 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    # Retry loop: on detected collapse in the early-iteration window, restart
-    # with a fresh model and a new seed. max_collapse_retries=N allows up to N+1
-    # total attempts (initial + N retries).
-    total_attempts = config.max_collapse_retries + 1
-    succeeded = False
-    for attempt in range(total_attempts):
-        logger.log(25, f"=== Training attempt {attempt + 1}/{total_attempts} ===")
-        force_fresh = attempt > 0
-        if train_alphazero(seed=attempt, force_fresh=force_fresh):
-            logger.log(25, f"Training completed successfully on attempt {attempt + 1}.")
-            succeeded = True
-            break
-        logger.log(30, f"Attempt {attempt + 1} ended early due to collapse detection.")
+    # Background system-metrics logger (runs across all retry attempts). System-wide
+    # metrics include all self-play workers, not just this process.
+    metrics_logger: Optional[SystemMetricsLogger] = None
+    if config.log_system_metrics:
+        metrics_logger = SystemMetricsLogger(
+            output_path=config.log_dir + "system_metrics.jsonl",
+            interval_seconds=config.system_metrics_interval_seconds,
+        ).start()
+        logger.log(25, f"System metrics → {config.log_dir}system_metrics.jsonl (every {config.system_metrics_interval_seconds}s)")
 
-    if not succeeded:
-        logger.log(40, f"Training failed on all {total_attempts} attempts (collapse each time). Aborting.")
-        raise RuntimeError(f"Collapse detected on all {total_attempts} training attempts.")
+    try:
+        # Retry loop: on detected collapse in the early-iteration window, restart
+        # with a fresh model and a new seed. max_collapse_retries=N allows up to N+1
+        # total attempts (initial + N retries).
+        total_attempts = config.max_collapse_retries + 1
+        succeeded = False
+        for attempt in range(total_attempts):
+            logger.log(25, f"=== Training attempt {attempt + 1}/{total_attempts} ===")
+            force_fresh = attempt > 0
+            if train_alphazero(seed=attempt, force_fresh=force_fresh):
+                logger.log(25, f"Training completed successfully on attempt {attempt + 1}.")
+                succeeded = True
+                break
+            logger.log(30, f"Attempt {attempt + 1} ended early due to collapse detection.")
+
+        if not succeeded:
+            logger.log(40, f"Training failed on all {total_attempts} attempts (collapse each time). Aborting.")
+            raise RuntimeError(f"Collapse detected on all {total_attempts} training attempts.")
+    finally:
+        if metrics_logger is not None:
+            metrics_logger.stop()
