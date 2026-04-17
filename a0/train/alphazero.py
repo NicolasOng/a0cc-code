@@ -450,24 +450,61 @@ def get_most_recent_model_path() -> Optional[tuple[str, int]]:
         return None
     return (os.path.join(config.training_dir, most_recent_model_file), max_iteration)
 
-def train_alphazero() -> None:
+def _detect_collapse(model, training_set: list[ExperienceData]) -> tuple[bool, float]:
+    """
+    Run inference on a small sample of self-play states and measure the std of the
+    model's value predictions. Collapse is bimodal (healthy runs have std ~0.3-0.8,
+    collapsed runs have std ~0), so a threshold-based check is robust.
+
+    Returns (collapsed, std). Runs on GPU but with a small batch (<=256) to keep
+    memory pressure minimal — self-play workers have already exited by this point,
+    so GPU should be mostly free.
+    """
+    sample_size = min(256, len(training_set))
+    sample_states = np.stack([e.state for e in training_set[:sample_size]]).astype(np.float32)
+
+    # free any lingering JIT state before running detection inference
+    jax.clear_caches()
+    gc.collect()
+
+    pred_values, _ = model.inference(jnp.asarray(sample_states))
+    pred_std = float(jnp.std(pred_values))
+    collapsed = pred_std < config.collapse_threshold_std
+    return collapsed, pred_std
+
+
+def train_alphazero(seed: int = 0, force_fresh: bool = False) -> bool:
+    """
+    Returns True on successful completion, False if collapse was detected early
+    (so the caller can retry). When force_fresh=True, any existing model_*.pkl
+    files in the training dir are removed and training starts from scratch with
+    the provided seed.
+    """
     os.makedirs(config.plot_dir + "training_plots", exist_ok=True)
 
-    most_recent_model = get_most_recent_model_path()
+    if force_fresh and os.path.isdir(config.training_dir):
+        for f in os.listdir(config.training_dir):
+            if f.startswith("model_") and f.endswith(".pkl"):
+                os.remove(os.path.join(config.training_dir, f))
+        logger.info(f"Fresh-start retry (seed={seed}); cleared prior model checkpoints.")
+        most_recent_model = None
+    else:
+        most_recent_model = get_most_recent_model_path()
+
     if most_recent_model is not None:
         model_path, starting_iteration = most_recent_model
         logger.info(f"Resuming training from model: {model_path} at iteration {starting_iteration}")
     else:
         model_path = None
         starting_iteration = 0
-        logger.info("Starting new training from scratch.")
-    
+        logger.info(f"Starting new training from scratch (seed={seed}).")
+
     if model_path:
         model = load_model(model_path)
     else:
         model = create_model(
             config.board_size,
-            rngs=nnx.Rngs({'params': jax.random.PRNGKey(0)})
+            rngs=nnx.Rngs({'params': jax.random.PRNGKey(seed)})
         )
         save_model(config.training_dir + f'/model_{0}.pkl', model)
     
@@ -567,12 +604,21 @@ def train_alphazero() -> None:
         if config.training_dir:
             save_model(config.training_dir + f'model_{i + 1}.pkl', model)
 
+        # collapse detection — only in the early-iteration danger window
+        if config.detect_collapse and (i + 1) <= config.collapse_detection_iteration:
+            collapsed, pred_std = _detect_collapse(model, training_set)
+            logger.log(25, f"Collapse detection (iter {i + 1}): prediction std = {pred_std:.4f}")
+            if collapsed:
+                logger.log(30, f"COLLAPSE DETECTED at iter {i + 1}: std {pred_std:.4f} < threshold {config.collapse_threshold_std}")
+                return False
+
         # free stale JIT caches and unreferenced GPU memory before the next iteration
         jax.clear_caches()
         gc.collect()
 
     # after all iterations, plot all the training data
     plot_model_performance("training_plots/full_a0", train_datas)
+    return True
 
 if __name__ == "__main__":
     setup_logging(
@@ -589,5 +635,20 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    # Example usage
-    train_alphazero()
+    # Retry loop: on detected collapse in the early-iteration window, restart
+    # with a fresh model and a new seed. max_collapse_retries=N allows up to N+1
+    # total attempts (initial + N retries).
+    total_attempts = config.max_collapse_retries + 1
+    succeeded = False
+    for attempt in range(total_attempts):
+        logger.log(25, f"=== Training attempt {attempt + 1}/{total_attempts} ===")
+        force_fresh = attempt > 0
+        if train_alphazero(seed=attempt, force_fresh=force_fresh):
+            logger.log(25, f"Training completed successfully on attempt {attempt + 1}.")
+            succeeded = True
+            break
+        logger.log(30, f"Attempt {attempt + 1} ended early due to collapse detection.")
+
+    if not succeeded:
+        logger.log(40, f"Training failed on all {total_attempts} attempts (collapse each time). Aborting.")
+        raise RuntimeError(f"Collapse detected on all {total_attempts} training attempts.")

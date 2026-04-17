@@ -31,5 +31,9 @@
     "alternative_target": "normal",
     "dataset_balance_method": "none",
     "num_buckets_for_balance": 2,
-    "max_weight_ratio": 10.0
+    "max_weight_ratio": 10.0,
+    "detect_collapse": true,
+    "collapse_detection_iteration": 6,
+    "collapse_threshold_std": 0.1,
+    "max_collapse_retries": 5
 }

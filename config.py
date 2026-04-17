@@ -70,6 +70,14 @@ class Config:
     num_buckets_for_balance: int
     max_weight_ratio: float
 
+    detect_collapse: bool
+    collapse_detection_iteration: int  # check iterations 1..N (1-indexed)
+    collapse_threshold_std: float
+    max_collapse_retries: int
+
+    log_system_metrics: bool
+    system_metrics_interval_seconds: float
+
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
         Initialize the configuration from a JSON file.
