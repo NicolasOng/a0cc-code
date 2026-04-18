@@ -31,6 +31,7 @@ orbax_checkpoint==0.11.1+computecanada
 packaging==25.0+computecanada
 pillow==11.1.0+computecanada
 protobuf==5.29.3+computecanada
+psutil==7.2.2+computecanada
 pybind11==2.13.6+computecanada
 pygments==2.19.2+computecanada
 pyparsing==3.2.3+computecanada
