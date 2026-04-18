@@ -78,6 +78,8 @@ class Config:
     log_system_metrics: bool
     system_metrics_interval_seconds: float
 
+    c_puct: float
+
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
         Initialize the configuration from a JSON file.

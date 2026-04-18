@@ -5,10 +5,13 @@ from concurrent.futures import Future, wait, FIRST_COMPLETED
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 import gc
+import json
+import time
 import pickle
 import dill
 
 import jax
+import jax.numpy as jnp
 from flax import nnx
 import numpy as np
 import optax
@@ -451,7 +454,7 @@ def get_most_recent_model_path() -> Optional[tuple[str, int]]:
         return None
     return (os.path.join(config.training_dir, most_recent_model_file), max_iteration)
 
-def _detect_collapse(model, training_set: list[ExperienceData]) -> tuple[bool, float]:
+def _detect_collapse(model: AlphaZeroModel, training_set: list[ExperienceData]) -> tuple[bool, float]:
     """
     Run inference on a small sample of self-play states and measure the std of the
     model's value predictions. Collapse is bimodal (healthy runs have std ~0.3-0.8,
@@ -462,7 +465,7 @@ def _detect_collapse(model, training_set: list[ExperienceData]) -> tuple[bool, f
     so GPU should be mostly free.
     """
     sample_size = min(256, len(training_set))
-    sample_states = np.stack([e.state for e in training_set[:sample_size]]).astype(np.float32)
+    sample_states = np.stack([e.board for e in training_set[:sample_size]]).astype(np.float32)
 
     # free any lingering JIT state before running detection inference
     jax.clear_caches()
@@ -474,12 +477,13 @@ def _detect_collapse(model, training_set: list[ExperienceData]) -> tuple[bool, f
     return collapsed, pred_std
 
 
-def train_alphazero(seed: int = 0, force_fresh: bool = False) -> bool:
+def train_alphazero(seed: int = 0, force_fresh: bool = False) -> dict[str, Any]:
     """
-    Returns True on successful completion, False if collapse was detected early
-    (so the caller can retry). When force_fresh=True, any existing model_*.pkl
-    files in the training dir are removed and training starts from scratch with
-    the provided seed.
+    Returns a result dict:
+      {"success": bool, "collapse_iteration": Optional[int], "collapse_std": Optional[float]}
+    On detected collapse, success=False and the other fields describe the trigger.
+    When force_fresh=True, any existing model_*.pkl files in the training dir are
+    removed and training starts from scratch with the provided seed.
     """
     os.makedirs(config.plot_dir + "training_plots", exist_ok=True)
 
@@ -611,7 +615,7 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False) -> bool:
             logger.log(25, f"Collapse detection (iter {i + 1}): prediction std = {pred_std:.4f}")
             if collapsed:
                 logger.log(30, f"COLLAPSE DETECTED at iter {i + 1}: std {pred_std:.4f} < threshold {config.collapse_threshold_std}")
-                return False
+                return {"success": False, "collapse_iteration": i + 1, "collapse_std": pred_std}
 
         # free stale JIT caches and unreferenced GPU memory before the next iteration
         jax.clear_caches()
@@ -619,7 +623,7 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False) -> bool:
 
     # after all iterations, plot all the training data
     plot_model_performance("training_plots/full_a0", train_datas)
-    return True
+    return {"success": True, "collapse_iteration": None, "collapse_std": None}
 
 if __name__ == "__main__":
     setup_logging(
@@ -646,6 +650,8 @@ if __name__ == "__main__":
         ).start()
         logger.log(25, f"System metrics → {config.log_dir}system_metrics.jsonl (every {config.system_metrics_interval_seconds}s)")
 
+    retry_log_path = config.log_dir + "retry_log.jsonl"
+
     try:
         # Retry loop: on detected collapse in the early-iteration window, restart
         # with a fresh model and a new seed. max_collapse_retries=N allows up to N+1
@@ -655,7 +661,31 @@ if __name__ == "__main__":
         for attempt in range(total_attempts):
             logger.log(25, f"=== Training attempt {attempt + 1}/{total_attempts} ===")
             force_fresh = attempt > 0
-            if train_alphazero(seed=attempt, force_fresh=force_fresh):
+            attempt_start = time.time()
+            result = train_alphazero(seed=attempt, force_fresh=force_fresh)
+            attempt_end = time.time()
+
+            entry = {
+                "attempt": attempt + 1,
+                "total_attempts_configured": total_attempts,
+                "seed": attempt,
+                "fresh_start": force_fresh,
+                "config_path": config.path,
+                "start_time": attempt_start,
+                "end_time": attempt_end,
+                "elapsed_seconds": round(attempt_end - attempt_start, 2),
+                "outcome": "succeeded" if result["success"] else "collapsed",
+                "collapse_iteration": result.get("collapse_iteration"),
+                "collapse_std": result.get("collapse_std"),
+                "collapse_threshold_std": config.collapse_threshold_std,
+            }
+            try:
+                with open(retry_log_path, "a") as f:
+                    f.write(json.dumps(entry) + "\n")
+            except OSError as e:
+                logger.log(30, f"Failed to write retry log entry: {e}")
+
+            if result["success"]:
                 logger.log(25, f"Training completed successfully on attempt {attempt + 1}.")
                 succeeded = True
                 break

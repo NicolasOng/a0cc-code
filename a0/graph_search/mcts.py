@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from collections import deque
 
 from cc.ground_truth import GroundTruth
+from config import config
 
 class MCTSProblem(Protocol):
     def initial_state(self) -> Any:
@@ -154,8 +155,8 @@ class MCTS:
         exploit = node.reward / node.visits
         if not node.is_maximizing:
             exploit = -exploit
-        # exploration/prior factor (c * P * (sqrt(N) / (1 + n)))
-        explore = 1.0 * node.prior * (math.sqrt(node.parent.visits) / (1 + node.visits))
+        # exploration/prior factor (c_puct * P * (sqrt(N) / (1 + n)))
+        explore = config.c_puct * node.prior * (math.sqrt(node.parent.visits) / (1 + node.visits))
         return exploit + explore
 
     def get_best_root_child(self) -> Optional[MCTSNode]:

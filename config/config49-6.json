@@ -37,5 +37,6 @@
     "collapse_threshold_std": 0.1,
     "max_collapse_retries": 5,
     "log_system_metrics": true,
-    "system_metrics_interval_seconds": 60.0
+    "system_metrics_interval_seconds": 60.0,
+    "c_puct": 1.0
 }
