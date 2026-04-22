@@ -280,3 +280,40 @@ class GroundTruth:
         _, move_outcomes = self.get_1ply_policy_moves(board)
         # check if all outcomes are the same
         return all(x == move_outcomes[0] for x in move_outcomes)
+
+class RankUnrank:
+    '''
+    Provides methods to rank and unrank boards.
+    This class uses the CCDefaultRank object to perform these operations.
+    '''
+
+    def __init__(self):
+        self.r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
+        self.s = CCState(config.num_spots, config.num_pieces, config.num_players)
+        self.cc = Game(board_size=config.board_size,
+                        num_pieces=config.num_pieces,
+                        repeats_for_draw=-1,
+                        no_reverse_moves=not config.backwards_moves,
+                        no_illegal_moves=not config.illegal_moves,
+                        no_side_moves=not config.sideways_moves)
+    
+    def rank(self, board: Board) -> int:
+        '''
+        Returns the rank of the given board.
+        '''
+        self.s.initialize_from_board(board)
+        return self.r.rank(self.s)
+    
+    def unrank(self, rank: int) -> Board:
+        '''
+        Returns a board from the given rank.
+        '''
+        self.r.unrank(rank, self.s)
+        return self.s.get_board()
+
+    def get_max_rank(self) -> int:
+        '''
+        Returns the maximum rank for the current configuration.
+        This is the total number of unique board states.
+        '''
+        return self.r.get_max_rank()

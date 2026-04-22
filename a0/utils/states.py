@@ -5,7 +5,7 @@ import random
 import numpy as np
 
 from cc.core import Board, Game, Player
-from cc.ground_truth import GroundTruth
+from cc.ground_truth import GroundTruth, RankUnrank
 
 from a0.experience_buffer import ExperienceData
 from a0.dataset import Dataset
@@ -71,6 +71,15 @@ def get_random_states(n: int, gt: GroundTruth) -> list[Board]:
     '''
     max_rank = gt.get_max_rank()
     return [get_random_state(max_rank, gt) for _ in range(n)]
+
+def get_random_states_no_gt(n: int) -> list[Board]:
+    '''
+    Returns a list of random states.
+    Uniqueness is not guaranteed.
+    '''
+    ru = RankUnrank()
+    max_rank = ru.get_max_rank()
+    return [ru.unrank(random.randint(0, max_rank - 1)) for _ in range(n)]
 
 def remove_duplicates(states: list[Board], state_info_list: Optional[list[StateInfo]] = None) -> tuple[list[Board], Optional[list[StateInfo]]]:
     '''
@@ -161,7 +170,9 @@ def filter_state_list(
         remove_draws: bool = False,
         remove_illegal: bool = False,
         remove_trivial: bool = False,
-        remove_terminal: bool = False
+        remove_terminal: bool = False,
+        remove_wins: bool = False,
+        remove_losses: bool = False
         ) -> tuple[list[Board], list[StateInfo]]:
     '''
     Filters the given state list based on the provided criteria.
@@ -175,6 +186,10 @@ def filter_state_list(
         if remove_trivial and si.is_trivial:
             return False
         if remove_terminal and si.is_terminal:
+            return False
+        if remove_wins and si.outcome > 0:
+            return False
+        if remove_losses and si.outcome < 0:
             return False
         return True
 
@@ -250,3 +265,19 @@ def get_gtd_from_states(states: list[Board], gt: GroundTruth, batch_size: int, s
     if shuffle:
         b.shuffle()
     return b
+
+def get_rd_from_states(states: list[Board], batch_size: int, shuffle: bool) -> Dataset:
+    '''
+    Gets a random dataset from a list of states.
+    The values and policies are random, but the masks are correct.
+    '''
+    boards = np.stack([board_to_input(state)[0] for state in states]) # (N, board_size, board_size, 2)
+    policies = np.random.rand(len(states), config.board_size ** 4).astype(np.float32) # (N, board_size ** 4)
+    masks = np.stack([get_legal_move_mask_from_state(state, for_model=True) for state in states]) # (N, board_size ** 4)
+    values = np.random.uniform(-1, 1, size=(len(states), 1)).astype(np.float32) # (N, 1)
+
+    dataset = Dataset(batch_size)
+    dataset.set(boards, values, policies, masks)
+    if shuffle:
+        dataset.shuffle()
+    return dataset
