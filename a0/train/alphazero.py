@@ -25,6 +25,7 @@ from a0.model import AlphaZeroModel, MultiTrunkAlphaZeroModel, load_model, save_
 from cc.core import Game, Player
 from cc.ground_truth import GroundTruth
 from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data
+from a0.eval.model_diagnostics import log_iteration_diagnostics
 from a0.eval.training_data import GameDataStats, game_data_list_stats
 from a0.experience_buffer import ExperienceBuffer, ExperienceData
 from a0.utils.states import get_rd_from_states, get_random_states_no_gt, remove_duplicates
@@ -455,38 +456,18 @@ def get_most_recent_model_path() -> Optional[tuple[str, int]]:
         return None
     return (os.path.join(config.training_dir, most_recent_model_file), max_iteration)
 
-def _detect_collapse(model: AlphaZeroModel, training_set: list[ExperienceData]) -> tuple[bool, float]:
-    """
-    Run inference on a small sample of self-play states and measure the std of the
-    model's value predictions. Collapse is bimodal (healthy runs have std ~0.3-0.8,
-    collapsed runs have std ~0), so a threshold-based check is robust.
-
-    Returns (collapsed, std). Runs on GPU but with a small batch (<=256) to keep
-    memory pressure minimal — self-play workers have already exited by this point,
-    so GPU should be mostly free.
-    """
-    sample_size = min(256, len(training_set))
-    sample_states = np.stack([e.board for e in training_set[:sample_size]]).astype(np.float32)
-
-    # free any lingering JIT state before running detection inference
-    jax.clear_caches()
-    gc.collect()
-
-    pred_values, _ = model.inference(jnp.asarray(sample_states))
-    pred_std = float(jnp.std(pred_values))
-    collapsed = pred_std < config.collapse_threshold_std
-    return collapsed, pred_std
-
-
-def train_alphazero(seed: int = 0, force_fresh: bool = False) -> dict[str, Any]:
+def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) -> dict[str, Any]:
     """
     Returns a result dict:
       {"success": bool, "collapse_iteration": Optional[int], "collapse_std": Optional[float]}
     On detected collapse, success=False and the other fields describe the trigger.
     When force_fresh=True, any existing model_*.pkl files in the training dir are
     removed and training starts from scratch with the provided seed.
+    `attempt` is the 1-indexed retry number, stamped into the iteration-diagnostics
+    jsonl so retries are distinguishable.
     """
     os.makedirs(config.plot_dir + "training_plots", exist_ok=True)
+    diagnostics_log_path = config.log_dir + "iteration_diagnostics.jsonl"
 
     if force_fresh and os.path.isdir(config.training_dir):
         for f in os.listdir(config.training_dir):
@@ -614,11 +595,14 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False) -> dict[str, Any]:
         if config.training_dir:
             save_model(config.training_dir + f'model_{i + 1}.pkl', model)
 
-        # collapse detection — only in the early-iteration danger window
+        # per-iteration diagnostics on the rsrd probe batch (always on, independent
+        # of config.detect_collapse — the flag only gates the early-abort below).
+        diagnostics = log_iteration_diagnostics(model, rsrd, diagnostics_log_path, attempt, i + 1)
+        pred_std = diagnostics['pred_std']
+
+        # early-abort on collapse — only in the danger window, only if enabled
         if config.detect_collapse and (i + 1) <= config.collapse_detection_iteration:
-            collapsed, pred_std = _detect_collapse(model, training_set)
-            logger.log(25, f"Collapse detection (iter {i + 1}): prediction std = {pred_std:.4f}")
-            if collapsed:
+            if pred_std < config.collapse_threshold_std:
                 logger.log(30, f"COLLAPSE DETECTED at iter {i + 1}: std {pred_std:.4f} < threshold {config.collapse_threshold_std}")
                 return {"success": False, "collapse_iteration": i + 1, "collapse_std": pred_std}
 
@@ -667,7 +651,7 @@ if __name__ == "__main__":
             logger.log(25, f"=== Training attempt {attempt + 1}/{total_attempts} ===")
             force_fresh = attempt > 0
             attempt_start = time.time()
-            result = train_alphazero(seed=attempt, force_fresh=force_fresh)
+            result = train_alphazero(seed=attempt, force_fresh=force_fresh, attempt=attempt + 1)
             attempt_end = time.time()
 
             entry = {
