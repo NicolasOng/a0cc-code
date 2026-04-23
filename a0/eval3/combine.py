@@ -3,9 +3,11 @@ Merge per-trial series across multiple trial dirs and produce per-HP plots
 with cross-trial confidence bands. Each merge and each plot is wrapped so
 missing files in some trials don't block the rest of the pipeline.
 
-Trial dirs are built from config.output_dir + config.num_trials, matching the
-convention used by a0/eval/combine.py.
+Trial dirs are discovered by globbing config.output_dir/trial_*/eval/, matching
+the convention used by a0/eval/combine_merge.py.
 '''
+import glob
+
 from a0.utils.plotting import (
     Series,
     load_series,
@@ -66,16 +68,9 @@ DISTRIBUTION_SERIES_FILES = [
 
 
 def _get_trial_dirs() -> list[str]:
-    '''Build the per-trial eval directory list from config.output_dir.'''
-    eval_sub = "/eval/"
-    output_dir = config.output_dir[:-1]  # strip trailing slash
-
-    trial_dirs: list[str] = []
-    for i in range(config.num_trials):
-        #if i + 1 in []: continue
-        trial_dir = f"{output_dir}{i+1}{eval_sub}"
-        trial_dirs.append(trial_dir)
-    return trial_dirs
+    '''Glob for per-trial eval directories under config.output_dir.'''
+    pattern = f"{config.output_dir}trial_*/eval/"
+    return sorted(glob.glob(pattern))
 
 
 def merge_all_series() -> None:
