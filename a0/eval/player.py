@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 
 NUM_GAMES = 100
 BASELINE_MCTS_ITERATIONS = 64
-TURN_LIMIT = 100
+TURN_LIMIT = 80
 
 
 class GameResult(Enum):
@@ -210,60 +210,79 @@ def _matchup_stats_dict(stats: MatchupStats) -> dict[str, float]:
     }
 
 
-def _y_keys() -> list[str]:
-    '''All y-keys produced by evaluate_all, in a stable order.'''
-    keys = [f'{stat}_{side}' for stat in _STAT_NAMES for side in ('p1', 'p2')]
-    keys += [f'random_vs_baseline_{stat}_{side}'
-             for stat in _STAT_NAMES for side in ('p1', 'p2')]
-    return keys
+def _log_matchup_result(label: str, stats: MatchupStats) -> None:
+    logger.info(
+        f"  {label}: EV={stats.expected_value:+.3f} "
+        f"(W={stats.wins} L={stats.losses} Dr={stats.draws_repeat} Dt={stats.draws_timeout})"
+    )
 
 
-def evaluate_all(num_games: int, output_path: str) -> Series:
-    baseline = make_baseline()
-    random_player = RandomPlayer()
+def evaluate_players(
+    players: list[tuple[int, PlayerClass]],
+    opponent: PlayerClass,
+    num_games: int,
+    output_path: str,
+) -> Series:
+    '''
+    Evaluate a list of players against a fixed opponent.
+    Each player produces one x-point; stats are stored per side (p1/p2).
+    Saves and returns a Series with x = player indices and ys keyed {stat}_{side}.
+    '''
+    y_keys = [f'{stat}_{side}' for stat in _STAT_NAMES for side in ('p1', 'p2')]
+    series = Series(ys=y_keys)
+    series.x = [i for i, _ in players]
 
-    trained = get_trained_players()
-    logger.info(f"Loaded {len(trained)} trained players for evaluation.")
+    for i, player in players:
+        logger.info(f"=== Player {i}: as P1 vs opponent ===")
+        s1 = run_matchup(player, opponent, num_games, focal_first=True)
+        _log_matchup_result("P1", s1)
 
-    series = Series(ys=_y_keys())
-    series.x = [i for i, _ in trained]
-
-    for i, model_player in trained:
-        logger.info(f"=== Model iter {i}: as P1 vs baseline ===")
-        s1 = run_matchup(model_player, baseline, num_games, focal_first=True)
-        logger.info(
-            f"  EV={s1.expected_value:+.3f} "
-            f"(W={s1.wins} L={s1.losses} Dr={s1.draws_repeat} Dt={s1.draws_timeout})"
-        )
-
-        logger.info(f"=== Model iter {i}: as P2 vs baseline ===")
-        s2 = run_matchup(model_player, baseline, num_games, focal_first=False)
-        logger.info(
-            f"  EV={s2.expected_value:+.3f} "
-            f"(W={s2.wins} L={s2.losses} Dr={s2.draws_repeat} Dt={s2.draws_timeout})"
-        )
+        logger.info(f"=== Player {i}: as P2 vs opponent ===")
+        s2 = run_matchup(player, opponent, num_games, focal_first=False)
+        _log_matchup_result("P2", s2)
 
         for stat, value in _matchup_stats_dict(s1).items():
             series.ys[f'{stat}_p1'].append(value)
         for stat, value in _matchup_stats_dict(s2).items():
             series.ys[f'{stat}_p2'].append(value)
 
-    logger.info("=== Reference: random as P1 vs baseline ===")
-    ref_p1 = run_matchup(random_player, baseline, num_games, focal_first=True)
-    logger.info(f"  EV={ref_p1.expected_value:+.3f}")
+    save_series(series, output_path)
+    return series
 
-    logger.info("=== Reference: random as P2 vs baseline ===")
-    ref_p2 = run_matchup(random_player, baseline, num_games, focal_first=False)
-    logger.info(f"  EV={ref_p2.expected_value:+.3f}")
 
-    # broadcast random-vs-baseline reference values as constants across all
-    # iterations so they survive merge_series and render as horizontal lines
-    num_iters = len(series.x)
-    ref_p1_stats = _matchup_stats_dict(ref_p1)
-    ref_p2_stats = _matchup_stats_dict(ref_p2)
-    for stat in _STAT_NAMES:
-        series.ys[f'random_vs_baseline_{stat}_p1'] = [ref_p1_stats[stat]] * num_iters
-        series.ys[f'random_vs_baseline_{stat}_p2'] = [ref_p2_stats[stat]] * num_iters
+def evaluate_references(
+    references: dict[str, PlayerClass],
+    opponent: PlayerClass,
+    num_games: int,
+    output_path: str,
+) -> Series:
+    '''
+    Evaluate a set of named reference players against a fixed opponent.
+    Each reference player produces a single data point at x=0.
+    Saves and returns a Series with x=[0] and ys keyed {name}_{stat}_{side}.
+    '''
+    y_keys = [
+        f'{name}_{stat}_{side}'
+        for name in references
+        for stat in _STAT_NAMES
+        for side in ('p1', 'p2')
+    ]
+    series = Series(ys=y_keys)
+    series.x = [0]
+
+    for name, player in references.items():
+        logger.info(f"=== Reference '{name}': as P1 vs opponent ===")
+        s1 = run_matchup(player, opponent, num_games, focal_first=True)
+        _log_matchup_result("P1", s1)
+
+        logger.info(f"=== Reference '{name}': as P2 vs opponent ===")
+        s2 = run_matchup(player, opponent, num_games, focal_first=False)
+        _log_matchup_result("P2", s2)
+
+        for stat, value in _matchup_stats_dict(s1).items():
+            series.ys[f'{name}_{stat}_p1'].append(value)
+        for stat, value in _matchup_stats_dict(s2).items():
+            series.ys[f'{name}_{stat}_p2'].append(value)
 
     save_series(series, output_path)
     return series
@@ -276,8 +295,24 @@ def main() -> None:
     except RuntimeError:
         pass
 
-    out_path = f"{config.eval_dir}/player_evaluation_results.pkl"
-    evaluate_all(NUM_GAMES, out_path)
+    baseline = make_baseline()
+
+    evaluate_players(
+        players=get_trained_players(),
+        opponent=baseline,
+        num_games=NUM_GAMES,
+        output_path=f"{config.eval_dir}/player_evaluation_results.pkl",
+    )
+
+    evaluate_references(
+        references={
+            'random': RandomPlayer(),
+            'mcts_rollout': make_baseline(),
+        },
+        opponent=baseline,
+        num_games=NUM_GAMES,
+        output_path=f"{config.eval_dir}/reference_evaluation_results.pkl",
+    )
 
 
 if __name__ == "__main__":
