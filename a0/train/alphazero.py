@@ -602,8 +602,9 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
 
         # early-abort on collapse — only in the danger window, only if enabled
         if config.detect_collapse and (i + 1) <= config.collapse_detection_iteration:
-            if pred_std < config.collapse_threshold_std:
-                logger.log(30, f"COLLAPSE DETECTED at iter {i + 1}: std {pred_std:.4f} < threshold {config.collapse_threshold_std}")
+            pre_tanh_max = diagnostics['per_site_stats']['value_pre_tanh']['max_abs']
+            if pre_tanh_max > config.collapse_threshold_pre_tanh:
+                logger.log(30, f"COLLAPSE DETECTED at iter {i + 1}: value_pre_tanh max_abs {pre_tanh_max:.2f} > threshold {config.collapse_threshold_pre_tanh}")
                 return {"success": False, "collapse_iteration": i + 1, "collapse_std": pred_std}
 
         # free stale JIT caches and unreferenced GPU memory before the next iteration

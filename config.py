@@ -72,7 +72,7 @@ class Config:
 
     detect_collapse: bool
     collapse_detection_iteration: int  # check iterations 1..N (1-indexed)
-    collapse_threshold_std: float
+    collapse_threshold_pre_tanh: float  # value_pre_tanh max_abs above this → collapse
     max_collapse_retries: int
 
     log_system_metrics: bool

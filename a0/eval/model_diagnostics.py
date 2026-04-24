@@ -159,6 +159,39 @@ def _diag_loss_fn(model: Any, batch: dict[str, Any]) -> tuple[jnp.ndarray, tuple
     return total_loss, (value_loss, policy_loss)
 
 
+def _build_site_grad_norms(
+    model: AlphaZeroModel | MultiTrunkAlphaZeroModel,
+    per_param_grad_norm: dict[str, float],
+) -> dict[str, float]:
+    """Map each activation site to the gradient norm of the kernel that produces it.
+    Uses exact pytree key strings from jax.tree_util.keystr — format is stable
+    across the nnx versions used in this project."""
+    g = per_param_grad_norm
+    result: dict[str, float] = {}
+
+    if isinstance(model, MultiTrunkAlphaZeroModel):
+        result['value_trunk_stem'] = g.get("['value_conv']['kernel'].value", 0.0)
+        result['policy_trunk_stem'] = g.get("['policy_conv']['kernel'].value", 0.0)
+        for i in range(len(model.value_resblocks)):
+            result[f'value_trunk_resblock_{i}_inner'] = g.get(f"['value_resblocks'][{i}]['conv1']['kernel'].value", 0.0)
+            result[f'value_trunk_resblock_{i}_outer'] = g.get(f"['value_resblocks'][{i}]['conv2']['kernel'].value", 0.0)
+        for i in range(len(model.policy_resblocks)):
+            result[f'policy_trunk_resblock_{i}_inner'] = g.get(f"['policy_resblocks'][{i}]['conv1']['kernel'].value", 0.0)
+            result[f'policy_trunk_resblock_{i}_outer'] = g.get(f"['policy_resblocks'][{i}]['conv2']['kernel'].value", 0.0)
+    else:
+        result['stem'] = g.get("['conv']['kernel'].value", 0.0)
+        for i in range(len(model.resblocks)):
+            result[f'resblock_{i}_inner'] = g.get(f"['resblocks'][{i}]['conv1']['kernel'].value", 0.0)
+            result[f'resblock_{i}_outer'] = g.get(f"['resblocks'][{i}]['conv2']['kernel'].value", 0.0)
+
+    result['policy_head_conv'] = g.get("['policy_head']['conv']['kernel'].value", 0.0)
+    result['policy_output']    = g.get("['policy_head']['dense']['kernel'].value", 0.0)
+    result['value_head_dense1'] = g.get("['value_head']['dense1']['kernel'].value", 0.0)
+    result['value_pre_tanh']   = g.get("['value_head']['dense2']['kernel'].value", 0.0)
+
+    return result
+
+
 def compute_iteration_diagnostics(
     model: AlphaZeroModel | MultiTrunkAlphaZeroModel,
     rsrd: Any,
@@ -207,17 +240,39 @@ def compute_iteration_diagnostics(
         per_param_grad_norm[name] = sq ** 0.5
         total_sq += sq
     total_grad_norm = total_sq ** 0.5
+    per_site_grad_norm = _build_site_grad_norms(model, per_param_grad_norm)
 
     return {
         'pred_std': prediction_dist['value']['std'],
         'total_grad_norm': total_grad_norm,
         'per_param_grad_norm': per_param_grad_norm,
+        'per_site_grad_norm': per_site_grad_norm,
         'per_site_stats': per_site_stats,
         'prediction_dist': prediction_dist,
         'loss': float(loss),
         'value_loss': float(value_loss),
         'policy_loss': float(policy_loss),
     }
+
+
+def _format_diagnostics_table(diagnostics: dict[str, Any]) -> list[str]:
+    """Returns lines for the human-readable diagnostics table, without a header."""
+    pv = diagnostics['prediction_dist']['value']
+    site_stats = diagnostics['per_site_stats']
+    site_grads = diagnostics['per_site_grad_norm']
+    site_w = max(len(s) for s in site_stats)
+    lines = [
+        f"  pred   mean={pv['mean']:+.3f}  std={pv['std']:.4f}  min={pv['min']:+.3f}  max={pv['max']:+.3f}",
+        f"  grad   total_norm={diagnostics['total_grad_norm']:.4e}",
+        f"  {'site':<{site_w}}  mean_abs   max_abs   dead_frac   kern_grad",
+    ]
+    for site, stats in site_stats.items():
+        grad = site_grads.get(site, float('nan'))
+        lines.append(
+            f"  {site:<{site_w}}  {stats['mean_abs']:8.4f}   "
+            f"{stats['max_abs']:7.4f}   {stats['dead_frac']:9.2%}   {grad:.3e}"
+        )
+    return lines
 
 
 def log_iteration_diagnostics(
@@ -232,12 +287,8 @@ def log_iteration_diagnostics(
     jsonl at `log_path`. Returns the diagnostics dict so the caller can use
     fields like `pred_std` for early-abort decisions."""
     diagnostics = compute_iteration_diagnostics(model, rsrd)
-    pred_std = diagnostics['pred_std']
-    logger.log(25,
-        f"Iter {iteration} diagnostics: pred_std={pred_std:.4f}, "
-        f"total_grad_norm={diagnostics['total_grad_norm']:.4f}, "
-        f"value_pre_tanh_max_abs={diagnostics['per_site_stats']['value_pre_tanh']['max_abs']:.2f}"
-    )
+    lines = [f"Iter {iteration} diagnostics (attempt {attempt}):"] + _format_diagnostics_table(diagnostics)
+    logger.log(25, "\n".join(lines))
     entry = {
         "attempt": attempt,
         "iteration": iteration,
@@ -250,3 +301,45 @@ def log_iteration_diagnostics(
     except OSError as e:
         logger.log(30, f"Failed to write iteration diagnostics: {e}")
     return diagnostics
+
+
+if __name__ == "__main__":
+    import os
+    import sys
+    from a0.utils.load_training_data import load_models
+    from a0.utils.states import get_random_states_no_gt, remove_duplicates, get_rd_from_states
+
+    training_dir = config.training_dir
+    out_path = config.log_dir + "model_diagnostics.jsonl"
+
+    model_entries = load_models(training_dir, config.training_iterations)
+
+    if not model_entries:
+        print("No models loaded.", file=sys.stderr)
+        sys.exit(1)
+
+    print("Building probe dataset...")
+    n = 512
+    _states = get_random_states_no_gt(n)
+    _states, _ = remove_duplicates(_states)
+    rsrd = get_rd_from_states(_states, n, shuffle=True)
+
+    for iteration, model in model_entries:
+        print(f"\n=== iter {iteration} ===")
+
+        d = compute_iteration_diagnostics(model, rsrd)
+
+        for line in _format_diagnostics_table(d):
+            print(line)
+
+        if out_path:
+            entry = {
+                "iteration": iteration,
+                "timestamp": time.time(),
+                **d,
+            }
+            with open(out_path, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+
+    if out_path:
+        print(f"\nDiagnostics written to {out_path}")
