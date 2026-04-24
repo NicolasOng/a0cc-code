@@ -250,7 +250,7 @@ def load_and_merge_distribution_series(dirs: list[str], series_fn: str, save: bo
 
     return merged_series
 
-def plot_given(title: str, series: list[tuple[str, list[int], list[float]]], x_label: str, y_label: str, fn: str) -> None:
+def plot_given(title: str, series: list[tuple[str, list[int], list[float]]], x_label: str, y_label: str, fn: str, y_lim: tuple[float, float] | None = None) -> None:
     plt.figure(figsize=(16, 9))
     for label, x_values, y_values in series:
         plt.plot(x_values, y_values, label=label)
@@ -259,6 +259,8 @@ def plot_given(title: str, series: list[tuple[str, list[int], list[float]]], x_l
     plt.title(title)
     plt.legend()
     plt.grid(True, which='both')
+    if y_lim is not None:
+        plt.ylim(*y_lim)
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.close()

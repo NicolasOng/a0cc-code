@@ -1,3 +1,5 @@
+from typing import Callable
+
 from a0.utils.plotting import (
     Series, save_series, load_series,
     plot_given, plot_given_groups,
@@ -8,6 +10,99 @@ from a0.utils.plotting import (
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
+
+def safeplot(plot_callable: Callable[[], None]) -> None:
+    '''Run a plot function; log a warning and continue if anything raises.'''
+    try:
+        plot_callable()
+    except Exception as e:
+        logger.warning(f"safeplot: skipping {plot_callable.__name__}: {type(e).__name__}: {e}")
+
+
+def _reference_names(ref: Series) -> list[str]:
+    '''Extract reference player names from a reference series' ys keys.'''
+    return [key[:-len('_ev_p1')] for key in ref.ys if key.endswith('_ev_p1')]
+
+
+# === player evaluation ===
+
+def plot_ev() -> None:
+    player = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    ref = load_series(f"{config.eval_dir}/reference_evaluation_results.pkl")
+    x = player.x
+    n = len(x)
+    series = [
+        ("Model (P1)", x, player.ys["ev_p1"]),
+        ("Model (P2)", x, player.ys["ev_p2"]),
+    ]
+    for name in _reference_names(ref):
+        series.append((f"{name} (P1)", x, [ref.ys[f"{name}_ev_p1"][0]] * n))
+        series.append((f"{name} (P2)", x, [ref.ys[f"{name}_ev_p2"][0]] * n))
+    plot_given(
+        "Expected Value vs Baseline",
+        series,
+        "Training Iteration", "Expected Value",
+        "player_ev",
+        y_lim=(-1.0, 1.0),
+    )
+
+
+def plot_wld_p1() -> None:
+    s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    plot_stacked(
+        "Model as P1: W/L/D vs Baseline", s.x,
+        [
+            ("Wins",            s.ys["wins_p1"]),
+            ("Losses",          s.ys["losses_p1"]),
+            ("Draws (repeat)",  s.ys["draws_repeat_p1"]),
+            ("Draws (timeout)", s.ys["draws_timeout_p1"]),
+        ],
+        "Training Iteration", "Games", "player_wld_p1",
+    )
+
+
+def plot_wld_p2() -> None:
+    s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    plot_stacked(
+        "Model as P2: W/L/D vs Baseline", s.x,
+        [
+            ("Wins",            s.ys["wins_p2"]),
+            ("Losses",          s.ys["losses_p2"]),
+            ("Draws (repeat)",  s.ys["draws_repeat_p2"]),
+            ("Draws (timeout)", s.ys["draws_timeout_p2"]),
+        ],
+        "Training Iteration", "Games", "player_wld_p2",
+    )
+
+
+def plot_wld_proportional_p1() -> None:
+    s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    plot_stacked_proportional(
+        "Model as P1: W/L/D vs Baseline (Proportional)", s.x,
+        s.ys["num_games_p1"],
+        [
+            ("Wins",            s.ys["wins_p1"]),
+            ("Losses",          s.ys["losses_p1"]),
+            ("Draws (repeat)",  s.ys["draws_repeat_p1"]),
+            ("Draws (timeout)", s.ys["draws_timeout_p1"]),
+        ],
+        "Training Iteration", "Proportion", "player_wld_proportional_p1",
+    )
+
+
+def plot_wld_proportional_p2() -> None:
+    s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    plot_stacked_proportional(
+        "Model as P2: W/L/D vs Baseline (Proportional)", s.x,
+        s.ys["num_games_p2"],
+        [
+            ("Wins",            s.ys["wins_p2"]),
+            ("Losses",          s.ys["losses_p2"]),
+            ("Draws (repeat)",  s.ys["draws_repeat_p2"]),
+            ("Draws (timeout)", s.ys["draws_timeout_p2"]),
+        ],
+        "Training Iteration", "Proportion", "player_wld_proportional_p2",
+    )
 
 def main():
     # I should split this main function into many smaller ones,
@@ -304,6 +399,13 @@ def main():
                    [
                        ("Average Branching Factor", n_branching_factor_series[i].x, n_branching_factor_series[i].ys["Average Branching Factor"])
                    ], "Game Progress (%)", "Branching Factor", f"gp_branching_factor_over_game_progress_{num_bin}")
+
+    # player evaluation
+    safeplot(plot_ev)
+    safeplot(plot_wld_p1)
+    safeplot(plot_wld_p2)
+    safeplot(plot_wld_proportional_p1)
+    safeplot(plot_wld_proportional_p2)
 
 if __name__ == "__main__":
     main()
