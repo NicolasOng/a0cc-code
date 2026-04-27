@@ -265,7 +265,7 @@ def plot_given(title: str, series: list[tuple[str, list[int], list[float]]], x_l
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.close()
 
-def plot_given_groups(title: str, groups: list[list[tuple[str, list[int], list[float]]]], x_label: str, y_label: str, fn: str, use_log_y: bool = False) -> None:
+def plot_given_groups(title: str, groups: list[list[tuple[str, list[int], list[float]]]], x_label: str, y_label: str, fn: str, use_log_y: bool = False, y_lim: tuple[float, float] | None = None) -> None:
     plt.figure(figsize=(16, 9))
     colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']  # Add more if needed
     line_styles = ['-', '--', '-.', ':']  # Solid, dashed, dash-dot, dotted
@@ -281,6 +281,8 @@ def plot_given_groups(title: str, groups: list[list[tuple[str, list[int], list[f
     plt.grid(True, which='both')
     if use_log_y:
         plt.yscale('log')
+    if y_lim is not None:
+        plt.ylim(*y_lim)
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}{fn}.png")
     plt.close()

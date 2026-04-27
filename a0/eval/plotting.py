@@ -34,16 +34,22 @@ def plot_ev() -> None:
     ref = load_series(f"{config.eval_dir}/reference_evaluation_results.pkl")
     x = player.x
     n = len(x)
-    series = [
-        ("Model (P1)", x, player.ys["ev_p1"]),
-        ("Model (P2)", x, player.ys["ev_p2"]),
+    groups = [
+        [
+            ("Model (P1)", x, player.ys["ev_p1"]),
+            ("Model (P2)", x, player.ys["ev_p2"]),
+        ],
     ]
     for name in _reference_names(ref):
-        series.append((f"{name} (P1)", x, [ref.ys[f"{name}_ev_p1"][0]] * n))
-        series.append((f"{name} (P2)", x, [ref.ys[f"{name}_ev_p2"][0]] * n))
-    plot_given(
+        ev_p1 = ref.ys[f"{name}_ev_p1"][0]
+        ev_p2 = ref.ys[f"{name}_ev_p2"][0]
+        groups.append([
+            (f"{name} (P1, EV={ev_p1:.3f})", x, [ev_p1] * n),
+            (f"{name} (P2, EV={ev_p2:.3f})", x, [ev_p2] * n),
+        ])
+    plot_given_groups(
         "Expected Value vs Baseline",
-        series,
+        groups,
         "Training Iteration", "Expected Value",
         "player_ev",
         y_lim=(-1.0, 1.0),
