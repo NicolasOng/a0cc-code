@@ -24,8 +24,8 @@ from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 
-NUM_GAMES = 100
-BASELINE_MCTS_ITERATIONS = 64
+NUM_GAMES = 64
+BASELINE_MCTS_ITERATIONS = 2048
 TURN_LIMIT = 80
 
 
@@ -394,14 +394,22 @@ def main() -> None:
     baseline = make_baseline()
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
+    trained_players = get_trained_players()
+
+    # # remove all players except iteration 4
+    # trained_players = [(i, p) for i, p in trained_players if i == 4]
+    # print(f"Evaluating {len(trained_players)} trained players: {[i for i, _ in trained_players]}")
+
     evaluate_players(
-        players=get_trained_players(),
+        players=trained_players,
         opponent=baseline,
         num_games=NUM_GAMES,
         output_path=f"{config.eval_dir}/player_evaluation_results.pkl",
         log_games=1,
         game_log_path=f"{config.eval_dir}/player_game_logs_{timestamp}.jsonl",
     )
+
+    # exit()
 
     evaluate_references(
         references={
