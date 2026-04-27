@@ -340,6 +340,49 @@ def evaluate_references(
     save_series(series, output_path)
     return series
 
+def mcts_test() -> None:
+    setup_logging(level=20, log_dir=config.log_dir, process_name='player_evaluation')
+    try:
+        multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass
+
+    baseline = make_baseline()
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    mcts_players = [
+        (iters, MCTSRolloutPlayer(
+            board_size=config.board_size,
+            num_pieces=config.num_pieces,
+            no_reverse_moves=not config.backwards_moves,
+            no_illegal_moves=not config.illegal_moves,
+            no_side_moves=not config.sideways_moves,
+            mcts_iterations=iters,
+        ))
+        for iters in [16, 64, 256]
+    ]
+
+    evaluate_players(
+        players=mcts_players,
+        opponent=baseline,
+        num_games=NUM_GAMES,
+        output_path=f"{config.eval_dir}/player_evaluation_results.pkl",
+        log_games=1,
+        game_log_path=f"{config.eval_dir}/player_game_logs_{timestamp}.jsonl",
+    )
+
+    evaluate_references(
+        references={
+            'random': RandomPlayer(),
+            'mcts_rollout': make_baseline(),
+        },
+        opponent=baseline,
+        num_games=NUM_GAMES,
+        output_path=f"{config.eval_dir}/reference_evaluation_results.pkl",
+        log_games=1,
+        game_log_path=f"{config.eval_dir}/reference_game_logs_{timestamp}.jsonl",
+    )
+
 
 def main() -> None:
     setup_logging(level=20, log_dir=config.log_dir, process_name='player_evaluation')
@@ -374,4 +417,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    #mcts_test()
     main()
