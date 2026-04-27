@@ -450,7 +450,7 @@ def get_policy_head_policy(model: AlphaZeroModel, state: Board, moves: list[Move
     _, policy = model.inference(jnp.array(board_to_input(state)))
 
     p = Policy(len(state.board))
-    p.set_logits(np.array(policy[0]), rotate_180=False)
+    p.set_logits(np.array(policy[0]), rotate_180=(state.current_player == Player.PLAYER_O))
     p.set_legal_moves(moves)
     p.apply_softmax(temperature=1.0, mask=True)
     if rotate:
