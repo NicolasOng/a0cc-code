@@ -105,7 +105,8 @@ class TurnInfo:
     experienced_policy: NDArray[np.float32]
     is_trivial: bool
     progress: int    # 0-99, percentage through the game
-    alternative_targets: dict[str, Any]
+    alternative_value_target: float | None
+    alternative_policy_target: np.ndarray | None
 
 @dataclass
 class GameInfo:
@@ -186,7 +187,8 @@ def traverse_game_data_with_collectors(collectors: list[Collector]) -> None:
                     experienced_policy=turn.player_data,
                     is_trivial=gt.is_trivial(board),
                     progress=progress,
-                    alternative_targets=turn.alternative_targets
+                    alternative_value_target=turn.alternative_value_target,
+                    alternative_policy_target=turn.alternative_policy_target,
                 )
                 for c in collectors:
                     c.on_turn(turn_info)
@@ -805,8 +807,7 @@ def run_collectors(gt: GroundTruth) -> None:
     '''
     logger.info("run_collectors: building collector list...")
 
-    # TODO: hardcode this string
-    alt_outcome: Callable[[TurnInfo], float] = lambda ti: float(np.sign(ti.alternative_targets["td_lambda"]))
+    alt_outcome: Callable[[TurnInfo], float] = lambda ti: float(np.sign(ti.alternative_value_target)) if ti.alternative_value_target is not None else 0.0
 
     collectors: list[Collector] = [
         GameStatsCollector(),
@@ -873,16 +874,16 @@ def main():
     logger.info(f"  training_iterations = {config.training_iterations}")
     logger.info("=" * 60)
 
-    # gt = GroundTruth()
+    gt = GroundTruth()
 
-    # logger.info("[1/3] avg training metrics per iteration")
-    # get_and_save_avg_training_metrics_per_iteration()
+    logger.info("[1/3] avg training metrics per iteration")
+    get_and_save_avg_training_metrics_per_iteration()
 
     logger.info("[2/3] dataset diagnostics distributions")
     get_and_save_dataset_diagnostics_distributions()
 
-    # logger.info("[3/3] traversal-based collectors")
-    # run_collectors(gt)
+    logger.info("[3/3] traversal-based collectors")
+    run_collectors(gt)
 
     logger.info("training_data.py: all analyses complete")
 

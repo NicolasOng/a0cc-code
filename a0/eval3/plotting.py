@@ -426,6 +426,96 @@ def plot_full_policy_accuracy() -> None:
         "Iteration", "Accuracy", "full_policy_accuracy",
     )
 
+# === player evaluation ===
+
+def _reference_names(ref: Series) -> list[str]:
+    '''Extract reference player names from a reference series' ys keys.'''
+    return [key[:-len('_ev_p1')] for key in ref.ys if key.endswith('_ev_p1')]
+
+def plot_ev() -> None:
+    player = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    ref = load_series(f"{config.eval_dir}/reference_evaluation_results.pkl")
+    x = player.x
+    n = len(x)
+    groups = [
+        [
+            ("Model (P1)", x, player.ys["ev_p1"]),
+            ("Model (P2)", x, player.ys["ev_p2"]),
+        ],
+    ]
+    for name in _reference_names(ref):
+        ev_p1 = ref.ys[f"{name}_ev_p1"][0]
+        ev_p2 = ref.ys[f"{name}_ev_p2"][0]
+        groups.append([
+            (f"{name} (P1, EV={ev_p1:.3f})", x, [ev_p1] * n),
+            (f"{name} (P2, EV={ev_p2:.3f})", x, [ev_p2] * n),
+        ])
+    plot_given_groups(
+        "Expected Value vs Baseline",
+        groups,
+        "Training Iteration", "Expected Value",
+        "player_ev",
+        y_lim=(-1.0, 1.0),
+    )
+
+
+def plot_wld_p1() -> None:
+    s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    plot_stacked(
+        "Model as P1: W/L/D vs Baseline", s.x,
+        [
+            ("Wins",            s.ys["wins_p1"]),
+            ("Losses",          s.ys["losses_p1"]),
+            ("Draws (repeat)",  s.ys["draws_repeat_p1"]),
+            ("Draws (timeout)", s.ys["draws_timeout_p1"]),
+        ],
+        "Training Iteration", "Games", "player_wld_p1",
+    )
+
+
+def plot_wld_p2() -> None:
+    s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    plot_stacked(
+        "Model as P2: W/L/D vs Baseline", s.x,
+        [
+            ("Wins",            s.ys["wins_p2"]),
+            ("Losses",          s.ys["losses_p2"]),
+            ("Draws (repeat)",  s.ys["draws_repeat_p2"]),
+            ("Draws (timeout)", s.ys["draws_timeout_p2"]),
+        ],
+        "Training Iteration", "Games", "player_wld_p2",
+    )
+
+
+def plot_wld_proportional_p1() -> None:
+    s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    plot_stacked_proportional(
+        "Model as P1: W/L/D vs Baseline (Proportional)", s.x,
+        s.ys["num_games_p1"],
+        [
+            ("Wins",            s.ys["wins_p1"]),
+            ("Losses",          s.ys["losses_p1"]),
+            ("Draws (repeat)",  s.ys["draws_repeat_p1"]),
+            ("Draws (timeout)", s.ys["draws_timeout_p1"]),
+        ],
+        "Training Iteration", "Proportion", "player_wld_proportional_p1",
+    )
+
+
+def plot_wld_proportional_p2() -> None:
+    s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
+    plot_stacked_proportional(
+        "Model as P2: W/L/D vs Baseline (Proportional)", s.x,
+        s.ys["num_games_p2"],
+        [
+            ("Wins",            s.ys["wins_p2"]),
+            ("Losses",          s.ys["losses_p2"]),
+            ("Draws (repeat)",  s.ys["draws_repeat_p2"]),
+            ("Draws (timeout)", s.ys["draws_timeout_p2"]),
+        ],
+        "Training Iteration", "Proportion", "player_wld_proportional_p2",
+    )
+
 
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name="plotting")
@@ -479,6 +569,13 @@ def main():
     # combined plots
     safeplot(plot_full_value_accuracy)
     safeplot(plot_full_policy_accuracy)
+
+    # player evaluation
+    safeplot(plot_ev)
+    safeplot(plot_wld_p1)
+    safeplot(plot_wld_p2)
+    safeplot(plot_wld_proportional_p1)
+    safeplot(plot_wld_proportional_p2)
 
 
 if __name__ == "__main__":
