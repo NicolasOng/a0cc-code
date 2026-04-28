@@ -459,7 +459,7 @@ def get_most_recent_model_path() -> Optional[tuple[str, int]]:
 def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) -> dict[str, Any]:
     """
     Returns a result dict:
-      {"success": bool, "collapse_iteration": Optional[int], "collapse_std": Optional[float]}
+      {"success": bool, "collapse_iteration": Optional[int], "value_pre_tanh_max_abs": Optional[float]}
     On detected collapse, success=False and the other fields describe the trigger.
     When force_fresh=True, any existing model_*.pkl files in the training dir are
     removed and training starts from scratch with the provided seed.
@@ -598,14 +598,13 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
         # per-iteration diagnostics on the rsrd probe batch (always on, independent
         # of config.detect_collapse — the flag only gates the early-abort below).
         diagnostics = log_iteration_diagnostics(model, rsrd, diagnostics_log_path, attempt, i + 1)
-        pred_std = diagnostics['pred_std']
 
         # early-abort on collapse — only in the danger window, only if enabled
         if config.detect_collapse and (i + 1) <= config.collapse_detection_iteration:
             pre_tanh_max = diagnostics['per_site_stats']['value_pre_tanh']['max_abs']
             if pre_tanh_max > config.collapse_threshold_pre_tanh:
                 logger.log(30, f"COLLAPSE DETECTED at iter {i + 1}: value_pre_tanh max_abs {pre_tanh_max:.2f} > threshold {config.collapse_threshold_pre_tanh}")
-                return {"success": False, "collapse_iteration": i + 1, "collapse_std": pred_std}
+                return {"success": False, "collapse_iteration": i + 1, "value_pre_tanh_max_abs": pre_tanh_max}
 
         # free stale JIT caches and unreferenced GPU memory before the next iteration
         jax.clear_caches()
@@ -613,7 +612,7 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
 
     # after all iterations, plot all the training data
     plot_model_performance("training_plots/full_a0", train_datas)
-    return {"success": True, "collapse_iteration": None, "collapse_std": None}
+    return {"success": True, "collapse_iteration": None, "value_pre_tanh_max_abs": None}
 
 if __name__ == "__main__":
     setup_logging(
@@ -666,8 +665,8 @@ if __name__ == "__main__":
                 "elapsed_seconds": round(attempt_end - attempt_start, 2),
                 "outcome": "succeeded" if result["success"] else "collapsed",
                 "collapse_iteration": result.get("collapse_iteration"),
-                "collapse_std": result.get("collapse_std"),
-                "collapse_threshold_std": config.collapse_threshold_std,
+                "value_pre_tanh_max_abs": result.get("value_pre_tanh_max_abs"),
+                "collapse_threshold_pre_tanh": config.collapse_threshold_pre_tanh,
             }
             try:
                 with open(retry_log_path, "a") as f:
