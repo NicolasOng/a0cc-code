@@ -808,6 +808,9 @@ def run_collectors(gt: GroundTruth) -> None:
     logger.info("run_collectors: building collector list...")
 
     alt_outcome: Callable[[TurnInfo], float] = lambda ti: float(np.sign(ti.alternative_value_target)) if ti.alternative_value_target is not None else 0.0
+    # Raw continuous version for the saved Dataset, so value_loss against the
+    # stored labels is meaningful (e.g. L2 to the actual TD-lambda target, not ±1).
+    alt_outcome_raw: Callable[[TurnInfo], float] = lambda ti: float(ti.alternative_value_target) if ti.alternative_value_target is not None else 0.0
 
     collectors: list[Collector] = [
         GameStatsCollector(),
@@ -832,7 +835,7 @@ def run_collectors(gt: GroundTruth) -> None:
             batch_size=256,
             n_per_iteration=500,
             n_total=2000,
-            get_outcome=alt_outcome,
+            get_outcome=alt_outcome_raw,
         ),
         GameProgressMetaCollector(
             n_buckets=10,
