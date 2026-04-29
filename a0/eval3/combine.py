@@ -17,7 +17,7 @@ from a0.utils.plotting import (
     plot_shaded_error,
     plot_shaded_ridgeline,
 )
-from a0.eval3.plotting import safeplot
+from a0.eval3.plotting import safeplot, _reference_names
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -58,6 +58,9 @@ SERIES_FILES = [
     # per-bucket model eval
     "game_progress_10_nd_eval",
     "game_progress_10_nt_eval",
+    # player evaluation
+    "player_evaluation_results",
+    "reference_evaluation_results",
 ]
 
 DISTRIBUTION_SERIES_FILES = [
@@ -378,6 +381,62 @@ def plot_merged_full_policy_accuracy() -> None:
     )
 
 
+# === merged player evaluation ===
+
+def _rate_ci_keys(s: Series, key: str, denom_key: str) -> tuple[list[float], list[float]]:
+    '''Return (rate, rate_ci) where rate = key / denom_key on a merged series.
+    num_games is constant per trial, so dividing the merged mean/CI of `key`
+    by the merged mean of `denom_key` gives the cross-trial rate and its CI.'''
+    rates = [v / d if d > 0 else 0.0 for v, d in zip(s.ys[key], s.ys[denom_key])]
+    cis   = [c / d if d > 0 else 0.0 for c, d in zip(s.ys[f"{key}_ci"], s.ys[denom_key])]
+    return rates, cis
+
+
+def plot_merged_ev() -> None:
+    player = load_series(f"{config.eval_dir}/merged_player_evaluation_results.pkl")
+    ref    = load_series(f"{config.eval_dir}/merged_reference_evaluation_results.pkl")
+    x = player.x
+    n = len(x)
+    series = [
+        ("Model (P1)", "±95% CI", x, *_ci_keys(player, "ev_p1")),
+        ("Model (P2)", "±95% CI", x, *_ci_keys(player, "ev_p2")),
+    ]
+    for name in _reference_names(ref):
+        ev_p1, ci_p1 = _ci_keys(ref, f"{name}_ev_p1")
+        ev_p2, ci_p2 = _ci_keys(ref, f"{name}_ev_p2")
+        series.append((f"{name} (P1, EV={ev_p1[0]:.3f})", "±95% CI", x, [ev_p1[0]] * n, [ci_p1[0]] * n))
+        series.append((f"{name} (P2, EV={ev_p2[0]:.3f})", "±95% CI", x, [ev_p2[0]] * n, [ci_p2[0]] * n))
+    plot_shaded_error(
+        "Expected Value vs Baseline (merged)",
+        series,
+        "Training Iteration", "Expected Value",
+        "merged_player_ev", (-1.0, 1.0),
+    )
+
+
+def _plot_merged_wld(side: str, title: str, fn: str) -> None:
+    s = load_series(f"{config.eval_dir}/merged_player_evaluation_results.pkl")
+    denom = f"num_games_{side}"
+    plot_shaded_error(
+        title,
+        [
+            ("Wins",            "±95% CI", s.x, *_rate_ci_keys(s, f"wins_{side}",          denom)),
+            ("Losses",          "±95% CI", s.x, *_rate_ci_keys(s, f"losses_{side}",        denom)),
+            ("Draws (repeat)",  "±95% CI", s.x, *_rate_ci_keys(s, f"draws_repeat_{side}",  denom)),
+            ("Draws (timeout)", "±95% CI", s.x, *_rate_ci_keys(s, f"draws_timeout_{side}", denom)),
+        ],
+        "Training Iteration", "Rate", fn, (0, 1),
+    )
+
+
+def plot_merged_wld_p1() -> None:
+    _plot_merged_wld("p1", "Model as P1: W/L/D Rates vs Baseline (merged)", "merged_player_wld_p1")
+
+
+def plot_merged_wld_p2() -> None:
+    _plot_merged_wld("p2", "Model as P2: W/L/D Rates vs Baseline (merged)", "merged_player_wld_p2")
+
+
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name="combining")
     logger.info("combining...")
@@ -420,6 +479,11 @@ def main():
     # merged combined plots
     safeplot(plot_merged_full_value_accuracy)
     safeplot(plot_merged_full_policy_accuracy)
+
+    # merged player evaluation
+    safeplot(plot_merged_ev)
+    safeplot(plot_merged_wld_p1)
+    safeplot(plot_merged_wld_p2)
 
 
 if __name__ == "__main__":
