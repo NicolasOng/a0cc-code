@@ -154,6 +154,12 @@ def main():
     parser.add_argument("sweep_spec")
     parser.add_argument("--dry-run", action="store_true",
                         help="materialize files but don't actually call sbatch")
+    parser.add_argument("--script", default=TRAIN_SCRIPT,
+                        help=f"stage-1 .sh to run per task (default: {TRAIN_SCRIPT}). "
+                             "Use eval_a0.sh / eval_a03.sh to re-eval an existing sweep.")
+    parser.add_argument("--reuse-configs", action="store_true",
+                        help="skip rewriting per-HP config.json files; use whatever is on disk. "
+                             "Required for re-eval-only runs against an already-trained sweep.")
     args = parser.parse_args()
 
     spec = load_sweep_spec(args.sweep_spec)
@@ -167,12 +173,20 @@ def main():
     sweep_dir = os.path.join(SWEEP_ROOT, sweep_name)
     os.makedirs(sweep_dir, exist_ok=True)
 
-    # 1. Materialize per-HP configs.
+    # 1. Materialize per-HP configs (or reuse existing ones if --reuse-configs).
     hp_config_paths: list[str] = []
     hp_ids: list[str] = []
     for overrides in points:
         hp_id = hp_id_for(overrides)
-        cfg_path = write_per_hp_config(base_config, overrides, sweep_dir, hp_id)
+        if args.reuse_configs:
+            cfg_path = os.path.join(sweep_dir, hp_id, "config.json")
+            if not os.path.exists(cfg_path):
+                raise FileNotFoundError(
+                    f"--reuse-configs set but no existing config at {cfg_path}. "
+                    "Run without --reuse-configs to materialize it."
+                )
+        else:
+            cfg_path = write_per_hp_config(base_config, overrides, sweep_dir, hp_id)
         hp_config_paths.append(cfg_path)
         hp_ids.append(hp_id)
         print(f"  {hp_id}: {overrides}  ->  {cfg_path}")
@@ -202,12 +216,13 @@ def main():
     placeholder = "<train_jid>"
     placeholder_combine = "<combine_jid>"
 
-    # 4. Submit train array.
-    print(f"\nSubmitting train array ({n_tasks} tasks)...")
+    # 4. Submit stage-1 array (train by default; eval_a0.sh / eval_a03.sh for re-eval).
+    stage_name = os.path.splitext(os.path.basename(args.script))[0]
+    print(f"\nSubmitting {stage_name} array ({n_tasks} tasks)...")
     train_job = sbatch(
         [f"--array=1-{n_tasks}",
-         f"--output={slurm_logs}/train_%A_%a.out",
-         TRAIN_SCRIPT, tasks_file],
+         f"--output={slurm_logs}/{stage_name}_%A_%a.out",
+         args.script, tasks_file],
         args.dry_run,
     )
 
