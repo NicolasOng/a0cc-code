@@ -23,6 +23,8 @@ from a0.utils.states import convert_experience_list_to_dataset, get_gtd_from_sta
 from a0.eval.generate_datasets import save_dataset
 from a0.utils.misc import get_baseline_accuracy, get_branching_factor
 from a0.eval3.generate_datasets import get_nd_and_nt_datasets_from_state_list
+from a0.eval3.collectors.base import Collector, GameInfo, TurnInfo, GameProgressCollector
+from a0.eval3.collectors.bpp_and_bppma import BPPCollector
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -91,49 +93,6 @@ def get_and_save_dataset_diagnostics_distributions() -> None:
     save_distribution_series(pre, f"{config.eval_dir}/dataset_pre_balance_distributions.pkl")
     save_distribution_series(post, f"{config.eval_dir}/dataset_post_balance_distributions.pkl")
     logger.info("Saved dataset_pre_balance_distributions.pkl and dataset_post_balance_distributions.pkl.")
-
-@dataclass
-class TurnInfo:
-    iteration: int
-    board: Board
-    winner: Player | None
-    turn_index: int
-    game_length: int
-    gt_outcome: float
-    experienced_outcome: float
-    gt_policy: NDArray[np.float32]
-    experienced_policy: NDArray[np.float32]
-    is_trivial: bool
-    progress: int    # 0-99, percentage through the game
-    alternative_value_target: float | None
-    alternative_policy_target: np.ndarray | None
-
-@dataclass
-class GameInfo:
-    iteration: int
-    winner: Player | None
-    ended: bool
-    game_length: int
-    game_time: float
-
-class Collector(Protocol):
-    def on_game(self, gi: GameInfo) -> None: ...
-
-    def on_turn(self, ti: TurnInfo) -> None: ...
-
-    def on_iteration_end(self, iteration: int) -> None: ...
-
-    def finalize(self) -> None: ...
-
-class GameProgressCollector(Protocol):
-    '''Protocol for collectors that track stats per game-progress bucket.'''
-    def init_buckets(self, bucket_upper_bounds: list[int]) -> None: ...
-
-    def on_turn(self, ti: TurnInfo, bucket: int) -> None: ...
-
-    def on_iteration_end(self, iteration: int) -> None: ...
-
-    def finalize(self) -> None: ...
 
 def traverse_game_data_with_collectors(collectors: list[Collector]) -> None:
     '''
@@ -795,6 +754,7 @@ def run_collectors(gt: GroundTruth) -> None:
     - gamedata_stats.pkl: per-iteration game outcome stats
     - overall and per iteration accuracy and bias files for
         both experienced and alternative targets (x8)
+    - per-iteration and overall BPP/BPPMA files (x4)
     - dataset of states with the experienced value/policy (or alt targets)
     - gamedata_{n_buckets}_progress_count.pkl:
         count of states in each game progress bucket
@@ -824,6 +784,7 @@ def run_collectors(gt: GroundTruth) -> None:
             name="gamedata_alt",
             get_outcome=alt_outcome
         ),
+        BPPCollector(gt=gt),
         ExperiencedDatasetCollector(
             name="experienced_dataset",
             batch_size=256,
