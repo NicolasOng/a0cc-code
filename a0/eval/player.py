@@ -274,7 +274,6 @@ def evaluate_players(
     '''
     y_keys = [f'{stat}_{side}' for stat in _STAT_NAMES for side in ('p1', 'p2')]
     series = Series(ys=y_keys)
-    series.x = [i for i, _ in players]
 
     for i, player in players:
         logger.info(f"=== Player {i}: as P1 vs opponent ===")
@@ -289,12 +288,13 @@ def evaluate_players(
                          label=f'player_{i}_p2')
         _log_matchup_result("P2", s2)
 
+        series.x.append(i)
         for stat, value in _matchup_stats_dict(s1).items():
             series.ys[f'{stat}_p1'].append(value)
         for stat, value in _matchup_stats_dict(s2).items():
             series.ys[f'{stat}_p2'].append(value)
+        save_series(series, output_path)
 
-    save_series(series, output_path)
     return series
 
 
@@ -313,13 +313,7 @@ def evaluate_references(
     If log_games > 0, the first log_games games of each matchup are written as
     JSONL records to game_log_path.
     '''
-    y_keys = [
-        f'{name}_{stat}_{side}'
-        for name in references
-        for stat in _STAT_NAMES
-        for side in ('p1', 'p2')
-    ]
-    series = Series(ys=y_keys)
+    series = Series()
     series.x = [0]
 
     for name, player in references.items():
@@ -336,11 +330,11 @@ def evaluate_references(
         _log_matchup_result("P2", s2)
 
         for stat, value in _matchup_stats_dict(s1).items():
-            series.ys[f'{name}_{stat}_p1'].append(value)
+            series.ys[f'{name}_{stat}_p1'] = [value]
         for stat, value in _matchup_stats_dict(s2).items():
-            series.ys[f'{name}_{stat}_p2'].append(value)
+            series.ys[f'{name}_{stat}_p2'] = [value]
+        save_series(series, output_path)
 
-    save_series(series, output_path)
     return series
 
 def mcts_test() -> None:
