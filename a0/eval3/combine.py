@@ -38,6 +38,11 @@ SERIES_FILES = [
     "gamedata_overall_bias",
     "gamedata_alt_bias",
     "gamedata_alt_overall_bias",
+    # BPP / BPPMA
+    "gamedata_bpp",
+    "gamedata_overall_bpp",
+    "gamedata_bppma",
+    "gamedata_overall_bppma",
     # game-progress series
     "gamedata_10_progress_count",
     "experienced_10_progress_acc",
@@ -229,6 +234,44 @@ def plot_merged_gamedata_alt_bias() -> None:
             ("Overall Draw", "±95% CI", overall.x, *_ci_keys(overall, "Overall Draw Percent")),
         ],
         "Training Iteration", "Percentage", "merged_gamedata_alt_bias", (0, 1),
+    )
+
+
+def plot_merged_gamedata_bpp() -> None:
+    iteration = load_series(f"{config.eval_dir}/merged_gamedata_bpp.pkl")
+    overall = load_series(f"{config.eval_dir}/merged_gamedata_overall_bpp.pkl")
+    plot_shaded_error(
+        "Training Data BPP by Iteration (merged)",
+        [
+            ("Iter Value BPP",        "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value BPP")),
+            ("Iter Value BPP ND",     "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value BPP ND")),
+            ("Iter Policy BPP",       "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy BPP")),
+            ("Iter Policy BPP NT",    "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy BPP NT")),
+            ("Overall Value BPP",     "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value BPP")),
+            ("Overall Value BPP ND",  "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value BPP ND")),
+            ("Overall Policy BPP",    "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy BPP")),
+            ("Overall Policy BPP NT", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy BPP NT")),
+        ],
+        "Iterations", "BPP", "merged_gamedata_bpp", (0, 1),
+    )
+
+
+def plot_merged_gamedata_bppma() -> None:
+    iteration = load_series(f"{config.eval_dir}/merged_gamedata_bppma.pkl")
+    overall = load_series(f"{config.eval_dir}/merged_gamedata_overall_bppma.pkl")
+    plot_shaded_error(
+        "Training Data BPPMA by Iteration (merged)",
+        [
+            ("Iter Value BPPMA",        "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value BPPMA")),
+            ("Iter Value BPPMA ND",     "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value BPPMA ND")),
+            ("Iter Policy BPPMA",       "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy BPPMA")),
+            ("Iter Policy BPPMA NT",    "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy BPPMA NT")),
+            ("Overall Value BPPMA",     "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value BPPMA")),
+            ("Overall Value BPPMA ND",  "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value BPPMA ND")),
+            ("Overall Policy BPPMA",    "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy BPPMA")),
+            ("Overall Policy BPPMA NT", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy BPPMA NT")),
+        ],
+        "Iterations", "BPPMA", "merged_gamedata_bppma", (0, 1),
     )
 
 
@@ -455,6 +498,8 @@ def main():
     safeplot(plot_merged_gamedata_alt_accuracy)
     safeplot(plot_merged_gamedata_bias)
     safeplot(plot_merged_gamedata_alt_bias)
+    safeplot(plot_merged_gamedata_bpp)
+    safeplot(plot_merged_gamedata_bppma)
 
     # merged game progress
     safeplot(plot_merged_gp_experienced_accuracy)

@@ -242,6 +242,54 @@ def plot_gamedata_alt_bias() -> None:
     _plot_iteration_bias(iteration, overall, "Alt-Target Training Data Bias by Iteration", "gamedata_alt_bias")
 
 
+# === gamedata BPP / BPPMA ===
+
+def _plot_iteration_bpp(iteration: Series, overall: Series, title: str, fn: str) -> None:
+    plot_given(
+        title,
+        [
+            ("Overall Value BPP", overall.x, overall.ys["Overall Value BPP"]),
+            ("Overall Value BPP ND", overall.x, overall.ys["Overall Value BPP ND"]),
+            ("Overall Policy BPP", overall.x, overall.ys["Overall Policy BPP"]),
+            ("Overall Policy BPP NT", overall.x, overall.ys["Overall Policy BPP NT"]),
+            ("Value BPP", iteration.x, iteration.ys["Iteration Value BPP"]),
+            ("Value BPP ND", iteration.x, iteration.ys["Iteration Value BPP ND"]),
+            ("Policy BPP", iteration.x, iteration.ys["Iteration Policy BPP"]),
+            ("Policy BPP NT", iteration.x, iteration.ys["Iteration Policy BPP NT"]),
+        ],
+        "Iterations", "BPP", fn,
+    )
+
+
+def _plot_iteration_bppma(iteration: Series, overall: Series, title: str, fn: str) -> None:
+    plot_given(
+        title,
+        [
+            ("Overall Value BPPMA", overall.x, overall.ys["Overall Value BPPMA"]),
+            ("Overall Value BPPMA ND", overall.x, overall.ys["Overall Value BPPMA ND"]),
+            ("Overall Policy BPPMA", overall.x, overall.ys["Overall Policy BPPMA"]),
+            ("Overall Policy BPPMA NT", overall.x, overall.ys["Overall Policy BPPMA NT"]),
+            ("Value BPPMA", iteration.x, iteration.ys["Iteration Value BPPMA"]),
+            ("Value BPPMA ND", iteration.x, iteration.ys["Iteration Value BPPMA ND"]),
+            ("Policy BPPMA", iteration.x, iteration.ys["Iteration Policy BPPMA"]),
+            ("Policy BPPMA NT", iteration.x, iteration.ys["Iteration Policy BPPMA NT"]),
+        ],
+        "Iterations", "BPPMA", fn,
+    )
+
+
+def plot_gamedata_bpp() -> None:
+    iteration = load_series(f"{config.eval_dir}/gamedata_bpp.pkl")
+    overall = load_series(f"{config.eval_dir}/gamedata_overall_bpp.pkl")
+    _plot_iteration_bpp(iteration, overall, "Training Data BPP by Iteration", "gamedata_bpp")
+
+
+def plot_gamedata_bppma() -> None:
+    iteration = load_series(f"{config.eval_dir}/gamedata_bppma.pkl")
+    overall = load_series(f"{config.eval_dir}/gamedata_overall_bppma.pkl")
+    _plot_iteration_bppma(iteration, overall, "Training Data BPPMA by Iteration", "gamedata_bppma")
+
+
 # === game progress (over buckets) ===
 
 def plot_gp_state_count() -> None:
@@ -543,6 +591,8 @@ def main():
     safeplot(plot_gamedata_alt_accuracy)
     safeplot(plot_gamedata_bias)
     safeplot(plot_gamedata_alt_bias)
+    safeplot(plot_gamedata_bpp)
+    safeplot(plot_gamedata_bppma)
 
     # game progress
     safeplot(plot_gp_state_count)
