@@ -459,7 +459,7 @@ def get_most_recent_model_path() -> Optional[tuple[str, int]]:
 def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) -> dict[str, Any]:
     """
     Returns a result dict:
-      {"success": bool, "collapse_iteration": Optional[int], "value_pre_tanh_max_abs": Optional[float]}
+      {"success": bool, "collapse_iteration": Optional[int], "value_pre_tanh_mean_abs": Optional[float]}
     On detected collapse, success=False and the other fields describe the trigger.
     When force_fresh=True, any existing model_*.pkl files in the training dir are
     removed and training starts from scratch with the provided seed.
@@ -601,10 +601,10 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
 
         # early-abort on collapse — only in the danger window, only if enabled
         if config.detect_collapse and (i + 1) <= config.collapse_detection_iteration:
-            pre_tanh_max = diagnostics['per_site_stats']['value_pre_tanh']['max_abs']
-            if pre_tanh_max > config.collapse_threshold_pre_tanh:
-                logger.log(30, f"COLLAPSE DETECTED at iter {i + 1}: value_pre_tanh max_abs {pre_tanh_max:.2f} > threshold {config.collapse_threshold_pre_tanh}")
-                return {"success": False, "collapse_iteration": i + 1, "value_pre_tanh_max_abs": pre_tanh_max}
+            pre_tanh_mean = diagnostics['per_site_stats']['value_pre_tanh']['mean_abs']
+            if pre_tanh_mean > config.collapse_threshold_pre_tanh:
+                logger.log(30, f"COLLAPSE DETECTED at iter {i + 1}: value_pre_tanh mean_abs {pre_tanh_mean:.2f} > threshold {config.collapse_threshold_pre_tanh}")
+                return {"success": False, "collapse_iteration": i + 1, "value_pre_tanh_mean_abs": pre_tanh_mean}
 
         # free stale JIT caches and unreferenced GPU memory before the next iteration
         jax.clear_caches()
@@ -612,7 +612,7 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
 
     # after all iterations, plot all the training data
     plot_model_performance("training_plots/full_a0", train_datas)
-    return {"success": True, "collapse_iteration": None, "value_pre_tanh_max_abs": None}
+    return {"success": True, "collapse_iteration": None, "value_pre_tanh_mean_abs": None}
 
 if __name__ == "__main__":
     setup_logging(
@@ -665,7 +665,7 @@ if __name__ == "__main__":
                 "elapsed_seconds": round(attempt_end - attempt_start, 2),
                 "outcome": "succeeded" if result["success"] else "collapsed",
                 "collapse_iteration": result.get("collapse_iteration"),
-                "value_pre_tanh_max_abs": result.get("value_pre_tanh_max_abs"),
+                "value_pre_tanh_mean_abs": result.get("value_pre_tanh_mean_abs"),
                 "collapse_threshold_pre_tanh": config.collapse_threshold_pre_tanh,
             }
             try:

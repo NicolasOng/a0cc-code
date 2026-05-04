@@ -34,7 +34,7 @@
     "max_weight_ratio": 10.0,
     "detect_collapse": true,
     "collapse_detection_iteration": 6,
-    "collapse_threshold_pre_tanh": 8.0,
+    "collapse_threshold_pre_tanh": 5.0,
     "max_collapse_retries": 5,
     "log_system_metrics": true,
     "system_metrics_interval_seconds": 60.0,
