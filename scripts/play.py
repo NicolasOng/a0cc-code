@@ -21,8 +21,8 @@ def main():
 
     # other_player = GroundTruthPlayer(mistake_rate=0.1, print_info=True)
 
-    model_filename = "/home/nicolas/Downloads/2026-01-05 output-byrrp/output-byrrp2/training/model_50.pkl"
-    model = load_model(model_filename)
+    model_filename = "/home/nicolas/Downloads/model_49.pkl"
+    model = load_model(model_filename, training=False)
     # other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
     other_player = A0Player(
         board_size=config.board_size,
@@ -30,16 +30,26 @@ def main():
         model=model,
         exploit=True,
         mcts_samples=config.mcts_samples,
+        no_reverse_moves=not config.backwards_moves,
+        no_illegal_moves=not config.illegal_moves,
+        no_side_moves=not config.sideways_moves,
         rollout_type=config.rollout_type,
         rollout_depth=config.rollout_depth,
         policy_type=config.policy_type,
-        epsilon=0.0)
+        epsilon=config.epsilon,
+        dirichlet_epsilon=config.dirichlet_epsilon)
     #other_player = RandomPlayer()
 
     #human_player = other_player
 
     results = play(
-        Game(config.board_size, config.num_pieces, True, False, False),
+        Game(
+            config.board_size,
+            config.num_pieces,
+            no_reverse_moves=not config.backwards_moves,
+            no_illegal_moves=not config.illegal_moves,
+            no_side_moves=not config.sideways_moves
+        ),
         players=[
             human_player,
             other_player
