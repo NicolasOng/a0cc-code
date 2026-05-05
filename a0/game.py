@@ -6,6 +6,7 @@ from cc.core import Game, Board, Move, Player
 from typing import Protocol, Optional, Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 import logging
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ class TurnData:
         self.move: Move = move
         self.player_data: Any = player_data
         self.alternative_value_target: float | None = None
-        self.alternative_policy_target: np.ndarray | None = None
+        self.alternative_policy_target: NDArray[np.float32] | None = None
 
 class GameData:
     def __init__(self, game: Game, turn_limit: Optional[int] = None):

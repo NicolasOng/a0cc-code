@@ -75,6 +75,10 @@ def game_data_to_training_set(game_data: GameData) -> list[ExperienceData]:
         # add it to the training set
         training_set.append(training_example)
 
+        # add both to alternative targets
+        turn.alternative_value_target = value
+        turn.alternative_policy_target = mcts_policy
+
     return training_set
 
 def game_data_to_gt_training_set(game_data: GameData, gt: GroundTruth | None = None) -> list[ExperienceData]:
@@ -113,6 +117,10 @@ def game_data_to_gt_training_set(game_data: GameData, gt: GroundTruth | None = N
         # add it to the training set
         training_set.append(training_example)
 
+        # add both to alternative targets
+        turn.alternative_value_target = value
+        turn.alternative_policy_target = mcts_policy
+
     return training_set
 
 def game_data_to_gt_value_training_set(game_data: GameData, gt: GroundTruth | None = None) -> list[ExperienceData]:
@@ -142,6 +150,10 @@ def game_data_to_gt_value_training_set(game_data: GameData, gt: GroundTruth | No
             mask=legal_move_mask
         )
         training_set.append(training_example)
+
+        # add both to alternative targets
+        turn.alternative_value_target = value
+        turn.alternative_policy_target = mcts_policy
 
     return training_set
 
@@ -184,6 +196,10 @@ def game_data_to_gt_next_value_training_set(game_data: GameData, gt: GroundTruth
             mask=legal_move_mask
         )
         training_set.append(training_example)
+
+        # add both to alternative targets
+        turn.alternative_value_target = value
+        turn.alternative_policy_target = mcts_policy
 
     return training_set
 
@@ -234,6 +250,10 @@ def game_data_to_model_value_training_set(game_data: GameData, model: AlphaZeroM
             mask=legal_move_mask
         )
         training_set.append(training_example)
+
+        # add both to alternative targets
+        turn.alternative_value_target = target
+        turn.alternative_policy_target = turn.player_data
 
     return training_set
 
@@ -294,6 +314,10 @@ def game_data_to_td_lambda_training_set(game_data: GameData, model: AlphaZeroMod
             mask=legal_move_mask
         )
         training_set.append(training_example)
+
+        # add both to alternative targets
+        turn.alternative_value_target = target
+        turn.alternative_policy_target = turn.player_data
 
     return training_set
 

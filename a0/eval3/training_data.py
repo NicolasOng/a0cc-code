@@ -771,6 +771,7 @@ def run_collectors(gt: GroundTruth) -> None:
     # Raw continuous version for the saved Dataset, so value_loss against the
     # stored labels is meaningful (e.g. L2 to the actual TD-lambda target, not ±1).
     alt_outcome_raw: Callable[[TurnInfo], float] = lambda ti: float(ti.alternative_value_target) if ti.alternative_value_target is not None else 0.0
+    alt_policy: Callable[[TurnInfo], NDArray[np.float32]] = lambda ti: ti.alternative_policy_target if ti.alternative_policy_target is not None else np.zeros_like(ti.gt_policy)
 
     collectors: list[Collector] = [
         GameStatsCollector(),
@@ -778,13 +779,20 @@ def run_collectors(gt: GroundTruth) -> None:
         BiasCollector(),
         AccuracyCollector(
             name="gamedata_alt",
-            get_outcome=alt_outcome
+            get_outcome=alt_outcome,
+            get_policy=alt_policy
         ),
         BiasCollector(
             name="gamedata_alt",
             get_outcome=alt_outcome
         ),
         BPPCollector(gt=gt),
+        BPPCollector(
+            gt=gt,
+            name="gamedata_alt",
+            get_outcome=alt_outcome,
+            get_policy=alt_policy
+        ),
         ExperiencedDatasetCollector(
             name="experienced_dataset",
             batch_size=256,
@@ -797,13 +805,14 @@ def run_collectors(gt: GroundTruth) -> None:
             n_per_iteration=500,
             n_total=2000,
             get_outcome=alt_outcome_raw,
+            get_policy=alt_policy
         ),
         GameProgressMetaCollector(
             n_buckets=10,
             collectors=[
                 StateCountProgressCollector(),
                 AccuracyProgressCollector(name="experienced"),
-                AccuracyProgressCollector(name="alt_targets", get_outcome=alt_outcome),
+                AccuracyProgressCollector(name="alt_targets", get_outcome=alt_outcome, get_policy=alt_policy),
                 BoardFunctionProgressCollector(
                     name="gamedata",
                     functions={

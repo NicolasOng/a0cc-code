@@ -20,7 +20,7 @@ class TurnInfo:
     is_trivial: bool
     progress: int    # 0-99, percentage through the game
     alternative_value_target: float | None
-    alternative_policy_target: np.ndarray | None
+    alternative_policy_target: NDArray[np.float32] | None
 
 @dataclass
 class GameInfo:

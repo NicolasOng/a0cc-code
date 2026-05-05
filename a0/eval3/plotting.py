@@ -290,6 +290,68 @@ def plot_gamedata_bppma() -> None:
     _plot_iteration_bppma(iteration, overall, "Training Data BPPMA by Iteration", "gamedata_bppma")
 
 
+def plot_gamedata_alt_bpp() -> None:
+    iteration = load_series(f"{config.eval_dir}/gamedata_alt_bpp.pkl")
+    overall = load_series(f"{config.eval_dir}/gamedata_alt_overall_bpp.pkl")
+    _plot_iteration_bpp(iteration, overall, "Alt-Target Training Data BPP by Iteration", "gamedata_alt_bpp")
+
+
+def plot_gamedata_alt_bppma() -> None:
+    iteration = load_series(f"{config.eval_dir}/gamedata_alt_bppma.pkl")
+    overall = load_series(f"{config.eval_dir}/gamedata_alt_overall_bppma.pkl")
+    _plot_iteration_bppma(iteration, overall, "Alt-Target Training Data BPPMA by Iteration", "gamedata_alt_bppma")
+
+
+def plot_value_accuracies() -> None:
+    acc          = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
+    overall_acc  = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
+    alt_acc      = load_series(f"{config.eval_dir}/gamedata_alt_acc.pkl")
+    alt_o_acc    = load_series(f"{config.eval_dir}/gamedata_alt_overall_acc.pkl")
+    bppma        = load_series(f"{config.eval_dir}/gamedata_bppma.pkl")
+    overall_bppma = load_series(f"{config.eval_dir}/gamedata_overall_bppma.pkl")
+    alt_bppma    = load_series(f"{config.eval_dir}/gamedata_alt_bppma.pkl")
+    alt_o_bppma  = load_series(f"{config.eval_dir}/gamedata_alt_overall_bppma.pkl")
+    plot_given_groups(
+        "Self-Play Value Accuracies",
+        [
+            [("Overall Game Outcome Accuracy ND",     overall_acc.x,   overall_acc.ys["Overall Value Accuracy ND"]),
+             ("Game Outcome Accuracy ND",              acc.x,           acc.ys["Iteration Value Accuracy ND"])],
+            [("Overall Training Data Accuracy ND", alt_o_acc.x,     alt_o_acc.ys["Overall Value Accuracy ND"]),
+             ("Training Data Accuracy ND",         alt_acc.x,       alt_acc.ys["Iteration Value Accuracy ND"])],
+            [("Overall Game Outcome Majority Class ND",        overall_bppma.x, overall_bppma.ys["Overall Value BPPMA ND"]),
+             ("Value Game Outcome Majority Class ND",                bppma.x,         bppma.ys["Iteration Value BPPMA ND"])],
+            [("Overall Training Data Majority Class ND",    alt_o_bppma.x,   alt_o_bppma.ys["Overall Value BPPMA ND"]),
+             ("Training Data Majority Class ND",            alt_bppma.x,     alt_bppma.ys["Iteration Value BPPMA ND"])],
+        ],
+        "Iterations", "Value", "gamedata_value_summary",
+    )
+
+
+def plot_policy_accuracies() -> None:
+    acc          = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
+    overall_acc  = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
+    alt_acc      = load_series(f"{config.eval_dir}/gamedata_alt_acc.pkl")
+    alt_o_acc    = load_series(f"{config.eval_dir}/gamedata_alt_overall_acc.pkl")
+    bppma        = load_series(f"{config.eval_dir}/gamedata_bppma.pkl")
+    overall_bppma = load_series(f"{config.eval_dir}/gamedata_overall_bppma.pkl")
+    alt_bppma    = load_series(f"{config.eval_dir}/gamedata_alt_bppma.pkl")
+    alt_o_bppma  = load_series(f"{config.eval_dir}/gamedata_alt_overall_bppma.pkl")
+    plot_given_groups(
+        "Self-Play Policy Accuracies",
+        [
+            [("Overall Player MCTS Policy Accuracy NT",     overall_acc.x,   overall_acc.ys["Overall Policy Accuracy NT"]),
+             ("Player MCTS Policy Accuracy NT",              acc.x,           acc.ys["Iteration Policy Accuracy NT"])],
+            [("Overall Training Data Accuracy NT", alt_o_acc.x,     alt_o_acc.ys["Overall Policy Accuracy NT"]),
+             ("Training Data Accuracy NT",         alt_acc.x,       alt_acc.ys["Iteration Policy Accuracy NT"])],
+            [("Overall Player MCTS Policy Majority Class NT",        overall_bppma.x, overall_bppma.ys["Overall Policy BPPMA NT"]),
+             ("Player MCTS Policy Majority Class NT",                bppma.x,         bppma.ys["Iteration Policy BPPMA NT"])],
+            [("Overall Training Data Majority Class NT",    alt_o_bppma.x,   alt_o_bppma.ys["Overall Policy BPPMA NT"]),
+             ("Training Data Majority Class NT",            alt_bppma.x,     alt_bppma.ys["Iteration Policy BPPMA NT"])],
+        ],
+        "Iterations", "Policy", "gamedata_policy_summary",
+    )
+
+
 # === game progress (over buckets) ===
 
 def plot_gp_state_count() -> None:
@@ -439,8 +501,8 @@ def plot_full_value_accuracy() -> None:
     random_   = load_series(f"{config.eval_dir}/random_nd_eval.pkl")
     n1        = load_series(f"{config.eval_dir}/neighbor_1_nd_eval.pkl")
     n2        = load_series(f"{config.eval_dir}/neighbor_2_nd_eval.pkl")
-    iteration = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
-    overall   = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
+    iteration = load_series(f"{config.eval_dir}/gamedata_alt_acc.pkl")
+    overall   = load_series(f"{config.eval_dir}/gamedata_alt_overall_acc.pkl")
     plot_given(
         "Value Head Performance on Ground Truth and Training Data",
         [
@@ -448,10 +510,10 @@ def plot_full_value_accuracy() -> None:
             ("Neighbor 1", n1.x, n1.ys["value_accuracy"]),
             ("Neighbor 2", n2.x, n2.ys["value_accuracy"]),
             ("Random", random_.x, random_.ys["value_accuracy"]),
-            ("Training Data", iteration.x, iteration.ys["Iteration Value Accuracy"]),
-            ("Training Data ND", iteration.x, iteration.ys["Iteration Value Accuracy ND"]),
-            ("Overall Training Data", overall.x, overall.ys["Overall Value Accuracy"]),
-            ("Overall Training Data ND", overall.x, overall.ys["Overall Value Accuracy ND"]),
+            ("Training Data (Alt)", iteration.x, iteration.ys["Iteration Value Accuracy"]),
+            ("Training Data ND (Alt)", iteration.x, iteration.ys["Iteration Value Accuracy ND"]),
+            ("Overall Training Data (Alt)", overall.x, overall.ys["Overall Value Accuracy"]),
+            ("Overall Training Data ND (Alt)", overall.x, overall.ys["Overall Value Accuracy ND"]),
         ],
         "Iteration", "Accuracy", "full_value_accuracy",
     )
@@ -462,8 +524,8 @@ def plot_full_policy_accuracy() -> None:
     random_nt = load_series(f"{config.eval_dir}/random_nt_eval.pkl")
     n1_nt     = load_series(f"{config.eval_dir}/neighbor_1_nt_eval.pkl")
     n2_nt     = load_series(f"{config.eval_dir}/neighbor_2_nt_eval.pkl")
-    iteration = load_series(f"{config.eval_dir}/gamedata_acc.pkl")
-    overall   = load_series(f"{config.eval_dir}/gamedata_overall_acc.pkl")
+    iteration = load_series(f"{config.eval_dir}/gamedata_alt_acc.pkl")
+    overall   = load_series(f"{config.eval_dir}/gamedata_alt_overall_acc.pkl")
     plot_given(
         "Policy Head Performance on Ground Truth (NT) and Training Data",
         [
@@ -471,8 +533,8 @@ def plot_full_policy_accuracy() -> None:
             ("Neighbor 1 NT", n1_nt.x, n1_nt.ys["policy_accuracy"]),
             ("Neighbor 2 NT", n2_nt.x, n2_nt.ys["policy_accuracy"]),
             ("Random NT", random_nt.x, random_nt.ys["policy_accuracy"]),
-            ("Training Data NT", iteration.x, iteration.ys["Iteration Policy Accuracy NT"]),
-            ("Overall Training Data NT", overall.x, overall.ys["Overall Policy Accuracy NT"]),
+            ("Training Data NT (Alt)", iteration.x, iteration.ys["Iteration Policy Accuracy NT"]),
+            ("Overall Training Data NT (Alt)", overall.x, overall.ys["Overall Policy Accuracy NT"]),
         ],
         "Iteration", "Accuracy", "full_policy_accuracy",
     )
@@ -585,6 +647,8 @@ def main():
     safeplot(plot_gamedata_alt_bias)
     safeplot(plot_gamedata_bpp)
     safeplot(plot_gamedata_bppma)
+    safeplot(plot_gamedata_alt_bpp)
+    safeplot(plot_gamedata_alt_bppma)
 
     # game progress
     safeplot(plot_gp_state_count)
@@ -611,6 +675,8 @@ def main():
     # combined plots
     safeplot(plot_full_value_accuracy)
     safeplot(plot_full_policy_accuracy)
+    safeplot(plot_value_accuracies)
+    safeplot(plot_policy_accuracies)
 
     # player evaluation
     safeplot(plot_ev)
