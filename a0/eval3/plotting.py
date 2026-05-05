@@ -339,7 +339,7 @@ def plot_gp_alt_targets_accuracy() -> None:
 
 
 def plot_gp_baseline_accuracy() -> None:
-    s = load_series(f"{config.eval_dir}/gamedata_progress_Baseline Accuracy.pkl")
+    s = load_series(f"{config.eval_dir}/gamedata_10_progress_baseline_accuracy.pkl")
     plot_given_groups(
         "Baseline Accuracy by Game Progress",
         [
@@ -357,7 +357,7 @@ def plot_gp_baseline_accuracy() -> None:
 
 
 def plot_gp_branching_factor() -> None:
-    s = load_series(f"{config.eval_dir}/gamedata_progress_Branching Factor.pkl")
+    s = load_series(f"{config.eval_dir}/gamedata_10_progress_branching_factor.pkl")
     plot_given(
         "Average Branching Factor by Game Progress",
         [("Branching Factor", s.x, s.ys["Branching Factor"])],
@@ -372,10 +372,13 @@ def _plot_dataset_eval(name: str, title: str) -> None:
     plot_given(
         title,
         [
-            ("Value Accuracy", s.x, s.ys["value_accuracy"]),
+            ("Loss",            s.x, s.ys["loss"]),
+            ("Value Loss",      s.x, s.ys["value_loss"]),
+            ("Policy Loss",     s.x, s.ys["policy_loss"]),
+            ("Value Accuracy",  s.x, s.ys["value_accuracy"]),
             ("Policy Accuracy", s.x, s.ys["policy_accuracy"]),
         ],
-        "Iteration", "Accuracy", f"{name}_eval",
+        "Iteration", "Performance", f"{name}_eval",
     )
 
 

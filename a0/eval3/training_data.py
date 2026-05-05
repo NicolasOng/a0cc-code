@@ -640,7 +640,7 @@ class BoardFunctionProgressCollector(GameProgressCollector):
     Collects boards per game progress bucket, then applies functions
     to each bucket's board list in finalize. Each function returns a
     dict[str, float] mapping series labels to values.
-    → {name}_progress_{fn_name}.pkl per function
+    → {name}_{n_buckets}_progress_{fn_name}.pkl per function
 
     If `n` is given, each bucket is downsampled to at most `n` boards before
     being passed to the per-bucket functions. The same sample is reused across
@@ -707,7 +707,7 @@ class BoardFunctionProgressCollector(GameProgressCollector):
                 series.x.append(b)
                 for label in labels:
                     series.ys[label].append(results[b].get(label, 0))
-            save_series(series, f"{config.eval_dir}/{self._name}_progress_{fn_name}.pkl")
+            save_series(series, f"{config.eval_dir}/{self._name}_{len(self._buckets)}_progress_{fn_name}.pkl")
 
         for fn in self._finalize_functions or []:
             logger.info(f"BoardFunctionProgressCollector '{self._name}': running finalize function {getattr(fn, '__name__', repr(fn))}...")
@@ -807,8 +807,8 @@ def run_collectors(gt: GroundTruth) -> None:
                 BoardFunctionProgressCollector(
                     name="gamedata",
                     functions={
-                        "Baseline Accuracy": lambda boards: baseline_accuracy_fn(boards, gt),
-                        "Branching Factor": lambda boards: get_branching_factor_fn(boards, gt)
+                        "baseline_accuracy": lambda boards: baseline_accuracy_fn(boards, gt),
+                        "branching_factor": lambda boards: get_branching_factor_fn(boards, gt)
                     },
                     finalize_functions=[
                         lambda boards, n_buckets: convert_and_save_state_buckets_to_datasets(boards, n_buckets, gt, n=1000, batch_size=256)

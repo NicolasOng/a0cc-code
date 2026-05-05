@@ -47,8 +47,8 @@ SERIES_FILES = [
     "gamedata_10_progress_count",
     "experienced_10_progress_acc",
     "alt_targets_10_progress_acc",
-    "gamedata_progress_Baseline Accuracy",
-    "gamedata_progress_Branching Factor",
+    "gamedata_10_progress_baseline_accuracy",
+    "gamedata_10_progress_branching_factor",
     # per-dataset model eval
     "seen_nd_eval",
     "random_nd_eval",
@@ -298,7 +298,7 @@ def plot_merged_gp_alt_targets_accuracy() -> None:
 
 
 def plot_merged_gp_baseline_accuracy() -> None:
-    s = load_series(f"{config.eval_dir}/merged_gamedata_progress_Baseline Accuracy.pkl")
+    s = load_series(f"{config.eval_dir}/merged_gamedata_10_progress_baseline_accuracy.pkl")
     plot_shaded_error(
         "Baseline Accuracy by Game Progress (merged)",
         [
@@ -312,7 +312,7 @@ def plot_merged_gp_baseline_accuracy() -> None:
 
 
 def plot_merged_gp_branching_factor() -> None:
-    s = load_series(f"{config.eval_dir}/merged_gamedata_progress_Branching Factor.pkl")
+    s = load_series(f"{config.eval_dir}/merged_gamedata_10_progress_branching_factor.pkl")
     plot_shaded_error(
         "Average Branching Factor by Game Progress (merged)",
         [("Branching Factor", "±95% CI", s.x, *_ci_keys(s, "Branching Factor"))],
