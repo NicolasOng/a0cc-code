@@ -535,33 +535,22 @@ def plot_wld_p2() -> None:
     )
 
 
-def plot_wld_proportional_p1() -> None:
+def plot_wld() -> None:
     s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
-    plot_stacked_proportional(
-        "Model as P1: W/L/D vs Baseline (Proportional)", s.x,
-        s.ys["num_games_p1"],
+    x = s.x
+    plot_given_groups(
+        "Model W/L/D vs Baseline",
         [
-            ("Wins",            s.ys["wins_p1"]),
-            ("Losses",          s.ys["losses_p1"]),
-            ("Draws (repeat)",  s.ys["draws_repeat_p1"]),
-            ("Draws (timeout)", s.ys["draws_timeout_p1"]),
+            [("Wins (P1)",          x, s.ys["wins_p1"]),
+             ("Wins (P2)",          x, s.ys["wins_p2"])],
+            [("Losses (P1)",        x, s.ys["losses_p1"]),
+             ("Losses (P2)",        x, s.ys["losses_p2"])],
+            [("Draws repeat (P1)",  x, s.ys["draws_repeat_p1"]),
+             ("Draws repeat (P2)",  x, s.ys["draws_repeat_p2"])],
+            [("Draws timeout (P1)", x, s.ys["draws_timeout_p1"]),
+             ("Draws timeout (P2)", x, s.ys["draws_timeout_p2"])],
         ],
-        "Training Iteration", "Proportion", "player_wld_proportional_p1",
-    )
-
-
-def plot_wld_proportional_p2() -> None:
-    s = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
-    plot_stacked_proportional(
-        "Model as P2: W/L/D vs Baseline (Proportional)", s.x,
-        s.ys["num_games_p2"],
-        [
-            ("Wins",            s.ys["wins_p2"]),
-            ("Losses",          s.ys["losses_p2"]),
-            ("Draws (repeat)",  s.ys["draws_repeat_p2"]),
-            ("Draws (timeout)", s.ys["draws_timeout_p2"]),
-        ],
-        "Training Iteration", "Proportion", "player_wld_proportional_p2",
+        "Training Iteration", "Games", "player_wld",
     )
 
 
@@ -624,8 +613,7 @@ def main():
     safeplot(plot_ev)
     safeplot(plot_wld_p1)
     safeplot(plot_wld_p2)
-    safeplot(plot_wld_proportional_p1)
-    safeplot(plot_wld_proportional_p2)
+    safeplot(plot_wld)
 
 
 if __name__ == "__main__":
