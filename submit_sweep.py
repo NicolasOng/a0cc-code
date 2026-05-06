@@ -33,6 +33,23 @@ or, for explicit points instead of a grid:
             {"learning_rate": 5e-5, "td_lambda": 0.9}
         ]
     }
+
+Optional `slurm` block overrides the #SBATCH directives in the .sh scripts via
+sbatch CLI flags (which always win over in-script #SBATCH lines). One sub-block
+per stage; keys are passed through as `--<key>=<value>` to sbatch:
+    {
+        ...,
+        "slurm": {
+            "train":     {"time": "24:00:00", "cpus-per-task": 16, "mem-per-cpu": "4G", "gpus-per-node": 1},
+            "combine":   {"time": "1:00:00",  "cpus-per-task": 4,  "mem-per-cpu": "4G"},
+            "aggregate": {"time": "30:00",    "cpus-per-task": 2}
+        }
+    }
+
+Local mode (no slurm) runs the same per-task / per-HP / per-sweep stages on
+this machine, sequentially, by shelling out to python directly:
+    python3 submit_sweep.py sweeps/foo.json --local
+    python3 submit_sweep.py sweeps/foo.json --local --stages a0.eval3.plotting --skip-combine --skip-aggregate
 """
 
 import argparse
@@ -48,6 +65,29 @@ SWEEP_ROOT = "sweep-output"
 TRAIN_SCRIPT = "train_a0_gpu.sh"
 COMBINE_SCRIPT = "combine_a0.sh"
 AGGREGATE_SCRIPT = "aggregate_sweep.sh"  # built in Stage C/D
+
+# Default per-stage pipelines for --local mode. Mirror the python -m calls in
+# train_a0_gpu.sh / combine_a0.sh / aggregate_sweep.sh. Overridden by --stages,
+# --combine-stages, --aggregate-stages.
+DEFAULT_TRAIN_STAGES = [
+    "a0.train.alphazero",
+    "a0.eval3.training_data",
+    "a0.eval3.generate_datasets",
+    "a0.eval3.dataset_evaluation",
+    "a0.eval.player",
+    "a0.eval3.plotting",
+    "a0.eval3.extract_summary",
+]
+DEFAULT_COMBINE_STAGES = [
+    "a0.eval.combine_merge",
+    "a0.eval.combine_plot",
+    "a0.eval3.combine",
+    "a0.eval.combine_summary",
+]
+DEFAULT_AGGREGATE_STAGES = [
+    "aggregate_sweep.py",
+    "plot_sweep.py",
+]
 
 
 def load_sweep_spec(path: str) -> dict:
@@ -149,17 +189,97 @@ def sbatch(args: list[str], dry_run: bool) -> str | None:
     return job_id
 
 
+def slurm_flags_for(spec: dict, key: str) -> list[str]:
+    """Translate spec['slurm'][key] (a dict of sbatch options) into ['--k=v', ...]
+    overrides. sbatch CLI flags supersede in-script #SBATCH directives, so this
+    is enough to retune time/cpus/memory/GPU per-sweep without touching the .sh."""
+    settings = spec.get("slurm", {}).get(key, {}) or {}
+    return [f"--{k}={v}" for k, v in settings.items()]
+
+
+def stage_argv(stage: str, *positional: str) -> list[str]:
+    """Build the argv to invoke a stage. Top-level scripts (e.g. aggregate_sweep.py)
+    are run as `python <file>`; everything else as `python -m <module>`."""
+    if stage.endswith(".py") and os.path.isfile(stage):
+        return [sys.executable, stage, *positional]
+    return [sys.executable, "-m", stage, *positional]
+
+
+def run_stage_local(argv: list[str], dry_run: bool) -> None:
+    print("  $", " ".join(argv))
+    if dry_run:
+        return
+    subprocess.run(argv, check=True)
+
+
+def run_local(
+    args: argparse.Namespace,
+    hp_config_paths: list[str],
+    tasks_file: str,
+    sweep_dir: str,
+) -> None:
+    """Local equivalent of the slurm pipeline: per-task stages, per-HP combine
+    stages, and per-sweep aggregate stages — run sequentially in this process."""
+    # 1. Per-(config, trial) stages.
+    print(f"\n[local] Running {len(args.stages)} per-task stage(s) on tasks in {tasks_file}...")
+    with open(tasks_file) as f:
+        task_lines = [ln.strip() for ln in f if ln.strip()]
+    for line in task_lines:
+        cfg, trial = line.split()
+        for stage in args.stages:
+            run_stage_local(stage_argv(stage, cfg, trial), args.dry_run)
+
+    # 2. Per-HP combine stages.
+    if args.skip_combine or not args.combine_stages:
+        print(f"\n[local] Skipping combine stages.")
+    else:
+        print(f"\n[local] Running {len(args.combine_stages)} combine stage(s) per HP...")
+        for cfg in hp_config_paths:
+            for stage in args.combine_stages:
+                run_stage_local(stage_argv(stage, cfg), args.dry_run)
+
+    # 3. Whole-sweep aggregate stages.
+    if args.skip_aggregate or not args.aggregate_stages:
+        print(f"\n[local] Skipping aggregate stages.")
+    else:
+        print(f"\n[local] Running {len(args.aggregate_stages)} aggregate stage(s) on sweep...")
+        for stage in args.aggregate_stages:
+            run_stage_local(stage_argv(stage, sweep_dir), args.dry_run)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("sweep_spec")
     parser.add_argument("--dry-run", action="store_true",
-                        help="materialize files but don't actually call sbatch")
+                        help="materialize files but don't actually call sbatch (or python, "
+                             "in --local mode) — just print what would run")
     parser.add_argument("--script", default=TRAIN_SCRIPT,
                         help=f"stage-1 .sh to run per task (default: {TRAIN_SCRIPT}). "
                              "Use eval_a0.sh / eval_a03.sh to re-eval an existing sweep.")
     parser.add_argument("--reuse-configs", action="store_true",
                         help="skip rewriting per-HP config.json files; use whatever is on disk. "
                              "Required for re-eval-only runs against an already-trained sweep.")
+    parser.add_argument("--local", action="store_true",
+                        help="run all stages on this machine instead of submitting to slurm. "
+                             "Skips the .sh wrappers (which assume cluster setup) and shells "
+                             "out to python directly in the current environment.")
+    parser.add_argument("--stages", nargs="+", default=DEFAULT_TRAIN_STAGES,
+                        metavar="MODULE",
+                        help="(--local only) per-(config, trial) stages to run. Each is a python "
+                             "module (a0.eval3.plotting) or a top-level script (aggregate_sweep.py). "
+                             f"Default: {' '.join(DEFAULT_TRAIN_STAGES)}.")
+    parser.add_argument("--combine-stages", nargs="+", default=DEFAULT_COMBINE_STAGES,
+                        metavar="MODULE",
+                        help="(--local only) per-HP combine stages. "
+                             f"Default: {' '.join(DEFAULT_COMBINE_STAGES)}.")
+    parser.add_argument("--aggregate-stages", nargs="+", default=DEFAULT_AGGREGATE_STAGES,
+                        metavar="MODULE",
+                        help="(--local only) per-sweep aggregate stages. "
+                             f"Default: {' '.join(DEFAULT_AGGREGATE_STAGES)}.")
+    parser.add_argument("--skip-combine", action="store_true",
+                        help="(--local only) skip combine stages.")
+    parser.add_argument("--skip-aggregate", action="store_true",
+                        help="(--local only) skip aggregate stages.")
     args = parser.parse_args()
 
     spec = load_sweep_spec(args.sweep_spec)
@@ -206,6 +326,13 @@ def main():
     with open(os.path.join(sweep_dir, "sweep.json"), "w") as f:
         json.dump(spec, f, indent=2)
 
+    # 3c. Local mode short-circuits the slurm submission and runs everything
+    # in this process. Skips the .sh wrappers (cluster-only setup) entirely.
+    if args.local:
+        run_local(args, hp_config_paths, tasks_file, sweep_dir)
+        print(f"\nDone. Sweep directory: {sweep_dir}")
+        return
+
     # 3b. Make a slurm logs dir co-located with the sweep so all per-task .out
     # files land here instead of cluttering the working directory.
     slurm_logs = os.path.join(sweep_dir, "slurm_logs")
@@ -222,6 +349,7 @@ def main():
     train_job = sbatch(
         [f"--array=1-{n_tasks}",
          f"--output={slurm_logs}/{stage_name}_%A_%a.out",
+         *slurm_flags_for(spec, "train"),
          args.script, tasks_file],
         args.dry_run,
     )
@@ -233,6 +361,7 @@ def main():
         [f"--array=1-{n_hps}",
          f"--output={slurm_logs}/combine_%A_%a.out",
          f"--dependency=afterany:{train_dep}",
+         *slurm_flags_for(spec, "combine"),
          COMBINE_SCRIPT, hp_list_file],
         args.dry_run,
     )
@@ -244,6 +373,7 @@ def main():
         sbatch(
             [f"--output={slurm_logs}/aggregate_%j.out",
              f"--dependency=afterany:{combine_dep}",
+             *slurm_flags_for(spec, "aggregate"),
              AGGREGATE_SCRIPT, sweep_dir],
             args.dry_run,
         )
