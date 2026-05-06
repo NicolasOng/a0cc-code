@@ -333,7 +333,7 @@ def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[f
     plt.figure(figsize=(16, 9))
     for line_label, fill_label, x_values, y_values, fill_values in series:
         plt.plot(x_values, y_values, label=line_label)
-        plt.fill_between(x_values, np.array(y_values) - np.array(fill_values), np.array(y_values) + np.array(fill_values), 
+        plt.fill_between(x_values, np.array(y_values) - np.array(fill_values), np.array(y_values) + np.array(fill_values),
                         alpha=0.3, label=fill_label)
     plt.title(title)
     plt.xlabel(x_label)
@@ -348,75 +348,40 @@ def plot_shaded_error(title: str, series: list[tuple[str, str, list[int], list[f
     plt.savefig(f"{config.plot_dir}/{fn}.png")
     plt.close()
 
-def plot_ridgeline(
-    distributions: list[list[float]],
-    labels: list[str],
-    title: str,
-    x_label: str,
-    y_label: str,
-    fn: str,
-    value_range: tuple[float, float] = (-1, 1),
-    overlap: float = 0.6,
-    height: float = 1.8,
-    bw: float = 0.15,
-    grid_points: int = 300,
-    density_method: Literal["kde", "buckets"] = "buckets",
-    num_buckets: int = 20,
-) -> None:
+def plot_shaded_error_groups(title: str, groups: list[list[tuple[str, str, list[int], list[float], list[float]]]], x_label: str, y_label: str, fn: str, use_log_y: bool = False, y_lim: tuple[float, float] | None = None):
     '''
-    Plot a ridgeline chart: one density curve per distribution, stacked vertically.
-    Args:
-        distributions: list of value lists, one per ridge (bottom to top)
-        labels: tick labels for each ridge (same length as distributions)
-        title: plot title
-        x_label: x-axis label
-        y_label: y-axis label
-        fn: filename (saved under config.plot_dir)
-        value_range: (min, max) for the x-axis and density domain
-        overlap: vertical spacing between ridges (lower = more overlap)
-        height: how tall each peak-normalized ridge is in y-units (>1 makes
-                them visually exaggerated and overlap more with the next ridge)
-        bw: smoothing strength for the histogram blur
-        grid_points: number of points to evaluate the density on
-        density_method: "kde" for gaussian_kde, "buckets" for smoothed histogram
-        num_buckets: number of histogram buckets for density_method="buckets"
+    Grouped variant of plot_shaded_error: each group shares a color, members
+    within a group are differentiated by linestyle. Mirrors plot_given_groups
+    but with shaded CI bands per series.
+    Each tuple is (line_label, fill_label, x, y, fill).
     '''
-    x_grid = np.linspace(value_range[0], value_range[1], grid_points)
-    n = len(distributions)
-
-    plt.figure(figsize=(8, max(6, n * 0.5)))
-    for i, values in enumerate(distributions):
-        if density_method == "kde":
-            arr = np.asarray(values, dtype=np.float64)
-            kde = gaussian_kde(arr, bw_method=bw)
-            density = kde(x_grid)
-        elif density_method == "buckets":
-            density = _density_from_samples(values, x_grid, value_range, bw, num_buckets)
-        else:
-            raise ValueError(f"Unknown density_method={density_method}; expected 'kde' or 'buckets'")
-
-        peak = float(density.max())
-        if peak > 0:
-            density = density / peak  # normalize peak to 1
-        baseline = i * overlap
-
-        # subtle horizontal floor line at this iteration's baseline
-        plt.plot([value_range[0], value_range[1]], [baseline, baseline],
-                 color="grey", linewidth=0.5, alpha=0.4, zorder=0)
-
-        plt.plot(x_grid, baseline + density * height, color='black', linewidth=1.0, alpha=0.7)
-
-    plt.yticks(
-        [i * overlap for i in range(n)],
-        labels,
-    )
+    plt.figure(figsize=(16, 9))
+    colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan']
+    line_styles = ['-', '--', '-.', ':']
+    for group_idx, group in enumerate(groups):
+        color = colors[group_idx % len(colors)]
+        for series_idx, (line_label, fill_label, x_values, y_values, fill_values) in enumerate(group):
+            line_style = line_styles[series_idx % len(line_styles)]
+            plt.plot(x_values, y_values, label=line_label, color=color, linestyle=line_style)
+            plt.fill_between(
+                x_values,
+                np.array(y_values) - np.array(fill_values),
+                np.array(y_values) + np.array(fill_values),
+                alpha=0.2, color=color, label=fill_label,
+            )
+    plt.title(title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
-    plt.xlim(value_range[0], value_range[1])
-    plt.ylim(0, (n - 1) * overlap + height)
-    plt.title(title)
+    plt.legend()
+    if use_log_y:
+        plt.yscale('log')
+    if y_lim is not None:
+        plt.ylim(y_lim)
+    plt.minorticks_on()
+    plt.grid(True, which='major', linewidth=0.8)
+    plt.grid(True, which='minor', linewidth=0.3, alpha=0.5)
     plt.tight_layout()
-    plt.savefig(f"{config.plot_dir}{fn}.png")
+    plt.savefig(f"{config.plot_dir}/{fn}.png")
     plt.close()
 
 def plot_shaded_ridgeline(
@@ -662,11 +627,26 @@ def plot_value_proportions(
 
 def plot_bar(title: str, series: tuple[str, list[int], list[float]], x_label: str, y_label: str, fn: str) -> None:
     plt.figure(figsize=(16, 9))
-    
+
     label, x_values, y_values = series
-    
+
     plt.bar(x_values, y_values, label=label)
-    
+
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(title)
+    plt.legend()
+    plt.grid(True, axis='y', alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}/{fn}.png")
+    plt.close()
+
+
+def plot_bar_with_error(title: str, series: tuple[str, list[int], list[float], list[float]], x_label: str, y_label: str, fn: str) -> None:
+    '''Bar chart with symmetric error bars. The series tuple is (label, x, y, error).'''
+    plt.figure(figsize=(16, 9))
+    label, x_values, y_values, error_values = series
+    plt.bar(x_values, y_values, yerr=error_values, label=label, capsize=5)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     plt.title(title)

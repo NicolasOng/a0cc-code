@@ -19,8 +19,14 @@ from a0.utils.plotting import (
     load_distribution_series,
     load_and_merge_series,
     load_and_merge_distribution_series,
+    plot_bar_with_error,
+    plot_percentile_bands,
     plot_shaded_error,
+    plot_shaded_error_groups,
     plot_shaded_ridgeline,
+    plot_stacked,
+    plot_stacked_proportional,
+    plot_value_proportions,
 )
 from a0.eval3.plotting import safeplot, _reference_names
 
@@ -43,11 +49,15 @@ SERIES_FILES = [
     "gamedata_overall_bias",
     "gamedata_alt_bias",
     "gamedata_alt_overall_bias",
-    # BPP / BPPMA
+    # BPP / BPPMA (experienced + alt-target)
     "gamedata_bpp",
     "gamedata_overall_bpp",
     "gamedata_bppma",
     "gamedata_overall_bppma",
+    "gamedata_alt_bpp",
+    "gamedata_alt_overall_bpp",
+    "gamedata_alt_bppma",
+    "gamedata_alt_overall_bppma",
     # game-progress series
     "gamedata_10_progress_count",
     "experienced_10_progress_acc",
@@ -184,36 +194,51 @@ def merge_all_distribution_series() -> None:
 
 # === merged distribution series plots ===
 
-def plot_merged_dataset_pre_balance_distributions() -> None:
-    series = load_distribution_series(f"{config.eval_dir}/merged_dataset_pre_balance_distributions.pkl")
+def _plot_merged_distribution_variants(series_fn: str, title: str, fn_base: str) -> None:
+    '''Render ridgeline + percentile bands + value-proportion plots for one merged distribution series.'''
+    series = load_distribution_series(f"{config.eval_dir}/{series_fn}")
+    labels = [str(x) for x in series.x]
     plot_shaded_ridgeline(
-        trials=series.trials,
-        labels=[str(x) for x in series.x],
-        title="Dataset Pre Balance Distributions (merged)",
+        trials=series.trials, labels=labels,
+        title=title,
         x_label="Value", y_label="Iteration",
-        fn="merged_dataset_pre_balance_distributions",
+        fn=fn_base,
+    )
+    plot_percentile_bands(
+        trials=series.trials, labels=labels,
+        title=f"{title} (percentile bands)",
+        x_label="Iteration", y_label="Value",
+        fn=f"{fn_base}_bands",
+    )
+    plot_value_proportions(
+        trials=series.trials, labels=labels,
+        title=f"{title} (value-bin proportions)",
+        x_label="Iteration", y_label="Proportion of samples",
+        fn=f"{fn_base}_proportions",
+    )
+
+
+def plot_merged_dataset_pre_balance_distributions() -> None:
+    _plot_merged_distribution_variants(
+        "merged_dataset_pre_balance_distributions.pkl",
+        "Dataset Pre Balance Distributions (merged)",
+        "merged_dataset_pre_balance_distributions",
     )
 
 
 def plot_merged_dataset_post_balance_distributions() -> None:
-    series = load_distribution_series(f"{config.eval_dir}/merged_dataset_post_balance_distributions.pkl")
-    plot_shaded_ridgeline(
-        trials=series.trials,
-        labels=[str(x) for x in series.x],
-        title="Dataset Post Balance Distributions (merged)",
-        x_label="Value", y_label="Iteration",
-        fn="merged_dataset_post_balance_distributions",
+    _plot_merged_distribution_variants(
+        "merged_dataset_post_balance_distributions.pkl",
+        "Dataset Post Balance Distributions (merged)",
+        "merged_dataset_post_balance_distributions",
     )
 
 
 def plot_merged_random_nd_value_distributions() -> None:
-    series = load_distribution_series(f"{config.eval_dir}/merged_random_nd_value_distributions.pkl")
-    plot_shaded_ridgeline(
-        trials=series.trials,
-        labels=[str(x) for x in series.x],
-        title="Model Value Predictions on random_nd (merged)",
-        x_label="Value", y_label="Iteration",
-        fn="merged_random_nd_value_distributions",
+    _plot_merged_distribution_variants(
+        "merged_random_nd_value_distributions.pkl",
+        "Model Value Predictions on random_nd (merged)",
+        "merged_random_nd_value_distributions",
     )
 
 
@@ -236,42 +261,124 @@ def plot_merged_training_metrics() -> None:
     )
 
 
+def plot_merged_training_metrics_with_losses() -> None:
+    s = load_series(f"{config.eval_dir}/merged_training_metrics.pkl")
+    plot_shaded_error(
+        "Training Performance Metrics (with losses, merged)",
+        [
+            ("Loss",            "±95% CI", s.x, *_ci_keys(s, "Loss")),
+            ("Value Loss",      "±95% CI", s.x, *_ci_keys(s, "Value Loss")),
+            ("Policy Loss",     "±95% CI", s.x, *_ci_keys(s, "Policy Loss")),
+            ("Value Accuracy",  "±95% CI", s.x, *_ci_keys(s, "Value Accuracy")),
+            ("Policy Accuracy", "±95% CI", s.x, *_ci_keys(s, "Policy Accuracy")),
+        ],
+        "Iteration", "Performance", "merged_training_metrics_w_losses",
+    )
+
+
+# === merged gamedata stats ===
+
+def plot_merged_gamedata_total_games() -> None:
+    s = load_series(f"{config.eval_dir}/merged_gamedata_stats.pkl")
+    plot_shaded_error(
+        "Total Games Played by Training Iteration (merged)",
+        [("Total Games", "±95% CI", s.x, *_ci_keys(s, "Total Games"))],
+        "Training Iteration", "Total Games", "merged_gamedata_total_games",
+    )
+
+
+def plot_merged_gamedata_outcomes_stacked() -> None:
+    s = load_series(f"{config.eval_dir}/merged_gamedata_stats.pkl")
+    plot_stacked(
+        "Game Outcomes by Training Iteration (merged)", s.x,
+        [
+            ("Player X Wins", s.ys["Player X Wins"]),
+            ("Player O Wins", s.ys["Player O Wins"]),
+            ("Draws (Repeat)", s.ys["Draws (Repeat)"]),
+            ("Draws (Timeout)", s.ys["Draws (Timeout)"]),
+        ],
+        "Training Iteration", "Number of Games", "merged_gamedata_outcomes_stacked",
+    )
+
+
+def plot_merged_gamedata_outcomes_stacked_proportional() -> None:
+    s = load_series(f"{config.eval_dir}/merged_gamedata_stats.pkl")
+    plot_stacked_proportional(
+        "Game Outcomes by Training Iteration (Proportional, merged)",
+        s.x, s.ys["Total Games"],
+        [
+            ("Player X Wins", s.ys["Player X Wins"]),
+            ("Player O Wins", s.ys["Player O Wins"]),
+            ("Draws (Repeat)", s.ys["Draws (Repeat)"]),
+            ("Draws (Timeout)", s.ys["Draws (Timeout)"]),
+        ],
+        "Training Iteration", "Proportion of Games", "merged_gamedata_outcomes_stacked_proportional",
+    )
+
+
+def plot_merged_gamedata_outcomes_lines() -> None:
+    s = load_series(f"{config.eval_dir}/merged_gamedata_stats.pkl")
+    plot_shaded_error(
+        "Game Outcomes by Training Iteration (merged)",
+        [
+            ("Player X Wins",   "±95% CI", s.x, *_ci_keys(s, "Player X Wins")),
+            ("Player O Wins",   "±95% CI", s.x, *_ci_keys(s, "Player O Wins")),
+            ("Draws (Repeat)",  "±95% CI", s.x, *_ci_keys(s, "Draws (Repeat)")),
+            ("Draws (Timeout)", "±95% CI", s.x, *_ci_keys(s, "Draws (Timeout)")),
+        ],
+        "Training Iteration", "Number of Games", "merged_gamedata_outcomes_lines",
+    )
+
+
+def plot_merged_gamedata_game_length() -> None:
+    s = load_series(f"{config.eval_dir}/merged_gamedata_stats.pkl")
+    plot_shaded_error(
+        "Average Game Length (Turns) by Training Iteration (merged)",
+        [("Avg Game Length", "±95% CI", s.x, *_ci_keys(s, "Avg Game Length"))],
+        "Training Iteration", "Length (Turns)", "merged_game_length_turns",
+    )
+
+
+def plot_merged_gamedata_game_time() -> None:
+    s = load_series(f"{config.eval_dir}/merged_gamedata_stats.pkl")
+    plot_shaded_error(
+        "Average Game Time by Training Iteration (merged)",
+        [("Avg Game Time", "±95% CI", s.x, *_ci_keys(s, "Avg Game Time"))],
+        "Training Iteration", "Time (s)", "merged_game_length_time",
+    )
+
+
+def _plot_merged_iteration_accuracy(iteration: Series, overall: Series, title: str, fn: str) -> None:
+    plot_shaded_error(
+        title,
+        [
+            ("Iter Value Accuracy",        "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy")),
+            ("Iter Value Accuracy ND",     "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy ND")),
+            ("Iter Policy Accuracy",       "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy Accuracy")),
+            ("Iter Policy PM",             "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy PM")),
+            ("Iter Policy Accuracy NT",    "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy Accuracy NT")),
+            ("Iter Policy PM NT",          "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy PM NT")),
+            ("Overall Value Accuracy",     "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value Accuracy")),
+            ("Overall Value Accuracy ND",  "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value Accuracy ND")),
+            ("Overall Policy Accuracy",    "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy Accuracy")),
+            ("Overall Policy PM",          "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy PM")),
+            ("Overall Policy Accuracy NT", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy Accuracy NT")),
+            ("Overall Policy PM NT",       "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy PM NT")),
+        ],
+        "Iterations", "Accuracy", fn, (0, 1),
+    )
+
+
 def plot_merged_gamedata_accuracy() -> None:
     iteration = load_series(f"{config.eval_dir}/merged_gamedata_acc.pkl")
     overall = load_series(f"{config.eval_dir}/merged_gamedata_overall_acc.pkl")
-    plot_shaded_error(
-        "Training Data Accuracy by Iteration (merged)",
-        [
-            ("Iter Value Accuracy",       "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy")),
-            ("Iter Value Accuracy ND",    "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy ND")),
-            ("Iter Policy Accuracy",      "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy Accuracy")),
-            ("Iter Policy Accuracy NT",   "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy Accuracy NT")),
-            ("Overall Value Accuracy",    "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value Accuracy")),
-            ("Overall Value Accuracy ND", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value Accuracy ND")),
-            ("Overall Policy Accuracy",   "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy Accuracy")),
-            ("Overall Policy Accuracy NT","±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy Accuracy NT")),
-        ],
-        "Iterations", "Accuracy", "merged_training_data_accuracy", (0, 1),
-    )
+    _plot_merged_iteration_accuracy(iteration, overall, "Training Data Accuracy by Iteration (merged)", "merged_training_data_accuracy")
 
 
 def plot_merged_gamedata_alt_accuracy() -> None:
     iteration = load_series(f"{config.eval_dir}/merged_gamedata_alt_acc.pkl")
     overall = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_acc.pkl")
-    plot_shaded_error(
-        "Alt-Target Training Data Accuracy by Iteration (merged)",
-        [
-            ("Iter Value Accuracy",       "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy")),
-            ("Iter Value Accuracy ND",    "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy ND")),
-            ("Iter Policy Accuracy",      "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy Accuracy")),
-            ("Iter Policy Accuracy NT",   "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy Accuracy NT")),
-            ("Overall Value Accuracy",    "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value Accuracy")),
-            ("Overall Value Accuracy ND", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value Accuracy ND")),
-            ("Overall Policy Accuracy",   "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy Accuracy")),
-            ("Overall Policy Accuracy NT","±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy Accuracy NT")),
-        ],
-        "Iterations", "Accuracy", "merged_training_data_alt_accuracy", (0, 1),
-    )
+    _plot_merged_iteration_accuracy(iteration, overall, "Alt-Target Training Data Accuracy by Iteration (merged)", "merged_training_data_alt_accuracy")
 
 
 def plot_merged_gamedata_bias() -> None:
@@ -346,6 +453,94 @@ def plot_merged_gamedata_bppma() -> None:
     )
 
 
+def plot_merged_gamedata_alt_bpp() -> None:
+    iteration = load_series(f"{config.eval_dir}/merged_gamedata_alt_bpp.pkl")
+    overall = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_bpp.pkl")
+    plot_shaded_error(
+        "Alt-Target Training Data BPP by Iteration (merged)",
+        [
+            ("Iter Value BPP",        "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value BPP")),
+            ("Iter Value BPP ND",     "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value BPP ND")),
+            ("Iter Policy BPP",       "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy BPP")),
+            ("Iter Policy BPP NT",    "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy BPP NT")),
+            ("Overall Value BPP",     "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value BPP")),
+            ("Overall Value BPP ND",  "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value BPP ND")),
+            ("Overall Policy BPP",    "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy BPP")),
+            ("Overall Policy BPP NT", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy BPP NT")),
+        ],
+        "Iterations", "BPP", "merged_gamedata_alt_bpp", (0, 1),
+    )
+
+
+def plot_merged_gamedata_alt_bppma() -> None:
+    iteration = load_series(f"{config.eval_dir}/merged_gamedata_alt_bppma.pkl")
+    overall = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_bppma.pkl")
+    plot_shaded_error(
+        "Alt-Target Training Data BPPMA by Iteration (merged)",
+        [
+            ("Iter Value BPPMA",        "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value BPPMA")),
+            ("Iter Value BPPMA ND",     "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value BPPMA ND")),
+            ("Iter Policy BPPMA",       "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy BPPMA")),
+            ("Iter Policy BPPMA NT",    "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy BPPMA NT")),
+            ("Overall Value BPPMA",     "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value BPPMA")),
+            ("Overall Value BPPMA ND",  "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value BPPMA ND")),
+            ("Overall Policy BPPMA",    "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy BPPMA")),
+            ("Overall Policy BPPMA NT", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy BPPMA NT")),
+        ],
+        "Iterations", "BPPMA", "merged_gamedata_alt_bppma", (0, 1),
+    )
+
+
+def plot_merged_value_accuracies() -> None:
+    acc          = load_series(f"{config.eval_dir}/merged_gamedata_acc.pkl")
+    overall_acc  = load_series(f"{config.eval_dir}/merged_gamedata_overall_acc.pkl")
+    alt_acc      = load_series(f"{config.eval_dir}/merged_gamedata_alt_acc.pkl")
+    alt_o_acc    = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_acc.pkl")
+    bppma        = load_series(f"{config.eval_dir}/merged_gamedata_bppma.pkl")
+    overall_bppma = load_series(f"{config.eval_dir}/merged_gamedata_overall_bppma.pkl")
+    alt_bppma    = load_series(f"{config.eval_dir}/merged_gamedata_alt_bppma.pkl")
+    alt_o_bppma  = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_bppma.pkl")
+    plot_shaded_error_groups(
+        "Self-Play Value Accuracies (merged)",
+        [
+            [("Overall Game Outcome Accuracy ND",        "±95% CI", overall_acc.x,   *_ci_keys(overall_acc,   "Overall Value Accuracy ND")),
+             ("Game Outcome Accuracy ND",                "±95% CI", acc.x,           *_ci_keys(acc,           "Iteration Value Accuracy ND"))],
+            [("Overall Training Data Accuracy ND",       "±95% CI", alt_o_acc.x,     *_ci_keys(alt_o_acc,     "Overall Value Accuracy ND")),
+             ("Training Data Accuracy ND",               "±95% CI", alt_acc.x,       *_ci_keys(alt_acc,       "Iteration Value Accuracy ND"))],
+            [("Overall Game Outcome Majority Class ND",  "±95% CI", overall_bppma.x, *_ci_keys(overall_bppma, "Overall Value BPPMA ND")),
+             ("Value Game Outcome Majority Class ND",    "±95% CI", bppma.x,         *_ci_keys(bppma,         "Iteration Value BPPMA ND"))],
+            [("Overall Training Data Majority Class ND", "±95% CI", alt_o_bppma.x,   *_ci_keys(alt_o_bppma,   "Overall Value BPPMA ND")),
+             ("Training Data Majority Class ND",         "±95% CI", alt_bppma.x,     *_ci_keys(alt_bppma,     "Iteration Value BPPMA ND"))],
+        ],
+        "Iterations", "Value", "merged_gamedata_value_summary",
+    )
+
+
+def plot_merged_policy_accuracies() -> None:
+    acc          = load_series(f"{config.eval_dir}/merged_gamedata_acc.pkl")
+    overall_acc  = load_series(f"{config.eval_dir}/merged_gamedata_overall_acc.pkl")
+    alt_acc      = load_series(f"{config.eval_dir}/merged_gamedata_alt_acc.pkl")
+    alt_o_acc    = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_acc.pkl")
+    bppma        = load_series(f"{config.eval_dir}/merged_gamedata_bppma.pkl")
+    overall_bppma = load_series(f"{config.eval_dir}/merged_gamedata_overall_bppma.pkl")
+    alt_bppma    = load_series(f"{config.eval_dir}/merged_gamedata_alt_bppma.pkl")
+    alt_o_bppma  = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_bppma.pkl")
+    plot_shaded_error_groups(
+        "Self-Play Policy Accuracies (merged)",
+        [
+            [("Overall Player MCTS Policy Accuracy NT",       "±95% CI", overall_acc.x,   *_ci_keys(overall_acc,   "Overall Policy Accuracy NT")),
+             ("Player MCTS Policy Accuracy NT",               "±95% CI", acc.x,           *_ci_keys(acc,           "Iteration Policy Accuracy NT"))],
+            [("Overall Training Data Accuracy NT",            "±95% CI", alt_o_acc.x,     *_ci_keys(alt_o_acc,     "Overall Policy Accuracy NT")),
+             ("Training Data Accuracy NT",                    "±95% CI", alt_acc.x,       *_ci_keys(alt_acc,       "Iteration Policy Accuracy NT"))],
+            [("Overall Player MCTS Policy Majority Class NT", "±95% CI", overall_bppma.x, *_ci_keys(overall_bppma, "Overall Policy BPPMA NT")),
+             ("Player MCTS Policy Majority Class NT",         "±95% CI", bppma.x,         *_ci_keys(bppma,         "Iteration Policy BPPMA NT"))],
+            [("Overall Training Data Majority Class NT",      "±95% CI", alt_o_bppma.x,   *_ci_keys(alt_o_bppma,   "Overall Policy BPPMA NT")),
+             ("Training Data Majority Class NT",              "±95% CI", alt_bppma.x,     *_ci_keys(alt_bppma,     "Iteration Policy BPPMA NT"))],
+        ],
+        "Iterations", "Policy", "merged_gamedata_policy_summary",
+    )
+
+
 def _plot_merged_gp_target_accuracy(name: str, label: str, fn: str) -> None:
     s = load_series(f"{config.eval_dir}/merged_{name}_10_progress_acc.pkl")
     plot_shaded_error(
@@ -355,6 +550,8 @@ def _plot_merged_gp_target_accuracy(name: str, label: str, fn: str) -> None:
             ("Value Accuracy ND",  "±95% CI", s.x, *_ci_keys(s, "Value Accuracy ND")),
             ("Policy Accuracy",    "±95% CI", s.x, *_ci_keys(s, "Policy Accuracy")),
             ("Policy Accuracy NT", "±95% CI", s.x, *_ci_keys(s, "Policy Accuracy NT")),
+            ("Policy PM",          "±95% CI", s.x, *_ci_keys(s, "Policy PM")),
+            ("Policy PM NT",       "±95% CI", s.x, *_ci_keys(s, "Policy PM NT")),
         ],
         "Game Progress (%)", "Accuracy", fn, (0, 1),
     )
@@ -370,15 +567,19 @@ def plot_merged_gp_alt_targets_accuracy() -> None:
 
 def plot_merged_gp_baseline_accuracy() -> None:
     s = load_series(f"{config.eval_dir}/merged_gamedata_10_progress_baseline_accuracy.pkl")
-    plot_shaded_error(
+    plot_shaded_error_groups(
         "Baseline Accuracy by Game Progress (merged)",
         [
-            ("Value Accuracy",     "±95% CI", s.x, *_ci_keys(s, "Value Accuracy")),
-            ("Value Accuracy ND",  "±95% CI", s.x, *_ci_keys(s, "Value Accuracy ND")),
-            ("Policy Accuracy",    "±95% CI", s.x, *_ci_keys(s, "Policy Accuracy")),
-            ("Policy Accuracy NT", "±95% CI", s.x, *_ci_keys(s, "Policy Accuracy NT")),
+            [
+                ("Value Accuracy",     "±95% CI", s.x, *_ci_keys(s, "Value Accuracy")),
+                ("Value Accuracy ND",  "±95% CI", s.x, *_ci_keys(s, "Value Accuracy ND")),
+            ],
+            [
+                ("Policy Accuracy",    "±95% CI", s.x, *_ci_keys(s, "Policy Accuracy")),
+                ("Policy Accuracy NT", "±95% CI", s.x, *_ci_keys(s, "Policy Accuracy NT")),
+            ],
         ],
-        "Game Progress (%)", "Accuracy", "merged_gp_baseline_accuracy", (0, 1),
+        "Game Progress (%)", "Accuracy", "merged_gp_baseline_accuracy", y_lim=(0, 1),
     )
 
 
@@ -391,15 +592,36 @@ def plot_merged_gp_branching_factor() -> None:
     )
 
 
+def plot_merged_gp_state_count() -> None:
+    s = load_series(f"{config.eval_dir}/merged_gamedata_10_progress_count.pkl")
+    plot_bar_with_error(
+        "Number of States in Each Game Progress Bucket (merged)",
+        ("Count", s.x, *_ci_keys(s, "Count")),
+        "Game Progress (%)", "Count", "merged_gp_state_count",
+    )
+
+
+def plot_merged_gp_unique_state_count() -> None:
+    s = load_series(f"{config.eval_dir}/merged_gamedata_10_progress_count.pkl")
+    plot_bar_with_error(
+        "Number of Unique States in Each Game Progress Bucket (merged)",
+        ("Unique", s.x, *_ci_keys(s, "Unique")),
+        "Game Progress (%)", "Unique Count", "merged_gp_unique_state_count",
+    )
+
+
 def _plot_merged_dataset_eval(name: str, title: str) -> None:
     s = load_series(f"{config.eval_dir}/merged_{name}_eval.pkl")
     plot_shaded_error(
         title,
         [
+            ("Loss",            "±95% CI", s.x, *_ci_keys(s, "loss")),
+            ("Value Loss",      "±95% CI", s.x, *_ci_keys(s, "value_loss")),
+            ("Policy Loss",     "±95% CI", s.x, *_ci_keys(s, "policy_loss")),
             ("Value Accuracy",  "±95% CI", s.x, *_ci_keys(s, "value_accuracy")),
             ("Policy Accuracy", "±95% CI", s.x, *_ci_keys(s, "policy_accuracy")),
         ],
-        "Iteration", "Accuracy", f"merged_{name}_eval", (0, 1),
+        "Iteration", "Performance", f"merged_{name}_eval",
     )
 
 
@@ -456,19 +678,19 @@ def plot_merged_full_value_accuracy() -> None:
     random_   = load_series(f"{config.eval_dir}/merged_random_nd_eval.pkl")
     n1        = load_series(f"{config.eval_dir}/merged_neighbor_1_nd_eval.pkl")
     n2        = load_series(f"{config.eval_dir}/merged_neighbor_2_nd_eval.pkl")
-    iteration = load_series(f"{config.eval_dir}/merged_gamedata_acc.pkl")
-    overall   = load_series(f"{config.eval_dir}/merged_gamedata_overall_acc.pkl")
+    iteration = load_series(f"{config.eval_dir}/merged_gamedata_alt_acc.pkl")
+    overall   = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_acc.pkl")
     plot_shaded_error(
         "Value Head Performance on Ground Truth and Training Data (merged)",
         [
-            ("Seen",                  "±95% CI", seen.x,      *_ci_keys(seen,      "value_accuracy")),
-            ("Neighbor 1",            "±95% CI", n1.x,        *_ci_keys(n1,        "value_accuracy")),
-            ("Neighbor 2",            "±95% CI", n2.x,        *_ci_keys(n2,        "value_accuracy")),
-            ("Random",                "±95% CI", random_.x,   *_ci_keys(random_,   "value_accuracy")),
-            ("Training Data",         "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy")),
-            ("Training Data ND",      "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy ND")),
-            ("Overall Training Data", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value Accuracy")),
-            ("Overall Training Data ND", "±95% CI", overall.x, *_ci_keys(overall,  "Overall Value Accuracy ND")),
+            ("Seen",                         "±95% CI", seen.x,      *_ci_keys(seen,      "value_accuracy")),
+            ("Neighbor 1",                   "±95% CI", n1.x,        *_ci_keys(n1,        "value_accuracy")),
+            ("Neighbor 2",                   "±95% CI", n2.x,        *_ci_keys(n2,        "value_accuracy")),
+            ("Random",                       "±95% CI", random_.x,   *_ci_keys(random_,   "value_accuracy")),
+            ("Training Data (Alt)",          "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy")),
+            ("Training Data ND (Alt)",       "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Value Accuracy ND")),
+            ("Overall Training Data (Alt)",  "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Value Accuracy")),
+            ("Overall Training Data ND (Alt)","±95% CI", overall.x,  *_ci_keys(overall,   "Overall Value Accuracy ND")),
         ],
         "Iteration", "Accuracy", "merged_full_value_accuracy", (0, 1),
     )
@@ -479,17 +701,17 @@ def plot_merged_full_policy_accuracy() -> None:
     random_nt = load_series(f"{config.eval_dir}/merged_random_nt_eval.pkl")
     n1_nt     = load_series(f"{config.eval_dir}/merged_neighbor_1_nt_eval.pkl")
     n2_nt     = load_series(f"{config.eval_dir}/merged_neighbor_2_nt_eval.pkl")
-    iteration = load_series(f"{config.eval_dir}/merged_gamedata_acc.pkl")
-    overall   = load_series(f"{config.eval_dir}/merged_gamedata_overall_acc.pkl")
+    iteration = load_series(f"{config.eval_dir}/merged_gamedata_alt_acc.pkl")
+    overall   = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_acc.pkl")
     plot_shaded_error(
         "Policy Head Performance on Ground Truth (NT) and Training Data (merged)",
         [
-            ("Seen NT",                  "±95% CI", seen_nt.x,   *_ci_keys(seen_nt,   "policy_accuracy")),
-            ("Neighbor 1 NT",            "±95% CI", n1_nt.x,     *_ci_keys(n1_nt,     "policy_accuracy")),
-            ("Neighbor 2 NT",            "±95% CI", n2_nt.x,     *_ci_keys(n2_nt,     "policy_accuracy")),
-            ("Random NT",                "±95% CI", random_nt.x, *_ci_keys(random_nt, "policy_accuracy")),
-            ("Training Data NT",         "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy Accuracy NT")),
-            ("Overall Training Data NT", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy Accuracy NT")),
+            ("Seen NT",                        "±95% CI", seen_nt.x,   *_ci_keys(seen_nt,   "policy_accuracy")),
+            ("Neighbor 1 NT",                  "±95% CI", n1_nt.x,     *_ci_keys(n1_nt,     "policy_accuracy")),
+            ("Neighbor 2 NT",                  "±95% CI", n2_nt.x,     *_ci_keys(n2_nt,     "policy_accuracy")),
+            ("Random NT",                      "±95% CI", random_nt.x, *_ci_keys(random_nt, "policy_accuracy")),
+            ("Training Data NT (Alt)",         "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy Accuracy NT")),
+            ("Overall Training Data NT (Alt)", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy Accuracy NT")),
         ],
         "Iteration", "Accuracy", "merged_full_policy_accuracy", (0, 1),
     )
@@ -511,44 +733,66 @@ def plot_merged_ev() -> None:
     ref    = load_series(f"{config.eval_dir}/merged_reference_evaluation_results.pkl")
     x = player.x
     n = len(x)
-    series = [
-        ("Model (P1)", "±95% CI", x, *_ci_keys(player, "ev_p1")),
-        ("Model (P2)", "±95% CI", x, *_ci_keys(player, "ev_p2")),
+    groups = [
+        [
+            ("Model (P1)", "±95% CI", x, *_ci_keys(player, "ev_p1")),
+            ("Model (P2)", "±95% CI", x, *_ci_keys(player, "ev_p2")),
+        ],
     ]
     for name in _reference_names(ref):
         ev_p1, ci_p1 = _ci_keys(ref, f"{name}_ev_p1")
         ev_p2, ci_p2 = _ci_keys(ref, f"{name}_ev_p2")
-        series.append((f"{name} (P1, EV={ev_p1[0]:.3f})", "±95% CI", x, [ev_p1[0]] * n, [ci_p1[0]] * n))
-        series.append((f"{name} (P2, EV={ev_p2[0]:.3f})", "±95% CI", x, [ev_p2[0]] * n, [ci_p2[0]] * n))
-    plot_shaded_error(
+        groups.append([
+            (f"{name} (P1, EV={ev_p1[0]:.3f})", "±95% CI", x, [ev_p1[0]] * n, [ci_p1[0]] * n),
+            (f"{name} (P2, EV={ev_p2[0]:.3f})", "±95% CI", x, [ev_p2[0]] * n, [ci_p2[0]] * n),
+        ])
+    plot_shaded_error_groups(
         "Expected Value vs Baseline (merged)",
-        series,
+        groups,
         "Training Iteration", "Expected Value",
-        "merged_player_ev", (-1.0, 1.0),
+        "merged_player_ev", y_lim=(-1.0, 1.0),
     )
 
 
-def _plot_merged_wld(side: str, title: str, fn: str) -> None:
+def _plot_merged_wld_stacked(side: str, title: str, fn: str) -> None:
     s = load_series(f"{config.eval_dir}/merged_player_evaluation_results.pkl")
-    denom = f"num_games_{side}"
-    plot_shaded_error(
-        title,
+    plot_stacked(
+        title, s.x,
         [
-            ("Wins",            "±95% CI", s.x, *_rate_ci_keys(s, f"wins_{side}",          denom)),
-            ("Losses",          "±95% CI", s.x, *_rate_ci_keys(s, f"losses_{side}",        denom)),
-            ("Draws (repeat)",  "±95% CI", s.x, *_rate_ci_keys(s, f"draws_repeat_{side}",  denom)),
-            ("Draws (timeout)", "±95% CI", s.x, *_rate_ci_keys(s, f"draws_timeout_{side}", denom)),
+            ("Wins",            s.ys[f"wins_{side}"]),
+            ("Losses",          s.ys[f"losses_{side}"]),
+            ("Draws (repeat)",  s.ys[f"draws_repeat_{side}"]),
+            ("Draws (timeout)", s.ys[f"draws_timeout_{side}"]),
         ],
-        "Training Iteration", "Rate", fn, (0, 1),
+        "Training Iteration", "Games", fn,
     )
 
 
 def plot_merged_wld_p1() -> None:
-    _plot_merged_wld("p1", "Model as P1: W/L/D Rates vs Baseline (merged)", "merged_player_wld_p1")
+    _plot_merged_wld_stacked("p1", "Model as P1: W/L/D vs Baseline (merged)", "merged_player_wld_p1")
 
 
 def plot_merged_wld_p2() -> None:
-    _plot_merged_wld("p2", "Model as P2: W/L/D Rates vs Baseline (merged)", "merged_player_wld_p2")
+    _plot_merged_wld_stacked("p2", "Model as P2: W/L/D vs Baseline (merged)", "merged_player_wld_p2")
+
+
+def plot_merged_wld() -> None:
+    s = load_series(f"{config.eval_dir}/merged_player_evaluation_results.pkl")
+    x = s.x
+    plot_shaded_error_groups(
+        "Model W/L/D vs Baseline (merged)",
+        [
+            [("Wins (P1)",          "±95% CI", x, *_rate_ci_keys(s, "wins_p1",          "num_games_p1")),
+             ("Wins (P2)",          "±95% CI", x, *_rate_ci_keys(s, "wins_p2",          "num_games_p2"))],
+            [("Losses (P1)",        "±95% CI", x, *_rate_ci_keys(s, "losses_p1",        "num_games_p1")),
+             ("Losses (P2)",        "±95% CI", x, *_rate_ci_keys(s, "losses_p2",        "num_games_p2"))],
+            [("Draws repeat (P1)",  "±95% CI", x, *_rate_ci_keys(s, "draws_repeat_p1",  "num_games_p1")),
+             ("Draws repeat (P2)",  "±95% CI", x, *_rate_ci_keys(s, "draws_repeat_p2",  "num_games_p2"))],
+            [("Draws timeout (P1)", "±95% CI", x, *_rate_ci_keys(s, "draws_timeout_p1", "num_games_p1")),
+             ("Draws timeout (P2)", "±95% CI", x, *_rate_ci_keys(s, "draws_timeout_p2", "num_games_p2"))],
+        ],
+        "Training Iteration", "Rate", "merged_player_wld", (0, 1),
+    )
 
 
 def main():
@@ -559,27 +803,42 @@ def main():
     merge_all_distribution_series()
     merge_baseline_accuracies()
 
-    # merged distribution plots
+    # distribution series
     safeplot(plot_merged_dataset_pre_balance_distributions)
     safeplot(plot_merged_dataset_post_balance_distributions)
     safeplot(plot_merged_random_nd_value_distributions)
 
-    # merged training metrics + game data accuracy / bias
+    # training metrics
     safeplot(plot_merged_training_metrics)
+    safeplot(plot_merged_training_metrics_with_losses)
+
+    # gamedata stats
+    safeplot(plot_merged_gamedata_total_games)
+    safeplot(plot_merged_gamedata_outcomes_stacked)
+    safeplot(plot_merged_gamedata_outcomes_stacked_proportional)
+    safeplot(plot_merged_gamedata_outcomes_lines)
+    safeplot(plot_merged_gamedata_game_length)
+    safeplot(plot_merged_gamedata_game_time)
+
+    # gamedata accuracy & bias (experienced + alt targets)
     safeplot(plot_merged_gamedata_accuracy)
     safeplot(plot_merged_gamedata_alt_accuracy)
     safeplot(plot_merged_gamedata_bias)
     safeplot(plot_merged_gamedata_alt_bias)
     safeplot(plot_merged_gamedata_bpp)
     safeplot(plot_merged_gamedata_bppma)
+    safeplot(plot_merged_gamedata_alt_bpp)
+    safeplot(plot_merged_gamedata_alt_bppma)
 
-    # merged game progress
+    # game progress
+    safeplot(plot_merged_gp_state_count)
+    safeplot(plot_merged_gp_unique_state_count)
     safeplot(plot_merged_gp_experienced_accuracy)
     safeplot(plot_merged_gp_alt_targets_accuracy)
     safeplot(plot_merged_gp_baseline_accuracy)
     safeplot(plot_merged_gp_branching_factor)
 
-    # merged per-dataset model eval
+    # per-dataset model evaluation
     safeplot(plot_merged_seen_nd_eval)
     safeplot(plot_merged_random_nd_eval)
     safeplot(plot_merged_seen_nt_eval)
@@ -589,18 +848,21 @@ def main():
     safeplot(plot_merged_experienced_dataset_eval)
     safeplot(plot_merged_alt_targets_dataset_eval)
 
-    # merged per-bucket model eval
+    # per-bucket dataset evaluation
     safeplot(plot_merged_game_progress_10_nd_eval)
     safeplot(plot_merged_game_progress_10_nt_eval)
 
-    # merged combined plots
+    # combined plots
     safeplot(plot_merged_full_value_accuracy)
     safeplot(plot_merged_full_policy_accuracy)
+    safeplot(plot_merged_value_accuracies)
+    safeplot(plot_merged_policy_accuracies)
 
-    # merged player evaluation
+    # player evaluation
     safeplot(plot_merged_ev)
     safeplot(plot_merged_wld_p1)
     safeplot(plot_merged_wld_p2)
+    safeplot(plot_merged_wld)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ from a0.utils.plotting import (
     Series, save_series, load_series,
     plot_given, plot_given_groups,
     plot_stacked, plot_stacked_proportional,
-    plot_std_error, plot_shaded_error, plot_ridgeline, plot_bar
+    plot_std_error, plot_shaded_error, plot_bar
 )
 
 from config import config

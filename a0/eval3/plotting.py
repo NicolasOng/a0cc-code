@@ -624,6 +624,7 @@ def main():
     logger.info("plotting...")
 
     # distribution series
+    # note: each distribution gets 3 plots
     safeplot(plot_dataset_pre_balance_distributions)
     safeplot(plot_dataset_post_balance_distributions)
     safeplot(plot_random_nd_value_distributions)
