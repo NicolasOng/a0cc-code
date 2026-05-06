@@ -99,7 +99,7 @@ def _build_game_log(game_data: GameData) -> list[dict]:
         {
             'turn': i,
             'player': 'p1' if i % 2 == 0 else 'p2',
-            'board': td.board.board_view(),
+            'board': td.board.board_view().split('\n'),
             'move': str(td.move),
         }
         for i, td in enumerate(game_data.turn_data)
@@ -143,7 +143,7 @@ def run_matchup(
     '''
     Run num_games of focal vs opponent in parallel; results are reported from focal's perspective.
     If focal_first, focal plays as P1; otherwise focal plays as P2 (W/L are flipped accordingly).
-    The first log_games games are logged as JSONL to game_log_path (if provided).
+    The first log_games games are appended to a pretty-printed JSON array at game_log_path (if provided).
     '''
     p1, p2 = (focal, opponent) if focal_first else (opponent, focal)
     p1_serialized = dill.dumps(p1)
@@ -188,8 +188,13 @@ def run_matchup(
                         'duration_seconds': game_stats.duration_seconds,
                         'turns': game_log,
                     }
-                    with open(game_log_path, 'a') as f:
-                        f.write(json.dumps(record) + '\n')
+                    records = []
+                    if os.path.exists(game_log_path):
+                        with open(game_log_path) as f:
+                            records = json.load(f)
+                    records.append(record)
+                    with open(game_log_path, 'w') as f:
+                        json.dump(records, f, indent=2)
     return stats
 
 
@@ -269,8 +274,8 @@ def evaluate_players(
     Evaluate a list of players against a fixed opponent.
     Each player produces one x-point; stats are stored per side (p1/p2).
     Saves and returns a Series with x = player indices and ys keyed {stat}_{side}.
-    If log_games > 0, the first log_games games of each matchup are written as
-    JSONL records to game_log_path.
+    If log_games > 0, the first log_games games of each matchup are appended to
+    a pretty-printed JSON array at game_log_path.
     '''
     y_keys = [f'{stat}_{side}' for stat in _STAT_NAMES for side in ('p1', 'p2')]
     series = Series(ys=y_keys)
@@ -310,8 +315,8 @@ def evaluate_references(
     Evaluate a set of named reference players against a fixed opponent.
     Each reference player produces a single data point at x=0.
     Saves and returns a Series with x=[0] and ys keyed {name}_{stat}_{side}.
-    If log_games > 0, the first log_games games of each matchup are written as
-    JSONL records to game_log_path.
+    If log_games > 0, the first log_games games of each matchup are appended to
+    a pretty-printed JSON array at game_log_path.
     '''
     series = Series()
     series.x = [0]
@@ -365,7 +370,7 @@ def mcts_test() -> None:
         num_games=NUM_GAMES,
         output_path=f"{config.eval_dir}/player_evaluation_results.pkl",
         log_games=1,
-        game_log_path=f"{config.eval_dir}/player_game_logs_{timestamp}.jsonl",
+        game_log_path=f"{config.eval_dir}/player_game_logs_{timestamp}.json",
     )
 
     evaluate_references(
@@ -377,7 +382,7 @@ def mcts_test() -> None:
         num_games=NUM_GAMES,
         output_path=f"{config.eval_dir}/reference_evaluation_results.pkl",
         log_games=1,
-        game_log_path=f"{config.eval_dir}/reference_game_logs_{timestamp}.jsonl",
+        game_log_path=f"{config.eval_dir}/reference_game_logs_{timestamp}.json",
     )
 
 
@@ -403,7 +408,7 @@ def main() -> None:
         num_games=NUM_GAMES,
         output_path=f"{config.eval_dir}/player_evaluation_results.pkl",
         log_games=1,
-        game_log_path=f"{config.eval_dir}/player_game_logs_{timestamp}.jsonl",
+        game_log_path=f"{config.eval_dir}/player_game_logs_{timestamp}.json",
     )
 
     # exit()
@@ -417,7 +422,7 @@ def main() -> None:
         num_games=NUM_GAMES,
         output_path=f"{config.eval_dir}/reference_evaluation_results.pkl",
         log_games=1,
-        game_log_path=f"{config.eval_dir}/reference_game_logs_{timestamp}.jsonl",
+        game_log_path=f"{config.eval_dir}/reference_game_logs_{timestamp}.json",
     )
 
 
