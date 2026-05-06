@@ -1,8 +1,13 @@
+import json
+import os
+import pickle
 from typing import Optional
 
 import numpy as np
 from tqdm import tqdm
 
+from cc.core import Board
+from cc.ground_truth import GroundTruth
 from a0.model import AlphaZeroModel
 from a0.dataset import Dataset
 from a0.eval.dataset_evaluation import (
@@ -12,6 +17,7 @@ from a0.eval.dataset_evaluation import (
     load_dataset_dict,
     load_models,
 )
+from a0.utils.misc import get_baseline_accuracy
 from a0.utils.plotting import DistributionSeries, save_distribution_series
 
 from config import config
@@ -106,10 +112,51 @@ def evaluate_dataset_dict_if_present(
     evaluate_on_all_datasets(models[-1][1], dataset_dict, fn)
 
 
+def get_and_save_baseline_accuracies() -> None:
+    '''
+    Loads the source state lists saved by generate_datasets.py and computes
+    random-baseline value/policy accuracy for each.
+    → {eval_dir}/baseline_accuracies.json
+    '''
+    state_lists_path = f"{config.dataset_out_dir}/state_lists.pkl"
+    if not os.path.exists(state_lists_path):
+        logger.warning(f"Skipping baseline accuracies: {state_lists_path} not found.")
+        return
+
+    with open(state_lists_path, 'rb') as f:
+        state_lists: dict[str, list[Board]] = pickle.load(f)
+
+    gt = GroundTruth()
+    results: dict[str, dict[str, float | int]] = {}
+    for name, states in state_lists.items():
+        if not states:
+            logger.warning(f"baseline accuracies: state list '{name}' is empty, skipping.")
+            continue
+        v_acc, p_acc, v_acc_nd, p_acc_nt = get_baseline_accuracy(states, gt)
+        results[name] = {
+            "value_accuracy": v_acc,
+            "policy_accuracy": p_acc,
+            "value_accuracy_nd": v_acc_nd,
+            "policy_accuracy_nt": p_acc_nt,
+            "n_boards": len(states),
+        }
+        logger.info(
+            f"baseline '{name}' (n={len(states)}): "
+            f"v={v_acc:.2%} p={p_acc:.2%} v_nd={v_acc_nd:.2%} p_nt={p_acc_nt:.2%}"
+        )
+
+    output_path = f"{config.eval_dir}/baseline_accuracies.json"
+    with open(output_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    logger.info(f"Saved baseline accuracies for {list(results.keys())} to {output_path}.")
+
+
 def main():
     setup_logging(level=20, log_dir=config.log_dir, process_name='dataset_evaluation')
 
     logger.info("Starting dataset evaluation...")
+
+    get_and_save_baseline_accuracies()
 
     # load the models (already tolerant — skips missing iterations)
     models = load_models(config.training_dir, config.training_iterations)
