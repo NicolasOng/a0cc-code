@@ -7,6 +7,11 @@ Trial dirs are discovered by globbing config.output_dir/trial_*/eval/, matching
 the convention used by a0/eval/combine_merge.py.
 '''
 import glob
+import json
+import math
+
+import numpy as np
+from scipy import stats
 
 from a0.utils.plotting import (
     Series,
@@ -94,6 +99,72 @@ def merge_all_series() -> None:
             load_and_merge_series(trial_dirs, f"{fn}.pkl")
         except Exception as e:
             logger.warning(f"merge: skipping series {fn}: {type(e).__name__}: {e}")
+
+
+def merge_baseline_accuracies(confidence: float = 0.95) -> None:
+    '''
+    Merge per-trial baseline_accuracies.json (written by dataset_evaluation.py)
+    into a single JSON with mean / std / CI per metric per source state list
+    across trials. n_boards is preserved per-trial as a list.
+    → {eval_dir}/merged_baseline_accuracies.json
+    '''
+    trial_dirs = _get_trial_dirs()
+    fn = "baseline_accuracies.json"
+
+    trial_results: list[dict[str, dict]] = []
+    for d in trial_dirs:
+        path = f"{d}{fn}"
+        try:
+            with open(path, 'r') as f:
+                trial_results.append(json.load(f))
+        except FileNotFoundError:
+            logger.warning(f"merge: skipping baseline accuracies at {path}: not found")
+        except Exception as e:
+            logger.warning(f"merge: skipping baseline accuracies at {path}: {type(e).__name__}: {e}")
+
+    if not trial_results:
+        logger.warning("merge_baseline_accuracies: no trial JSONs found, skipping.")
+        return
+
+    all_names: set[str] = set()
+    for r in trial_results:
+        all_names |= set(r.keys())
+
+    metric_keys = ["value_accuracy", "policy_accuracy", "value_accuracy_nd", "policy_accuracy_nt"]
+    nan_to_none = lambda v: None if isinstance(v, float) and math.isnan(v) else v
+
+    merged: dict[str, dict] = {}
+    for name in sorted(all_names):
+        per_trial = [r[name] for r in trial_results if name in r]
+        entry: dict = {"n_trials": len(per_trial)}
+        for k in metric_keys:
+            vals = np.array([t[k] for t in per_trial if k in t], dtype=np.float64)
+            if vals.size == 0:
+                entry[k] = None
+                entry[f"{k}_std"] = None
+                entry[f"{k}_ci"] = None
+                continue
+            mean = float(np.mean(vals))
+            std = float(np.std(vals))
+            if vals.size >= 2:
+                alpha = 1 - confidence
+                t_value = stats.t.ppf(1 - alpha / 2, df=vals.size - 1)
+                ci = float(t_value * std / np.sqrt(vals.size))
+            else:
+                ci = float('nan')
+            entry[k] = nan_to_none(mean)
+            entry[f"{k}_std"] = nan_to_none(std)
+            entry[f"{k}_ci"] = nan_to_none(ci)
+        entry["n_boards"] = [int(t["n_boards"]) for t in per_trial if "n_boards" in t]
+        merged[name] = entry
+
+    output_path = f"{config.eval_dir}/merged_baseline_accuracies.json"
+    with open(output_path, 'w') as f:
+        json.dump(merged, f, indent=2)
+    logger.info(
+        f"merge: saved merged baseline accuracies for {sorted(all_names)} "
+        f"({len(trial_results)} trials) to {output_path}."
+    )
 
 
 def merge_all_distribution_series() -> None:
@@ -486,6 +557,7 @@ def main():
 
     merge_all_series()
     merge_all_distribution_series()
+    merge_baseline_accuracies()
 
     # merged distribution plots
     safeplot(plot_merged_dataset_pre_balance_distributions)
