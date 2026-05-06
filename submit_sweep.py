@@ -62,12 +62,12 @@ import sys
 
 
 SWEEP_ROOT = "sweep-output"
-TRAIN_SCRIPT = "train_a0_gpu.sh"
-COMBINE_SCRIPT = "combine_a0.sh"
-AGGREGATE_SCRIPT = "aggregate_sweep.sh"  # built in Stage C/D
+TRAIN_SCRIPT = "slurm/train_a0_gpu.sh"
+COMBINE_SCRIPT = "slurm/combine_a0.sh"
+AGGREGATE_SCRIPT = "slurm/aggregate_sweep.sh"  # built in Stage C/D
 
 # Default per-stage pipelines for --local mode. Mirror the python -m calls in
-# train_a0_gpu.sh / combine_a0.sh / aggregate_sweep.sh. Overridden by --stages,
+# slurm/train_a0_gpu.sh / slurm/combine_a0.sh / slurm/aggregate_sweep.sh. Overridden by --stages,
 # --combine-stages, --aggregate-stages.
 DEFAULT_TRAIN_STAGES = [
     "a0.train.alphazero",
@@ -255,7 +255,7 @@ def main():
                              "in --local mode) — just print what would run")
     parser.add_argument("--script", default=TRAIN_SCRIPT,
                         help=f"stage-1 .sh to run per task (default: {TRAIN_SCRIPT}). "
-                             "Use eval_a0.sh / eval_a03.sh to re-eval an existing sweep.")
+                             "Use slurm/eval_a0.sh / slurm/eval_a03.sh to re-eval an existing sweep.")
     parser.add_argument("--reuse-configs", action="store_true",
                         help="skip rewriting per-HP config.json files; use whatever is on disk. "
                              "Required for re-eval-only runs against an already-trained sweep.")
@@ -343,7 +343,7 @@ def main():
     placeholder = "<train_jid>"
     placeholder_combine = "<combine_jid>"
 
-    # 4. Submit stage-1 array (train by default; eval_a0.sh / eval_a03.sh for re-eval).
+    # 4. Submit stage-1 array (train by default; slurm/eval_a0.sh / slurm/eval_a03.sh for re-eval).
     stage_name = os.path.splitext(os.path.basename(args.script))[0]
     print(f"\nSubmitting {stage_name} array ({n_tasks} tasks)...")
     train_job = sbatch(
