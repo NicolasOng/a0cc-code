@@ -9,7 +9,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from cc.core import Player, Board
-from cc.ground_truth import GroundTruth
+from cc.ground_truth import GroundTruth, RankUnrank
 from a0.game import GameData
 from a0.dataset import Dataset
 from a0.train.dataset import DatasetData, stats_from_dataset_data, plot_model_performance
@@ -94,17 +94,19 @@ def get_and_save_dataset_diagnostics_distributions() -> None:
     save_distribution_series(post, f"{config.eval_dir}/dataset_post_balance_distributions.pkl")
     logger.info("Saved dataset_pre_balance_distributions.pkl and dataset_post_balance_distributions.pkl.")
 
-def traverse_game_data_with_collectors(collectors: list[Collector]) -> None:
+def traverse_game_data_with_collectors(collectors: list[Collector], gt: GroundTruth | None) -> None:
     '''
     Walks all game data once, computing per-turn facts and handing them
-    to each collector.
+    to each collector. When gt is None, gt-derived TurnInfo fields are
+    populated with safe zeros (no enabled collector should read them in
+    that mode).
     '''
-    logger.info(f"traverse_game_data_with_collectors: {len(collectors)} collectors")
+    logger.info(f"traverse_game_data_with_collectors: {len(collectors)} collectors (gt={'on' if gt else 'off'})")
     for c in collectors:
         logger.info(f"  - {type(c).__name__}")
 
-    gt = GroundTruth()
     gd_gen = game_data_generator(config.training_dir, config.training_iterations)
+    zero_policy = np.zeros(config.num_spots, dtype=np.float32)
 
     total_iterations = 0
     total_games = 0
@@ -129,10 +131,17 @@ def traverse_game_data_with_collectors(collectors: list[Collector]) -> None:
             for turn_idx, turn in enumerate(game_data.turn_data):
                 total_turns += 1
                 board = turn.board
-                gt_outcome = gt.get_outcome(board)
                 experienced_outcome = 0.0 if winner is None else 1.0 if winner == board.current_player else -1.0
-                gt_policy = np.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))
                 progress = (turn_idx * 100) // game_length
+
+                if gt is not None:
+                    gt_outcome = gt.get_outcome(board)
+                    gt_policy = np.array(gt.get_1ply_policy_prob_dist_list(board, for_model=True))
+                    is_trivial = gt.is_trivial(board)
+                else:
+                    gt_outcome = 0.0
+                    gt_policy = zero_policy
+                    is_trivial = False
 
                 turn_info = TurnInfo(
                     iteration=i,
@@ -144,7 +153,7 @@ def traverse_game_data_with_collectors(collectors: list[Collector]) -> None:
                     experienced_outcome=experienced_outcome,
                     gt_policy=gt_policy,
                     experienced_policy=turn.player_data,
-                    is_trivial=gt.is_trivial(board),
+                    is_trivial=is_trivial,
                     progress=progress,
                     alternative_value_target=turn.alternative_value_target,
                     alternative_policy_target=turn.alternative_policy_target,
@@ -741,31 +750,32 @@ def baseline_accuracy_fn(boards: list[Board], gt: GroundTruth) -> dict[str, floa
         "Policy Accuracy NT": p_acc_nt,
     }
 
-def get_branching_factor_fn(boards: list[Board], gt: GroundTruth) -> dict[str, float]:
-    bf = get_branching_factor(boards, gt)
+def get_branching_factor_fn(boards: list[Board], r: RankUnrank) -> dict[str, float]:
+    bf = get_branching_factor(boards, r)
     return {
         "Branching Factor": bf,
     }
 
-def run_collectors(gt: GroundTruth) -> None:
+def run_collectors(ranker: RankUnrank, gt: GroundTruth | None) -> None:
     '''
     Runs all training data collectors in a single pass over the game data.
-    Generates the following data:
-    - gamedata_stats.pkl: per-iteration game outcome stats
-    - overall and per iteration accuracy and bias files for
-        both experienced and alternative targets (x8)
-    - per-iteration and overall BPP/BPPMA files (x4)
-    - dataset of states with the experienced value/policy (or alt targets)
-    - gamedata_{n_buckets}_progress_count.pkl:
-        count of states in each game progress bucket
-    - gamedata_{n_buckets}_progress_acc.pkl:
-        accuracy vs ground truth in each game progress bucket (experienced and alt targets)
-    - gamedata_{n_buckets}_progress_{fn_name}.pkl:
-        - baseline accuracy
-        - branching factor
-        - game_progress_{n_buckets}_nd.pkl (and nt)
+    GT-using collectors are only built when gt is not None; the rest run
+    regardless. Branching factor uses ranker (solve-data-free) and runs
+    in both modes.
+    Generates:
+    - gamedata_stats.pkl
+    - bias files (experienced + alt-target, x4)
+    - experienced + alt-target dataset .pkls
+    - gamedata_{n_buckets}_progress_count.pkl
+    - gamedata_{n_buckets}_progress_branching_factor.pkl
+    GT-only:
+    - accuracy files (experienced + alt-target, x4)
+    - BPP / BPPMA files (experienced + alt-target, x8)
+    - {experienced,alt_targets}_{n_buckets}_progress_acc.pkl
+    - gamedata_{n_buckets}_progress_baseline_accuracy.pkl
+    - game_progress_{n_buckets}_nd.pkl (and nt)
     '''
-    logger.info("run_collectors: building collector list...")
+    logger.info(f"run_collectors: building collector list (gt={'on' if gt else 'off'})...")
 
     alt_outcome: Callable[[TurnInfo], float] = lambda ti: float(np.sign(ti.alternative_value_target)) if ti.alternative_value_target is not None else 0.0
     # Raw continuous version for the saved Dataset, so value_loss against the
@@ -773,25 +783,13 @@ def run_collectors(gt: GroundTruth) -> None:
     alt_outcome_raw: Callable[[TurnInfo], float] = lambda ti: float(ti.alternative_value_target) if ti.alternative_value_target is not None else 0.0
     alt_policy: Callable[[TurnInfo], NDArray[np.float32]] = lambda ti: ti.alternative_policy_target if ti.alternative_policy_target is not None else np.zeros_like(ti.gt_policy)
 
+    # Always-on collectors (no GT needed).
     collectors: list[Collector] = [
         GameStatsCollector(),
-        AccuracyCollector(),
         BiasCollector(),
-        AccuracyCollector(
-            name="gamedata_alt",
-            get_outcome=alt_outcome,
-            get_policy=alt_policy
-        ),
         BiasCollector(
             name="gamedata_alt",
             get_outcome=alt_outcome
-        ),
-        BPPCollector(gt=gt),
-        BPPCollector(
-            gt=gt,
-            name="gamedata_alt",
-            get_outcome=alt_outcome,
-            get_policy=alt_policy
         ),
         ExperiencedDatasetCollector(
             name="experienced_dataset",
@@ -807,28 +805,59 @@ def run_collectors(gt: GroundTruth) -> None:
             get_outcome=alt_outcome_raw,
             get_policy=alt_policy
         ),
-        GameProgressMetaCollector(
-            n_buckets=10,
-            collectors=[
-                StateCountProgressCollector(),
-                AccuracyProgressCollector(name="experienced"),
-                AccuracyProgressCollector(name="alt_targets", get_outcome=alt_outcome, get_policy=alt_policy),
-                BoardFunctionProgressCollector(
-                    name="gamedata",
-                    functions={
-                        "baseline_accuracy": lambda boards: baseline_accuracy_fn(boards, gt),
-                        "branching_factor": lambda boards: get_branching_factor_fn(boards, gt)
-                    },
-                    finalize_functions=[
-                        lambda boards, n_buckets: convert_and_save_state_buckets_to_datasets(boards, n_buckets, gt, n=1000, batch_size=256)
-                    ],
-                    n=2000,
-                ),
-            ]
-        ),
     ]
+
+    # GT-using top-level collectors.
+    if gt is not None:
+        collectors += [
+            AccuracyCollector(),
+            AccuracyCollector(
+                name="gamedata_alt",
+                get_outcome=alt_outcome,
+                get_policy=alt_policy
+            ),
+            BPPCollector(gt=gt),
+            BPPCollector(
+                gt=gt,
+                name="gamedata_alt",
+                get_outcome=alt_outcome,
+                get_policy=alt_policy
+            ),
+        ]
+
+    # Per-bucket (game-progress) collectors.
+    progress_collectors: list[GameProgressCollector] = [
+        StateCountProgressCollector(),
+    ]
+    if gt is not None:
+        progress_collectors += [
+            AccuracyProgressCollector(name="experienced"),
+            AccuracyProgressCollector(name="alt_targets", get_outcome=alt_outcome, get_policy=alt_policy),
+        ]
+
+    # BoardFunctionProgressCollector: branching factor always; baseline
+    # accuracy + nd/nt dataset finalize gated on gt.
+    bf_functions: dict[str, Callable[[list[Board]], dict[str, float]]] = {
+        "branching_factor": lambda boards: get_branching_factor_fn(boards, ranker),
+    }
+    bf_finalize: list[Callable[[dict[int, list[Board]], int], None]] = []
+    if gt is not None:
+        bf_functions["baseline_accuracy"] = lambda boards: baseline_accuracy_fn(boards, gt)
+        bf_finalize.append(lambda boards, n_buckets: convert_and_save_state_buckets_to_datasets(boards, n_buckets, gt, n=1000, batch_size=256))
+
+    progress_collectors.append(
+        BoardFunctionProgressCollector(
+            name="gamedata",
+            functions=bf_functions,
+            finalize_functions=bf_finalize,
+            n=2000,
+        )
+    )
+
+    collectors.append(GameProgressMetaCollector(n_buckets=10, collectors=progress_collectors))
+
     logger.info(f"run_collectors: built {len(collectors)} collectors, starting traversal...")
-    traverse_game_data_with_collectors(collectors)
+    traverse_game_data_with_collectors(collectors, gt)
 
     logger.info("run_collectors: training data analyses completed.")
 
@@ -847,7 +876,12 @@ def main():
     logger.info(f"  training_iterations = {config.training_iterations}")
     logger.info("=" * 60)
 
-    gt = GroundTruth()
+    ranker = RankUnrank()
+    if config.do_gt_evals:
+        gt: GroundTruth | None = GroundTruth()
+    else:
+        gt = None
+        logger.info("config.do_gt_evals=False; GT-using collectors will be skipped.")
 
     logger.info("[1/3] avg training metrics per iteration")
     get_and_save_avg_training_metrics_per_iteration()
@@ -856,7 +890,7 @@ def main():
     get_and_save_dataset_diagnostics_distributions()
 
     logger.info("[3/3] traversal-based collectors")
-    run_collectors(gt)
+    run_collectors(ranker, gt)
 
     logger.info("training_data.py: all analyses complete")
 
