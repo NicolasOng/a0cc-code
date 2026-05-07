@@ -388,6 +388,11 @@ def mcts_test() -> None:
 
 def main() -> None:
     setup_logging(level=20, log_dir=config.log_dir, process_name='player_evaluation')
+
+    if not config.do_player_eval:
+        logger.info("config.do_player_eval=False; skipping player evaluation.")
+        return
+
     try:
         multiprocessing.set_start_method('spawn')
     except RuntimeError:

@@ -156,7 +156,10 @@ def main():
 
     logger.info("Starting dataset evaluation...")
 
-    get_and_save_baseline_accuracies()
+    if config.do_gt_evals:
+        get_and_save_baseline_accuracies()
+    else:
+        logger.info("config.do_gt_evals=False; skipping baseline accuracies.")
 
     # load the models (already tolerant — skips missing iterations)
     models = load_models(config.training_dir, config.training_iterations)

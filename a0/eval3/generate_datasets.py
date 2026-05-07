@@ -166,8 +166,11 @@ def main():
     logger.info(f"Saved state lists ({list(state_lists.keys())}) to {state_lists_path}.")
 
     # nd/nt labeled datasets: requires solve data
-    gt = GroundTruth()
-    save_nd_nt_datasets_for_state_lists(state_lists, gt, n=1000, batch_size=256)
+    if config.do_gt_evals:
+        gt = GroundTruth()
+        save_nd_nt_datasets_for_state_lists(state_lists, gt, n=1000, batch_size=256)
+    else:
+        logger.info("config.do_gt_evals=False; skipping nd/nt labeled dataset generation.")
 
 if __name__ == "__main__":
     setup_logging(
