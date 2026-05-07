@@ -1,12 +1,18 @@
-from cc.core import Game, Board
+from __future__ import annotations
+from typing import Optional
 
-import random
+from cc.core import Game, Board
+from a0.mcts.rollout_strategies import StateEvaluator, RolloutPolicy, ZeroEval, RandomPolicy
 
 class SearchMoves:
-    def __init__(self, initial_state: Board, cc: Game, max_depth: int):
+    def __init__(self, initial_state: Board, cc: Game, max_depth: int,
+                 evaluator: Optional[StateEvaluator] = None,
+                 policy: Optional[RolloutPolicy] = None):
         self._initial_state = initial_state
         self.cc = cc
         self.max_depth = max_depth
+        self.evaluator = evaluator if evaluator is not None else ZeroEval()
+        self.policy = policy if policy is not None else RandomPolicy()
 
         # get the starting board
         num_pieces, _ = initial_state.num_pieces()
@@ -17,7 +23,7 @@ class SearchMoves:
         Returns the initial state of the problem.
         '''
         return self._initial_state
-    
+
     def is_terminal(self, state: Board) -> bool:
         '''
         Checks if the given state is a terminal state.
@@ -46,9 +52,9 @@ class SearchMoves:
 
     def get_reward(self, state: Board) -> float:
         '''
-        Returns the reward for the given state,
-        considering the perspective of the player at the initial state of the search.
-        Uses a random rollout to determine the reward.
+        Returns the reward for the given state, from the perspective of the
+        initial-state player. Plays out via self.policy until terminal or
+        max_depth, then asks self.evaluator for a value if no terminal was hit.
         '''
         current_board = state
         for _ in range(self.max_depth):
@@ -59,17 +65,18 @@ class SearchMoves:
                 if winner is None:
                     return 0.0
                 return 1.0 if winner == self._initial_state.current_player else -1.0
-            
-            # if the state is not terminal, perform a random rollout
+
+            # otherwise advance one step under the configured rollout policy
             moves = self.cc.generate_moves_for_given_board(current_board)
-            move = random.choice(moves)
-            # apply the move to the board
+            if not moves:
+                break
+            move = self.policy.choose(current_board, moves, self.cc)
             new_board = Board()
             new_board.copy_board(current_board)
             new_board.apply_move(move)
             current_board = new_board
-        # if the maximum depth is reached, just return 0.
-        return 0
-    
+        # depth cap reached (or no moves) — defer to the configured evaluator
+        return self.evaluator.evaluate(current_board)
+
     def is_maximizing(self, state: Board) -> bool:
         return state.current_player == self._initial_state.current_player
