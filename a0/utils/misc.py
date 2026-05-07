@@ -9,7 +9,7 @@ from numpy.typing import NDArray
 import matplotlib.pyplot as plt
 
 from cc.core import Player, Board
-from cc.ground_truth import GroundTruth
+from cc.ground_truth import GroundTruth, RankUnrank
 from a0.game import GameData
 from a0.train.dataset import DatasetData, stats_from_dataset_data
 from a0.eval.dataset_evaluation import Series, save_series, policy_accuracy_function, policy_probability_mass_function
@@ -60,8 +60,12 @@ def get_baseline_accuracy(boards: list[Board], gt: GroundTruth) -> tuple[float, 
 
     return total_acc_value / total_boards, total_acc_policy / total_boards, total_acc_value_nd / total_nd if total_nd > 0 else 0, total_acc_policy_nt / total_nt if total_nt > 0 else 0
 
-def get_branching_factor(boards: list[Board], gt: GroundTruth) -> float:
+def get_branching_factor(boards: list[Board], r: RankUnrank) -> float:
+    '''
+    Average number of legal moves per board. Solve-data-free; accepts any
+    RankUnrank (including GroundTruth).
+    '''
     total_branching_factor = 0
     for board in boards:
-        total_branching_factor += sum(gt.get_valid_moves_list(board, for_model=False))
+        total_branching_factor += sum(r.get_valid_moves_list(board, for_model=False))
     return total_branching_factor / len(boards) if boards else 0.0
