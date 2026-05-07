@@ -4,7 +4,7 @@ import random
 
 from cc.core import Game, Board, Move
 from a0.graph_search.mcts import MCTS
-from a0.mcts.random_rollout import SearchMoves
+from a0.mcts.rollout import SearchMoves
 from a0.mcts.rollout_strategies import EvaluatorType, PolicyType, make_evaluator, make_policy
 
 class MCTSRolloutPlayer:
