@@ -7,7 +7,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from cc.core import Board, Game
-from cc.ground_truth import GroundTruth
+from cc.ground_truth import GroundTruth, RankUnrank
 from a0.dataset import Dataset
 from a0.experience_buffer import ExperienceData
 from a0.model_utils import board_to_input, input_to_board, Policy, get_legal_move_mask_from_state
@@ -85,39 +85,21 @@ def get_and_save_nd_and_nt_datasets_from_state_list(states: list[Board], gt: Gro
     save_dataset(fn_nd, states_nd_gtd)
     save_dataset(fn_nt, states_nt_gtd)
 
-def get_and_save_random_states_for_evaluation(n: int, gt: GroundTruth) -> dict[str, list[Board]]:
+def get_random_state_list(n: int, r: RankUnrank) -> list[Board]:
     '''
-    n: the number of states to return for evaluation.
-    gt: the ground truth to use for getting the state values and policies.
-    Returns the source state list keyed by name, for downstream analysis.
+    Returns a deduped list of ~n*3 random states (the 3x is to absorb
+    de-duplication; n itself is the target downstream-dataset size).
+    Solve-data-free.
     '''
-    # get random states,
-    # more than n to account for filtering out unwanted states
-    # maybe adjust the mulitple for different game sizes? 25-6: 3x
-    random_states = get_random_states(n * 3, gt)
+    random_states = get_random_states(n * 3, r)
     random_states, _ = remove_duplicates(random_states)
+    return random_states
 
-    # get the GTDs for the random states,
-    get_and_save_nd_and_nt_datasets_from_state_list(
-        random_states,
-        gt,
-        n,
-        256,
-        "random_nd",
-        "random_nt"
-    )
 
-    return {"random": random_states}
-
-def get_and_save_training_neighbors_gtd(gt: GroundTruth, temporary_size: int | None, final_size: int | None = None, num_neighbors: int=2) -> dict[str, list[Board]]:
+def get_seen_and_neighbor_state_lists(temporary_size: int | None, num_neighbors: int) -> dict[str, list[Board]]:
     '''
-    Generates a set of datasets.
-    1. boards seen during training and their ground-truth value values and policies
-    2. boards that are children of the seen boards and their GTVs
-    3. repeat step 2 for 2-neighbors, 3-neighbors, and so on.
-    To prevent running out of memory, the number of states to generate neighbors from is capped.
-    Then the final dataset's size is further reduced.
-    Returns the source state lists keyed by name, for downstream analysis.
+    Builds state lists for boards seen during training plus k-neighbor
+    expansions. Solve-data-free (uses Game logic only).
     '''
     state_lists: dict[str, list[Board]] = {}
 
@@ -128,61 +110,64 @@ def get_and_save_training_neighbors_gtd(gt: GroundTruth, temporary_size: int | N
     seen_states = list(boards_set)
     if temporary_size is not None:
         seen_states = random.sample(seen_states, min(temporary_size, len(seen_states)))
-
-    # get and save the nd and nt gtd datasets for the training boards.
-    get_and_save_nd_and_nt_datasets_from_state_list(
-        seen_states,
-        gt,
-        n=final_size if final_size is not None else len(seen_states),
-        batch_size=256,
-        fn_nd="seen_nd",
-        fn_nt="seen_nt"
-    )
     state_lists["seen"] = seen_states
 
-    # for each neighbor level,
     neighbor_states = seen_states
     for i in range(num_neighbors):
-        logger.info(f"Generating {i+1}-neighbor dataset...")
+        logger.info(f"Generating {i+1}-neighbor state list...")
         # get all the neighboring (children) states of the previous neighbors,
         # starting with seen states, then 1-neighbors, then 2-neighbors, and so on.
         neighbor_states = get_neighbor_boards(neighbor_states, boards_set, temporary_size)
-        # create, trim, and save a gtv dataset based on the generated boards
-        get_and_save_nd_and_nt_datasets_from_state_list(
-            neighbor_states,
-            gt,
-            n=final_size if final_size is not None else len(neighbor_states),
-            batch_size=256,
-            fn_nd=f"neighbor_{i+1}_nd",
-            fn_nt=f"neighbor_{i+1}_nt"
-        )
         state_lists[f"neighbor_{i+1}"] = neighbor_states
 
     return state_lists
 
+
+def save_nd_nt_datasets_for_state_lists(state_lists: dict[str, list[Board]], gt: GroundTruth, n: int, batch_size: int) -> None:
+    '''
+    For each (name, states) entry in state_lists, build and save the nd
+    and nt GT-labeled datasets to {dataset_out_dir}/{name}_nd.pkl and
+    {name}_nt.pkl. Requires solve data via GroundTruth.
+    '''
+    for name, states in state_lists.items():
+        logger.info(f"Saving nd/nt datasets for source '{name}' ({len(states)} states)...")
+        get_and_save_nd_and_nt_datasets_from_state_list(
+            states, gt,
+            n=n,
+            batch_size=batch_size,
+            fn_nd=f"{name}_nd",
+            fn_nt=f"{name}_nt",
+        )
+
+
 def main():
     '''
-    Generates nd & nt variants of the the datasets:
-    seen, random, and neighbor_[1 to k]
-    Also saves the source state lists (pre-nd/nt-filter) to a single
-    pickle for downstream analysis (e.g. baseline accuracy).
+    Generates source state lists (random / seen / neighbor_[1..k]) and
+    GT-labeled nd & nt dataset variants for each.
+      - State lists are produced solve-data-free and saved to
+        {dataset_out_dir}/state_lists.pkl.
+      - The nd/nt datasets require ground truth and are saved
+        per-source to {dataset_out_dir}/{name}_{nd,nt}.pkl.
     '''
     logger.info("Starting dataset generation...")
-    gt = GroundTruth()
 
+    # state lists: solve-data-free
+    ranker = RankUnrank()
     state_lists: dict[str, list[Board]] = {}
-    state_lists.update(get_and_save_random_states_for_evaluation(1000, gt))
-    state_lists.update(get_and_save_training_neighbors_gtd(
-        gt,
+    state_lists["random"] = get_random_state_list(1000, ranker)
+    state_lists.update(get_seen_and_neighbor_state_lists(
         temporary_size=10000,
-        final_size=1000,
-        num_neighbors=2
+        num_neighbors=2,
     ))
 
     state_lists_path = f"{config.dataset_out_dir}/state_lists.pkl"
     with open(state_lists_path, 'wb') as f:
         pickle.dump(state_lists, f)
     logger.info(f"Saved state lists ({list(state_lists.keys())}) to {state_lists_path}.")
+
+    # nd/nt labeled datasets: requires solve data
+    gt = GroundTruth()
+    save_nd_nt_datasets_for_state_lists(state_lists, gt, n=1000, batch_size=256)
 
 if __name__ == "__main__":
     setup_logging(
