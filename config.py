@@ -80,6 +80,9 @@ class Config:
 
     c_puct: float
 
+    do_player_eval: bool  # gates a0.eval.player
+    do_gt_evals: bool     # gates eval3 analyses that need the solve-data file
+
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
         Initialize the configuration from a JSON file.

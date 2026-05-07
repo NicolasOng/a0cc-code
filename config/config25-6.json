@@ -45,5 +45,7 @@
     "max_collapse_retries": 5,
     "log_system_metrics": true,
     "system_metrics_interval_seconds": 60.0,
-    "c_puct": 1.0
+    "c_puct": 1.0,
+    "do_player_eval": true,
+    "do_gt_evals": true
 }
