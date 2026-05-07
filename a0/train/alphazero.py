@@ -28,7 +28,8 @@ from a0.train.dataset import train_model_epochs, plot_model_performance, Dataset
 from a0.eval.model_diagnostics import log_iteration_diagnostics
 from a0.eval.training_data import GameDataStats, game_data_list_stats
 from a0.experience_buffer import ExperienceBuffer, ExperienceData
-from a0.utils.states import get_rd_from_states, get_random_states_no_gt, remove_duplicates
+from a0.utils.states import get_rd_from_states, get_random_states, remove_duplicates
+from cc.ground_truth import RankUnrank
 
 from utils.log import get_logger, setup_logging
 from utils.system_metrics import SystemMetricsLogger
@@ -519,7 +520,7 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
         )
         save_model(config.training_dir + f'/model_{0}.pkl', model)
     
-    random_states = get_random_states_no_gt(256)
+    random_states = get_random_states(256, RankUnrank())
     random_states, _ = remove_duplicates(random_states)
     rsrd = get_rd_from_states(random_states, 256, shuffle=True)
     

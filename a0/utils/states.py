@@ -58,28 +58,20 @@ class StatesInfo:
         self.num_trivial = num_trivial
         self.num_terminal = num_terminal
 
-def get_random_state(max_rank: int, gt: GroundTruth) -> Board:
+def get_random_state(max_rank: int, r: RankUnrank) -> Board:
     '''
-    Returns a random state.
+    Returns a random state. Accepts any RankUnrank (including GroundTruth);
+    callers without solve data can pass a plain RankUnrank().
     '''
-    return gt.unrank(random.randint(0, max_rank - 1))
+    return r.unrank(random.randint(0, max_rank - 1))
 
-def get_random_states(n: int, gt: GroundTruth) -> list[Board]:
+def get_random_states(n: int, r: RankUnrank) -> list[Board]:
     '''
     Returns a list of random states.
     Uniqueness is not guaranteed.
     '''
-    max_rank = gt.get_max_rank()
-    return [get_random_state(max_rank, gt) for _ in range(n)]
-
-def get_random_states_no_gt(n: int) -> list[Board]:
-    '''
-    Returns a list of random states.
-    Uniqueness is not guaranteed.
-    '''
-    ru = RankUnrank()
-    max_rank = ru.get_max_rank()
-    return [ru.unrank(random.randint(0, max_rank - 1)) for _ in range(n)]
+    max_rank = r.get_max_rank()
+    return [get_random_state(max_rank, r) for _ in range(n)]
 
 def remove_duplicates(states: list[Board], state_info_list: Optional[list[StateInfo]] = None) -> tuple[list[Board], Optional[list[StateInfo]]]:
     '''

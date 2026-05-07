@@ -7,10 +7,12 @@ from a0.model_utils import Policy
 
 from config import config
 
-class GroundTruth:
+class RankUnrank:
     '''
-    Provides methods to rank, unrank, and get outcomes for boards.
-    This class uses the CCDefaultRank and CCBaselineSolver to perform these operations.
+    Solve-data-free board operations: rank/unrank and Game-level lookups
+    (legality, terminal, etc.). Constructed without a CCBaselineSolver,
+    so it works even when the solve-data file is unavailable.
+    GroundTruth extends this with solver-backed methods.
     '''
 
     def __init__(self):
@@ -22,15 +24,14 @@ class GroundTruth:
                         no_reverse_moves=not config.backwards_moves,
                         no_illegal_moves=not config.illegal_moves,
                         no_side_moves=not config.sideways_moves)
-        self.l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
-    
+
     def rank(self, board: Board) -> int:
         '''
         Returns the rank of the given board.
         '''
         self.s.initialize_from_board(board)
         return self.r.rank(self.s)
-    
+
     def unrank(self, rank: int) -> Board:
         '''
         Returns a board from the given rank.
@@ -44,7 +45,28 @@ class GroundTruth:
         This is the total number of unique board states.
         '''
         return self.r.get_max_rank()
-    
+
+    def is_terminal(self, board: Board) -> bool:
+        '''
+        Checks if the given board is a terminal state.
+        '''
+        return self.cc.get_done(board)
+
+
+class GroundTruth(RankUnrank):
+    '''
+    Extends RankUnrank with solver-backed methods that read from
+    config.solve_data via CCBaselineSolver. Use this when you need
+    outcomes, winners, 1-ply policy distributions, or trivial-state
+    detection. For solve-data-free needs (rank/unrank/is_terminal),
+    construct RankUnrank() directly so the solve-data file isn't
+    required.
+    '''
+
+    def __init__(self):
+        super().__init__()
+        self.l = CCBaselineSolver(config.solve_data, config.num_spots, config.num_players, config.num_pieces)
+
     def get_outcome(self, board: Board) -> float:
         '''
         Returns the outcome of the game for the given board,
@@ -59,14 +81,14 @@ class GroundTruth:
         If there is no winner (draw), returns None.
         '''
         return self.l.get_winner(board)
-    
+
     def is_illegal(self, board: Board) -> bool:
         '''
         Checks if the given board is illegal.
         Returns True if illegal, False otherwise.
         '''
         return self.l.board_lookup(board) == 3
-    
+
     def is_draw(self, board: Board) -> bool:
         '''
         Checks if the given board results in a draw.
@@ -74,12 +96,6 @@ class GroundTruth:
         '''
         return self.l.board_lookup(board) == 0
 
-    def is_terminal(self, board: Board) -> bool:
-        '''
-        Checks if the given board is a terminal state.
-        '''
-        return self.cc.get_done(board)
-    
     def get_1ply_policy_moves(self, board: Board) -> tuple[list[Move], list[float]]:
         '''
         Returns the 1ply policy for the given board.
@@ -110,11 +126,11 @@ class GroundTruth:
                 move_outcomes.append(1.0)
             elif winner != current_player:
                 move_outcomes.append(-1.0)
-            
+
             # undo the move to restore the board state
             # this is necessary to check the next move
             board.undo_move(move)
-        
+
         return moves, move_outcomes
 
     def get_1ply_policy_prob_dist_list(self, board: Board, for_model: bool) -> list[float]:
@@ -179,7 +195,7 @@ class GroundTruth:
             p.rotate_policy()
         # return the policy as a list
         return p.get_policy_list()
-    
+
     def get_valid_moves_list(self, board: Board, for_model: bool) -> list[float]:
         '''
         Returns a policy list for the given board,
@@ -205,7 +221,7 @@ class GroundTruth:
             p.rotate_policy()
         # return the policy as a list
         return p.get_policy_list()
-    
+
     def get_random_valid_move_prob_dist_list(self, board: Board, for_model: bool) -> list[float]:
         '''
         Returns a policy list for the given board,
@@ -236,7 +252,7 @@ class GroundTruth:
             p.rotate_policy()
         # return the policy as a list
         return p.get_policy_list()
-    
+
     def get_random_best_move_prob_dist_list(self, board: Board, for_model: bool) -> list[float]:
         '''
         Returns a policy list for the given board,
@@ -270,7 +286,7 @@ class GroundTruth:
             p.rotate_policy()
         # return the policy as a list
         return p.get_policy_list()
-    
+
     def is_trivial(self, board: Board) -> bool:
         '''
         Checks if the given board is trivial.
@@ -280,40 +296,3 @@ class GroundTruth:
         _, move_outcomes = self.get_1ply_policy_moves(board)
         # check if all outcomes are the same
         return all(x == move_outcomes[0] for x in move_outcomes)
-
-class RankUnrank:
-    '''
-    Provides methods to rank and unrank boards.
-    This class uses the CCDefaultRank object to perform these operations.
-    '''
-
-    def __init__(self):
-        self.r = CCDefaultRank(config.num_spots, config.num_players, config.num_pieces)
-        self.s = CCState(config.num_spots, config.num_pieces, config.num_players)
-        self.cc = Game(board_size=config.board_size,
-                        num_pieces=config.num_pieces,
-                        repeats_for_draw=-1,
-                        no_reverse_moves=not config.backwards_moves,
-                        no_illegal_moves=not config.illegal_moves,
-                        no_side_moves=not config.sideways_moves)
-    
-    def rank(self, board: Board) -> int:
-        '''
-        Returns the rank of the given board.
-        '''
-        self.s.initialize_from_board(board)
-        return self.r.rank(self.s)
-    
-    def unrank(self, rank: int) -> Board:
-        '''
-        Returns a board from the given rank.
-        '''
-        self.r.unrank(rank, self.s)
-        return self.s.get_board()
-
-    def get_max_rank(self) -> int:
-        '''
-        Returns the maximum rank for the current configuration.
-        This is the total number of unique board states.
-        '''
-        return self.r.get_max_rank()

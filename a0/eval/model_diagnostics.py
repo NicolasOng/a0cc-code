@@ -8,8 +8,9 @@ batch through the model and returns a dict containing:
   - per-parameter + total gradient norms under a training-equivalent loss
 
 The probe batch is expected to be a Dataset of uniformly-sampled states with
-fixed random targets (see `a0.utils.states.get_random_states_no_gt` +
-`get_rd_from_states`), so diagnostics are comparable across iterations.
+fixed random targets (see `a0.utils.states.get_random_states` with a
+`RankUnrank()` + `get_rd_from_states`), so diagnostics are comparable
+across iterations.
 """
 
 from typing import Any
@@ -307,7 +308,8 @@ if __name__ == "__main__":
     import os
     import sys
     from a0.utils.load_training_data import load_models
-    from a0.utils.states import get_random_states_no_gt, remove_duplicates, get_rd_from_states
+    from a0.utils.states import get_random_states, remove_duplicates, get_rd_from_states
+    from cc.ground_truth import RankUnrank
 
     training_dir = config.training_dir
     out_path = config.log_dir + "model_diagnostics.jsonl"
@@ -320,7 +322,7 @@ if __name__ == "__main__":
 
     print("Building probe dataset...")
     n = 512
-    _states = get_random_states_no_gt(n)
+    _states = get_random_states(n, RankUnrank())
     _states, _ = remove_duplicates(_states)
     rsrd = get_rd_from_states(_states, n, shuffle=True)
 
