@@ -2,6 +2,7 @@ import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
 import json
+import math
 import multiprocessing
 from datetime import datetime
 import concurrent.futures
@@ -17,6 +18,7 @@ from cc.core import Game, Player
 from a0.game import PlayerClass, GameData, play
 from a0.players.a0 import A0Player
 from a0.players.random import RandomPlayer
+from a0.mcts.rollout_strategies import EvaluatorType, PolicyType
 from a0.players.mcts_rollout import MCTSRolloutPlayer
 from a0.utils.load_training_data import load_models
 from a0.utils.plotting import Series, save_series
@@ -29,6 +31,7 @@ logger = get_logger(__name__)
 
 NUM_GAMES = 64
 BASELINE_MCTS_ITERATIONS = 2048
+BASELINE_EPSILON = 0.1   # for the BEST rollout policy used by the baseline
 TURN_LIMIT = 80
 
 
@@ -220,6 +223,15 @@ def get_trained_players() -> list[tuple[int, A0Player]]:
     ]
 
 
+def _baseline_c() -> float:
+    '''Anchor c for the DIST baseline, scaled to the current config: half-range / √2,
+    where half-range = num_pieces * 2 * (board_size - 1). See the c-calibration
+    script (scripts/2026-05-07_rollout_strategies_c_calibration.py) for the
+    derivation.'''
+    half_range = config.num_pieces * 2 * (config.board_size - 1)
+    return half_range / math.sqrt(2)
+
+
 def make_baseline() -> MCTSRolloutPlayer:
     return MCTSRolloutPlayer(
         board_size=config.board_size,
@@ -228,6 +240,10 @@ def make_baseline() -> MCTSRolloutPlayer:
         no_illegal_moves=not config.illegal_moves,
         no_side_moves=not config.sideways_moves,
         mcts_iterations=BASELINE_MCTS_ITERATIONS,
+        evaluator=EvaluatorType.DIST,
+        policy=PolicyType.BEST,
+        policy_epsilon=BASELINE_EPSILON,
+        c=_baseline_c() * 0.25,
     )
 
 
