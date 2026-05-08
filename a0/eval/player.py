@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 
 
 NUM_GAMES = 64
-BASELINE_MCTS_ITERATIONS = 2048
+BASELINE_MCTS_ITERATIONS = 1024
 BASELINE_EPSILON = 0.1   # for the BEST rollout policy used by the baseline
 TURN_LIMIT = 80
 
