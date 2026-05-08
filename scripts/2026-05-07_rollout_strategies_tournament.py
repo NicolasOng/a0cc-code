@@ -15,6 +15,7 @@ contenders against each other puts them on more even footing.
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
+import math
 import multiprocessing
 import pickle
 from datetime import datetime
@@ -36,6 +37,20 @@ NUM_GAMES = 64              # games per pair (half as P1, half as P2)
 MCTS_ITERATIONS = 512        # tunable: higher = stronger play, slower
 EPSILON = 0.1               # for Best/Back rollout policies
 
+# Per-evaluator UCT exploration constant. Defaults are theoretical anchors
+# scaled to the current config: √2 (Hoeffding) for NONE, and half-range/√2 for
+# DIST/LBDIST where half-range = num_pieces * 2 * (board_size - 1).
+def _anchor_c(evaluator: EvaluatorType) -> float:
+    if evaluator == EvaluatorType.NONE:
+        return math.sqrt(2)
+    half_range = config.num_pieces * 2 * (config.board_size - 1)
+    return half_range / math.sqrt(2)
+
+TUNED_C = {
+    EvaluatorType.NONE: _anchor_c(EvaluatorType.NONE),
+    EvaluatorType.DIST: _anchor_c(EvaluatorType.DIST) * 0.25,  # empircally found from c calibration
+    EvaluatorType.LBDIST: _anchor_c(EvaluatorType.LBDIST),
+}
 
 def make_player(evaluator: EvaluatorType, policy: PolicyType, epsilon: float = 0.0) -> MCTSRolloutPlayer:
     return MCTSRolloutPlayer(
@@ -48,6 +63,7 @@ def make_player(evaluator: EvaluatorType, policy: PolicyType, epsilon: float = 0
         evaluator=evaluator,
         policy=policy,
         policy_epsilon=epsilon,
+        c=TUNED_C[evaluator],
     )
 
 

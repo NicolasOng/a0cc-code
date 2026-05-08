@@ -72,13 +72,14 @@ class MCTS:
     Monte Carlo Tree Search (MCTS) implementation for a generic graph problem.
     Based on https://int8.io/monte-carlo-tree-search-beginners-guide/#Policy_network_training_in_Alpha_Go_and_Alpha_Zero
     '''
-    def __init__(self, problem: MCTSProblem, selection_policy: str = 'uct'):
+    def __init__(self, problem: MCTSProblem, selection_policy: str = 'uct', c: float = math.sqrt(2)):
         self.problem = problem
         self.root = MCTSNode(problem.initial_state(), 1.0)
+        self.c = c
 
         # set the selection policy
         if selection_policy == 'uct':
-            self.key = self.uct
+            self.key = lambda n: MCTS.uct(n, self.c)
         elif selection_policy == 'puct':
             self.key = self.puct
         else:
@@ -132,7 +133,7 @@ class MCTS:
                 # reward = 0.9 * reward
     
     @staticmethod
-    def uct(node: MCTSNode) -> float:
+    def uct(node: MCTSNode, c: float = math.sqrt(2)) -> float:
         assert node.parent is not None, "UCT called on root node"
         # prioritize unvisited nodes
         if node.visits == 0:
@@ -142,7 +143,7 @@ class MCTS:
         if not node.is_maximizing:
             exploit = -exploit
         # exploration factor (c * sqrt(ln(N) / n))
-        explore = math.sqrt(2) * math.sqrt(math.log(node.parent.visits) / node.visits)
+        explore = c * math.sqrt(math.log(node.parent.visits) / node.visits)
         return exploit + explore
     
     @staticmethod

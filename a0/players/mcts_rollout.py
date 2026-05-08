@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Optional, Any
+import math
 import random
 
 from cc.core import Game, Board, Move
@@ -13,7 +14,8 @@ class MCTSRolloutPlayer:
                  mcts_iterations: int = 10000,
                  evaluator: EvaluatorType = EvaluatorType.NONE,
                  policy: PolicyType = PolicyType.RANDOM,
-                 policy_epsilon: float = 0.0):
+                 policy_epsilon: float = 0.0,
+                 c: float = math.sqrt(2)):
         self.game = Game(board_size=board_size,
                         num_pieces=num_pieces,
                         repeats_for_draw=-1,
@@ -25,6 +27,7 @@ class MCTSRolloutPlayer:
         self.evaluator_type = evaluator
         self.policy_type = policy
         self.policy_epsilon = policy_epsilon
+        self.c = c
 
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         # build per-call: evaluator depends on the root player (state.current_player)
@@ -34,7 +37,7 @@ class MCTSRolloutPlayer:
         search = SearchMoves(state, self.game, self.max_depth, evaluator=evaluator, policy=policy)
 
         # perform mcts and get the root's children
-        mcts = MCTS(search, 'uct')
+        mcts = MCTS(search, 'uct', c=self.c)
         mcts.run(iterations=self.mcts_iterations)
 
         child = mcts.get_best_root_child()
