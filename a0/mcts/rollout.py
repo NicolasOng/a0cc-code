@@ -54,17 +54,15 @@ class SearchMoves:
         '''
         Returns the reward for the given state, from the perspective of the
         initial-state player. Plays out via self.policy until terminal or
-        max_depth, then asks self.evaluator for a value if no terminal was hit.
+        max_depth. Terminals defer to evaluator.terminal_value (so each eval
+        owns its own value scale); depth-caps defer to evaluator.evaluate.
         '''
+        root_player = self._initial_state.current_player
         current_board = state
         for _ in range(self.max_depth):
-            # check if the current board is terminal, and get its winner
             is_done, winner = self.cc.get_done_and_winner(current_board)
             if is_done:
-                # if the game is done, return the value based on the winner
-                if winner is None:
-                    return 0.0
-                return 1.0 if winner == self._initial_state.current_player else -1.0
+                return self.evaluator.terminal_value(current_board, winner, root_player)
 
             # otherwise advance one step under the configured rollout policy
             moves = self.cc.generate_moves_for_given_board(current_board)
@@ -75,7 +73,7 @@ class SearchMoves:
             new_board.copy_board(current_board)
             new_board.apply_move(move)
             current_board = new_board
-        # depth cap reached (or no moves) — defer to the configured evaluator
+        # depth cap reached (or no moves and not flagged terminal) — defer to the eval
         return self.evaluator.evaluate(current_board)
 
     def is_maximizing(self, state: Board) -> bool:

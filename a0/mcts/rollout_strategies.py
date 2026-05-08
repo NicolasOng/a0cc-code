@@ -1,7 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from typing import Callable, Iterable, Protocol, TypeVar
-import math
+from typing import Callable, Iterable, Optional, Protocol
 import random
 
 from cc.core import Board, Game, Move, Player
@@ -35,31 +34,41 @@ def forward_progress(move: Move, player: Player) -> int:
     return d_anti if player == Player.PLAYER_X else -d_anti
 
 
-T = TypeVar("T")
-
-
-def _pick_best_random_tie(items: Iterable[T], score_fn: Callable[[T], float]) -> T:
+def _pick_best_random_tie(items: Iterable[Move], score_fn: Callable[[Move], float]) -> Move:
     best_score: float | None = None
-    best: list[T] = []
-    for x in items:
-        s = score_fn(x)
+    best: list[Move] = []
+    for m in items:
+        s = score_fn(m)
         if best_score is None or s > best_score:
             best_score = s
-            best = [x]
+            best = [m]
         elif s == best_score:
-            best.append(x)
+            best.append(m)
     return random.choice(best)
 
 
 # --- Evaluators ---
+#
+# Each evaluator owns *both* the depth-cap value (`evaluate`) and the terminal
+# value (`terminal_value`). Splitting these lets each strategy keep one
+# internal value scale: ZeroEval returns ±1 / 0 at terminals (preserves the
+# "terminal is ground truth" property when there's no real heuristic), while
+# DistEval/LBDistEval reuse their own raw eval at terminals so we don't have
+# to normalize raw eval values into the ±1 terminal range.
 
 class StateEvaluator(Protocol):
     def evaluate(self, state: Board) -> float: ...
+    def terminal_value(self, state: Board, winner: Optional[Player], root_player: Player) -> float: ...
 
 
 class ZeroEval:
     def evaluate(self, state: Board) -> float:
         return 0.0
+
+    def terminal_value(self, state: Board, winner: Optional[Player], root_player: Player) -> float:
+        if winner is None:
+            return 0.0
+        return 1.0 if winner == root_player else -1.0
 
 
 class DistEval:
@@ -69,7 +78,6 @@ class DistEval:
         opp_player = Player.PLAYER_O if root_player == Player.PLAYER_X else Player.PLAYER_X
         self.me_goal = goal_corner_for(root_player, board_size)
         self.opp_goal = goal_corner_for(opp_player, board_size)
-        self.max_dist = 2 * (board_size - 1)
 
     def evaluate(self, state: Board) -> float:
         x_pos, o_pos = state.get_player_positions()
@@ -80,10 +88,13 @@ class DistEval:
         d_me = goal_distance(me_pos, self.me_goal, self.exclude_within)
         d_opp = goal_distance(opp_pos, self.opp_goal, self.exclude_within)
         turn_bonus = 1 if state.current_player == self.root_player else 0
-        raw = -d_me + d_opp + turn_bonus
-        # squash to (-1, 1); scale so a lopsided race lands near saturation
-        scale = max(1, len(me_pos) * self.max_dist)
-        return math.tanh(raw / scale)
+        return float(-d_me + d_opp + turn_bonus)
+
+    def terminal_value(self, state: Board, winner: Optional[Player], root_player: Player) -> float:
+        # Terminals are extrema of DistEval (a winning state minimizes d_me — the
+        # 6 winning pieces tile the goal triangle — and typically has a large d_opp),
+        # so reusing the eval here keeps the value scale uniform.
+        return self.evaluate(state)
 
 
 class LBDistEval(DistEval):
@@ -123,9 +134,10 @@ class _ProgressPolicy:
         if self.epsilon > 0 and random.random() < self.epsilon:
             return self._fallback.choose(state, moves, game)
         forward = filter_forward(state, moves)
-        if not forward:
-            return random.choice(moves)
-        candidates = self._candidates(state, forward)
+        # if no forward moves, score over all moves instead — picks the "least bad"
+        # (largest forward_progress, even if zero or negative) rather than blind random.
+        pool = forward if forward else moves
+        candidates = self._candidates(state, pool)
         return _pick_best_random_tie(candidates, lambda m: forward_progress(m, state.current_player))
 
 

@@ -112,7 +112,6 @@ def test_dist_eval_near_win_better_than_start():
     near_win_value = e.evaluate(near_win)
 
     assert near_win_value > start_value, f"near-win {near_win_value} should beat start {start_value}"
-    assert -1.0 <= near_win_value <= 1.0, f"value {near_win_value} out of [-1, 1]"
 
 
 def test_lbdist_invariance_within_goal():
@@ -145,6 +144,39 @@ def test_lbdist_invariance_within_goal():
     assert e_dist.evaluate(base) != e_dist.evaluate(other)
 
 
+def test_zero_eval_terminal_value():
+    print("Testing ZeroEval.terminal_value preserves ground-truth ±1/0...")
+    state = Game(7, 6).board
+    e = ZeroEval()
+    assert e.terminal_value(state, Player.PLAYER_X, Player.PLAYER_X) == 1.0
+    assert e.terminal_value(state, Player.PLAYER_O, Player.PLAYER_X) == -1.0
+    assert e.terminal_value(state, Player.PLAYER_X, Player.PLAYER_O) == -1.0
+    assert e.terminal_value(state, Player.PLAYER_O, Player.PLAYER_O) == 1.0
+    assert e.terminal_value(state, None, Player.PLAYER_X) == 0.0
+
+
+def test_dist_eval_terminal_value_matches_evaluate():
+    print("Testing DistEval.terminal_value reuses evaluate (single value scale)...")
+    # Build an X-winning terminal state
+    win_state = _empty_board()
+    win_state.current_player = Player.PLAYER_O  # O to move when X just won
+    win_state.apply_points(
+        [Point(6, 6), Point(5, 6), Point(6, 5), Point(4, 6), Point(5, 5), Point(6, 4)],
+        Tile.PLAYER_X,
+    )
+    win_state.apply_points(
+        [Point(3, 3), Point(3, 4), Point(4, 3), Point(2, 5), Point(5, 2), Point(3, 5)],
+        Tile.PLAYER_O,
+    )
+    e = DistEval(Player.PLAYER_X, 7)
+    # terminal_value should equal evaluate at the same state — same value scale.
+    # winner argument is ignored by DistEval (the eval already encodes who's winning).
+    assert e.terminal_value(win_state, Player.PLAYER_X, Player.PLAYER_X) == e.evaluate(win_state)
+    assert e.terminal_value(win_state, None, Player.PLAYER_X) == e.evaluate(win_state)
+    # And the value should be strongly positive (X is winning by a lot)
+    assert e.evaluate(win_state) > 0
+
+
 def test_best_playout_picks_longest_forward():
     print("Testing BestPlayoutPolicy picks the longest forward move...")
     state = _empty_board()
@@ -175,16 +207,26 @@ def test_back_playout_picks_rear_piece():
     assert (chosen.start.x, chosen.start.y) == (0, 0)
 
 
-def test_best_playout_falls_back_with_no_forward():
-    print("Testing Best/Back fall back to random when no forward moves...")
+def test_best_playout_picks_least_bad_when_no_forward():
+    print("Testing Best/Back pick least-bad move when no forward moves available...")
     state = _empty_board()
     state.current_player = Player.PLAYER_X
     state.apply_points([Point(3, 3)], Tile.PLAYER_X)
-    only_backward = [Move(3, 3, 2, 2), Move(3, 3, 2, 3)]  # all is_up for X = backward
-    chosen = BestPlayoutPolicy(epsilon=0.0).choose(state, only_backward, Game(7, 6))
-    assert chosen in only_backward
-    chosen = BackPlayoutPolicy(epsilon=0.0).choose(state, only_backward, Game(7, 6))
-    assert chosen in only_backward
+    # All moves are backward for X (is_up). Forward progress = -2, -1, -1.
+    # Least-bad (largest forward_progress) is the -1 moves; tie-broken at random.
+    only_backward = [
+        Move(3, 3, 2, 2),  # anti-diag delta -2 -> forward_progress -2 (worst)
+        Move(3, 3, 2, 3),  # anti-diag delta -1 -> forward_progress -1
+        Move(3, 3, 3, 2),  # anti-diag delta -1 -> forward_progress -1
+    ]
+    least_bad = {(2, 3), (3, 2)}
+    for _ in range(10):
+        chosen = BestPlayoutPolicy(epsilon=0.0).choose(state, only_backward, Game(7, 6))
+        assert (chosen.end.x, chosen.end.y) in least_bad, \
+            f"BestPlayout fallback should pick a -1 move, got {chosen}"
+        chosen = BackPlayoutPolicy(epsilon=0.0).choose(state, only_backward, Game(7, 6))
+        assert (chosen.end.x, chosen.end.y) in least_bad, \
+            f"BackPlayout fallback should pick a -1 move, got {chosen}"
 
 
 def test_factories_return_expected_types():
@@ -199,18 +241,23 @@ def test_factories_return_expected_types():
 
 
 def test_pick_best_random_tie():
-    print("Testing _pick_best_random_tie returns a max-scoring item, breaks ties uniformly-ish...")
-    items = [(1, 'a'), (3, 'b'), (3, 'c'), (2, 'd')]
+    print("Testing _pick_best_random_tie returns a max-scoring move, breaks ties uniformly-ish...")
+    moves = [
+        Move(0, 0, 1, 1),  # score 2 (anti-diag delta)
+        Move(0, 0, 2, 2),  # score 4 (max, tied below)
+        Move(0, 0, 3, 1),  # score 4 (max, tied above)
+        Move(0, 0, 0, 1),  # score 1
+    ]
+    winners = {(2, 2), (3, 1)}
     rng_state = random.getstate()
     try:
         random.seed(0)
         seen = set()
         for _ in range(50):
-            choice = _pick_best_random_tie(items, lambda x: x[0])
-            assert choice in {(3, 'b'), (3, 'c')}, f"unexpected choice {choice}"
-            seen.add(choice)
-        # both ties seen across 50 trials with a fixed seed
-        assert seen == {(3, 'b'), (3, 'c')}, f"only saw {seen}"
+            choice = _pick_best_random_tie(moves, lambda m: m.diagonal_distances()[1])
+            assert (choice.end.x, choice.end.y) in winners, f"unexpected choice {choice}"
+            seen.add((choice.end.x, choice.end.y))
+        assert seen == winners, f"only saw {seen}"
     finally:
         random.setstate(rng_state)
 
@@ -222,11 +269,13 @@ if __name__ == "__main__":
     test_filter_forward_player_o()
     test_forward_progress_sign()
     test_zero_eval()
+    test_zero_eval_terminal_value()
     test_dist_eval_near_win_better_than_start()
+    test_dist_eval_terminal_value_matches_evaluate()
     test_lbdist_invariance_within_goal()
     test_best_playout_picks_longest_forward()
     test_back_playout_picks_rear_piece()
-    test_best_playout_falls_back_with_no_forward()
+    test_best_playout_picks_least_bad_when_no_forward()
     test_factories_return_expected_types()
     test_pick_best_random_tie()
     print("All rollout strategy tests passed.")

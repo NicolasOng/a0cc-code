@@ -32,8 +32,8 @@ from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 
-NUM_GAMES = 16              # games per pair (half as P1, half as P2)
-MCTS_ITERATIONS = 64        # tunable: higher = stronger play, slower
+NUM_GAMES = 64              # games per pair (half as P1, half as P2)
+MCTS_ITERATIONS = 512        # tunable: higher = stronger play, slower
 EPSILON = 0.1               # for Best/Back rollout policies
 
 
@@ -149,7 +149,7 @@ def main() -> None:
         pass
 
     players: dict[str, PlayerClass] = {
-        'baseline':       make_player(EvaluatorType.NONE,   PolicyType.RANDOM),
+        'none_random':       make_player(EvaluatorType.NONE,   PolicyType.RANDOM),
         'none_forward':   make_player(EvaluatorType.NONE,   PolicyType.FORWARD),
         'dist_random':    make_player(EvaluatorType.DIST,   PolicyType.RANDOM),
         'dist_forward':   make_player(EvaluatorType.DIST,   PolicyType.FORWARD),
