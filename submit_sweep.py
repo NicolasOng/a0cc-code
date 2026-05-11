@@ -221,13 +221,16 @@ def run_local(
     """Local equivalent of the slurm pipeline: per-task stages, per-HP combine
     stages, and per-sweep aggregate stages — run sequentially in this process."""
     # 1. Per-(config, trial) stages.
-    print(f"\n[local] Running {len(args.stages)} per-task stage(s) on tasks in {tasks_file}...")
-    with open(tasks_file) as f:
-        task_lines = [ln.strip() for ln in f if ln.strip()]
-    for line in task_lines:
-        cfg, trial = line.split()
-        for stage in args.stages:
-            run_stage_local(stage_argv(stage, cfg, trial), args.dry_run)
+    if args.skip_train_eval or not args.stages:
+        print(f"\n[local] Skipping train-eval stages.")
+    else:
+        print(f"\n[local] Running {len(args.stages)} per-task stage(s) on tasks in {tasks_file}...")
+        with open(tasks_file) as f:
+            task_lines = [ln.strip() for ln in f if ln.strip()]
+        for line in task_lines:
+            cfg, trial = line.split()
+            for stage in args.stages:
+                run_stage_local(stage_argv(stage, cfg, trial), args.dry_run)
 
     # 2. Per-HP combine stages.
     if args.skip_combine or not args.combine_stages:
@@ -276,10 +279,17 @@ def main():
                         metavar="MODULE",
                         help="(--local only) per-sweep aggregate stages. "
                              f"Default: {' '.join(DEFAULT_AGGREGATE_STAGES)}.")
+    parser.add_argument("--skip-train-eval", action="store_true",
+                        help="skip the per-(config, trial) train+eval pipeline. "
+                             "Combine and aggregate stages still run (in slurm mode "
+                             "they submit without a train dependency). Use with "
+                             "--reuse-configs to re-run combine/aggregate over an "
+                             "already-trained sweep.")
     parser.add_argument("--skip-combine", action="store_true",
-                        help="(--local only) skip combine stages.")
+                        help="skip combine stages. In slurm mode aggregate depends "
+                             "on train instead (or runs immediately if --skip-train-eval).")
     parser.add_argument("--skip-aggregate", action="store_true",
-                        help="(--local only) skip aggregate stages.")
+                        help="skip aggregate stages.")
     args = parser.parse_args()
 
     spec = load_sweep_spec(args.sweep_spec)
@@ -339,40 +349,52 @@ def main():
     os.makedirs(slurm_logs, exist_ok=True)
 
     # In dry-run we use placeholder job IDs so the printed sbatch commands still
-    # show the dependency wiring.
-    placeholder = "<train_jid>"
+    # show the dependency wiring for stages that were submitted.
+    placeholder_train = "<train_jid>"
     placeholder_combine = "<combine_jid>"
 
     # 4. Submit stage-1 array (train by default; slurm/eval_a0.sh / slurm/eval_a03.sh for re-eval).
-    stage_name = os.path.splitext(os.path.basename(args.script))[0]
-    print(f"\nSubmitting {stage_name} array ({n_tasks} tasks)...")
-    train_job = sbatch(
-        [f"--array=1-{n_tasks}",
-         f"--output={slurm_logs}/{stage_name}_%A_%a.out",
-         *slurm_flags_for(spec, "train"),
-         args.script, tasks_file],
-        args.dry_run,
-    )
+    train_job_id: str | None = None
+    if args.skip_train_eval:
+        print(f"\nSkipping train-eval array.")
+    else:
+        stage_name = os.path.splitext(os.path.basename(args.script))[0]
+        print(f"\nSubmitting {stage_name} array ({n_tasks} tasks)...")
+        train_job_id = sbatch(
+            [f"--array=1-{n_tasks}",
+             f"--output={slurm_logs}/{stage_name}_%A_%a.out",
+             *slurm_flags_for(spec, "train"),
+             args.script, tasks_file],
+            args.dry_run,
+        ) or (placeholder_train if args.dry_run else None)
 
-    # 5. Submit combine array, dependent on train.
-    print(f"\nSubmitting combine array ({n_hps} tasks)...")
-    train_dep = train_job if train_job is not None else placeholder
-    combine_job = sbatch(
-        [f"--array=1-{n_hps}",
-         f"--output={slurm_logs}/combine_%A_%a.out",
-         f"--dependency=afterany:{train_dep}",
-         *slurm_flags_for(spec, "combine"),
-         COMBINE_SCRIPT, hp_list_file],
-        args.dry_run,
-    )
+    # 5. Submit combine array, dependent on train if train was submitted.
+    combine_job_id: str | None = None
+    if args.skip_combine:
+        print(f"\nSkipping combine array.")
+    else:
+        print(f"\nSubmitting combine array ({n_hps} tasks)...")
+        dep_flags = [f"--dependency=afterany:{train_job_id}"] if train_job_id else []
+        combine_job_id = sbatch(
+            [f"--array=1-{n_hps}",
+             f"--output={slurm_logs}/combine_%A_%a.out",
+             *dep_flags,
+             *slurm_flags_for(spec, "combine"),
+             COMBINE_SCRIPT, hp_list_file],
+            args.dry_run,
+        ) or (placeholder_combine if args.dry_run else None)
 
-    # 6. Submit sweep aggregate (Stage C/D).
-    if os.path.exists(AGGREGATE_SCRIPT):
+    # 6. Submit sweep aggregate (Stage C/D). Depends on combine if submitted,
+    # else train if submitted, else runs immediately.
+    if args.skip_aggregate:
+        print(f"\nSkipping sweep aggregate.")
+    elif os.path.exists(AGGREGATE_SCRIPT):
         print(f"\nSubmitting sweep aggregate...")
-        combine_dep = combine_job if combine_job is not None else placeholder_combine
+        dep_id = combine_job_id or train_job_id
+        dep_flags = [f"--dependency=afterany:{dep_id}"] if dep_id else []
         sbatch(
             [f"--output={slurm_logs}/aggregate_%j.out",
-             f"--dependency=afterany:{combine_dep}",
+             *dep_flags,
              *slurm_flags_for(spec, "aggregate"),
              AGGREGATE_SCRIPT, sweep_dir],
             args.dry_run,
