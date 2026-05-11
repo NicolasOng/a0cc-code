@@ -156,7 +156,7 @@ def main() -> None:
     print(f"\n=== Baseline mcts_iterations sweep "
           f"({NUM_GAMES} games/level, {config.num_workers} workers, "
           f"model={os.path.basename(MODEL_PATH)}) ===")
-    print(f"{'iters':>6} {'EV':>+7} {'W':>4} {'L':>4} {'D':>4} "
+    print(f"{'iters':>6} {'EV':>7} {'W':>4} {'L':>4} {'D':>4} "
           f"{'mean_cpu_s':>11} {'max_cpu_s':>11} {'wall_s':>9} {'s/game':>9}")
     for r in rows:
         in_band = TARGET_EV_BAND[0] <= r['ev'] <= TARGET_EV_BAND[1]

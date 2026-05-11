@@ -155,13 +155,23 @@ def merge_series(series: list[Series], confidence: float = 0.95) -> Series:
 
 def load_and_merge_series(dirs: list[str], series_fn: str, confidence: float = 0.95, save: bool = True) -> Series:
     '''
-    Loads and merges series from the specified directories.
+    Loads and merges series from the specified directories. Trial dirs that
+    don't contain series_fn are skipped with a warning; raises FileNotFoundError
+    only if no trial has the file.
     '''
     logger.info(f"Loading and merging series {series_fn} from directories: {dirs} with confidence level {confidence}")
-    # load all the series, using the provided directories and series filename.
     series: list[Series] = []
+    missing: list[str] = []
     for dir in dirs:
-        series.append(load_series(f"{dir}{series_fn}"))
+        s = load_series(f"{dir}{series_fn}", optional=True)
+        if s is None:
+            missing.append(dir)
+        else:
+            series.append(s)
+    if missing:
+        logger.warning(f"load_and_merge_series: {series_fn} missing from {len(missing)}/{len(dirs)} trial dirs: {missing}")
+    if not series:
+        raise FileNotFoundError(f"Series file {series_fn} not found in any of {dirs}.")
 
     merged_series = merge_series(series, confidence)
 
@@ -237,11 +247,22 @@ def merge_distribution_series(series: list[DistributionSeries]) -> DistributionS
     return merged
 
 def load_and_merge_distribution_series(dirs: list[str], series_fn: str, save: bool = True) -> DistributionSeries:
-    '''Loads and merges distribution series from the specified directories.'''
+    '''Loads and merges distribution series from the specified directories.
+    Trial dirs that don't contain series_fn are skipped with a warning; raises
+    FileNotFoundError only if no trial has the file.'''
     logger.info(f"Loading and merging distribution series {series_fn} from directories: {dirs}")
     series: list[DistributionSeries] = []
+    missing: list[str] = []
     for dir in dirs:
-        series.append(load_distribution_series(f"{dir}{series_fn}"))
+        s = load_distribution_series(f"{dir}{series_fn}", optional=True)
+        if s is None:
+            missing.append(dir)
+        else:
+            series.append(s)
+    if missing:
+        logger.warning(f"load_and_merge_distribution_series: {series_fn} missing from {len(missing)}/{len(dirs)} trial dirs: {missing}")
+    if not series:
+        raise FileNotFoundError(f"Distribution series file {series_fn} not found in any of {dirs}.")
 
     merged_series = merge_distribution_series(series)
 

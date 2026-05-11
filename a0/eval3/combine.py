@@ -791,7 +791,7 @@ def plot_merged_wld() -> None:
             [("Draws timeout (P1)", "±95% CI", x, *_rate_ci_keys(s, "draws_timeout_p1", "num_games_p1")),
              ("Draws timeout (P2)", "±95% CI", x, *_rate_ci_keys(s, "draws_timeout_p2", "num_games_p2"))],
         ],
-        "Training Iteration", "Rate", "merged_player_wld", (0, 1),
+        "Training Iteration", "Rate", "merged_player_wld",
     )
 
 

@@ -237,7 +237,7 @@ def make_baseline() -> MCTSRolloutPlayer:
         board_size=config.board_size,
         num_pieces=config.num_pieces,
         no_reverse_moves=not config.backwards_moves,
-        no_illegal_moves=not config.illegal_moves,
+        no_illegal_moves=True,
         no_side_moves=not config.sideways_moves,
         mcts_iterations=BASELINE_MCTS_ITERATIONS,
         evaluator=EvaluatorType.DIST,
