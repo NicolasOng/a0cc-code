@@ -44,6 +44,16 @@ METRICS: list[tuple[str, str, str, str]] = [
     ("gamedata_value_acc_last20pct",  "gamedata_overall_acc.pkl", "Overall Value Accuracy",  "last20pct"),
     ("gamedata_policy_acc_final",     "gamedata_overall_acc.pkl", "Overall Policy Accuracy", "last"),
     ("gamedata_policy_acc_last20pct", "gamedata_overall_acc.pkl", "Overall Policy Accuracy", "last20pct"),
+    ("player_ev_p1_last20pct",            "player_evaluation_results.pkl", "ev_p1",            "last20pct"),
+    ("player_ev_p2_last20pct",            "player_evaluation_results.pkl", "ev_p2",            "last20pct"),
+    ("player_wins_p1_last20pct",          "player_evaluation_results.pkl", "wins_p1",          "last20pct"),
+    ("player_wins_p2_last20pct",          "player_evaluation_results.pkl", "wins_p2",          "last20pct"),
+    ("player_losses_p1_last20pct",        "player_evaluation_results.pkl", "losses_p1",        "last20pct"),
+    ("player_losses_p2_last20pct",        "player_evaluation_results.pkl", "losses_p2",        "last20pct"),
+    ("player_draws_repeat_p1_last20pct",  "player_evaluation_results.pkl", "draws_repeat_p1",  "last20pct"),
+    ("player_draws_repeat_p2_last20pct",  "player_evaluation_results.pkl", "draws_repeat_p2",  "last20pct"),
+    ("player_draws_timeout_p1_last20pct", "player_evaluation_results.pkl", "draws_timeout_p1", "last20pct"),
+    ("player_draws_timeout_p2_last20pct", "player_evaluation_results.pkl", "draws_timeout_p2", "last20pct"),
 ]
 
 

@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=aip-nathanst
-#SBATCH --time=6:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --time=96:00:00
+#SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
 
 module load python/3.11
@@ -12,8 +12,8 @@ pip install --no-index -r requirements_drac.txt
 
 # Read the (config_path, trial_no) pair for this array task from the tasks file.
 # Usage:
-#   sbatch --array=1-N eval_a0.sh path/to/tasks.txt
-#   sbatch eval_a0.sh config/config.json 1   # legacy single-job mode
+#   sbatch --array=1-N train_a0_gpu.sh path/to/tasks.txt
+#   sbatch train_a0_gpu.sh config/config.json 1   # legacy single-job mode
 TASKS_FILE_OR_CONFIG="${1:-config/config.json}"
 
 if [ -n "$SLURM_ARRAY_TASK_ID" ] && [ -f "$TASKS_FILE_OR_CONFIG" ] && [[ "$TASKS_FILE_OR_CONFIG" == *.txt ]]; then
@@ -32,10 +32,12 @@ fi
 echo "Using configuration file: $CONFIG_FILE"
 echo "Using trial number: $TRIAL_NO"
 
-time python -m a0.eval.generate_datasets "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval.dataset_evaluation "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval.training_data "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.train.alphazero "$CONFIG_FILE" "$TRIAL_NO"
+
+time python -m a0.eval3.training_data "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval3.generate_datasets "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval3.dataset_evaluation "$CONFIG_FILE" "$TRIAL_NO"
 time python -m a0.eval.model_diagnostics "$CONFIG_FILE" "$TRIAL_NO"
-# time python -m a0.eval.player "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval.plotting "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval.extract_summary "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval.player "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval3.plotting "$CONFIG_FILE" "$TRIAL_NO"
+time python -m a0.eval3.extract_summary "$CONFIG_FILE" "$TRIAL_NO"

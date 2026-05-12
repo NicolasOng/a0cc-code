@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --account=aip-nathanst
-#SBATCH --time=6:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --time=36:00:00
+#SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=4G
 
 module load python/3.11

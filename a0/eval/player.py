@@ -240,6 +240,7 @@ def make_baseline() -> MCTSRolloutPlayer:
         no_illegal_moves=True,
         no_side_moves=not config.sideways_moves,
         mcts_iterations=BASELINE_MCTS_ITERATIONS,
+        rollout_depth=8,
         evaluator=EvaluatorType.DIST,
         policy=PolicyType.BEST,
         policy_epsilon=BASELINE_EPSILON,

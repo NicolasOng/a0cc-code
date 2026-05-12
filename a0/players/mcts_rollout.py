@@ -12,6 +12,7 @@ class MCTSRolloutPlayer:
     def __init__(self, board_size: int, num_pieces: int,
                  no_reverse_moves: bool = True, no_illegal_moves: bool = True, no_side_moves: bool = True,
                  mcts_iterations: int = 10000,
+                 rollout_depth: int = 1000,
                  evaluator: EvaluatorType = EvaluatorType.NONE,
                  policy: PolicyType = PolicyType.RANDOM,
                  policy_epsilon: float = 0.0,
@@ -23,7 +24,7 @@ class MCTSRolloutPlayer:
                         no_illegal_moves=no_illegal_moves,
                         no_side_moves=no_side_moves)
         self.mcts_iterations = mcts_iterations
-        self.max_depth = 1000
+        self.rollout_depth = rollout_depth
         self.evaluator_type = evaluator
         self.policy_type = policy
         self.policy_epsilon = policy_epsilon
@@ -34,7 +35,7 @@ class MCTSRolloutPlayer:
         evaluator = make_evaluator(self.evaluator_type, state.current_player,
                                    board_size=len(state.board), home_size=state.home_size)
         policy = make_policy(self.policy_type, epsilon=self.policy_epsilon)
-        search = SearchMoves(state, self.game, self.max_depth, evaluator=evaluator, policy=policy)
+        search = SearchMoves(state, self.game, self.rollout_depth, evaluator=evaluator, policy=policy)
 
         # perform mcts and get the root's children
         mcts = MCTS(search, 'uct', c=self.c)
