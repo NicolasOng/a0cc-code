@@ -45,20 +45,20 @@ EVAL_NUM_GAMES_FOR_BUDGET = 64       # we estimate runtime for an eval at this N
 
 
 # Mirror a0.eval.player.make_baseline but parametric on iters.
-# (Keep this in sync with player.py's make_baseline; the 0.25 factor is
-# the empirical correction the calibration sweep found for DIST.)
+# (Keep this in sync with player.py's make_baseline.)
 def make_baseline(iters: int) -> MCTSRolloutPlayer:
     return MCTSRolloutPlayer(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
         no_reverse_moves=not config.backwards_moves,
-        no_illegal_moves=not config.illegal_moves,
+        no_illegal_moves=True,
         no_side_moves=not config.sideways_moves,
         mcts_iterations=iters,
+        rollout_depth=8,
         evaluator=EvaluatorType.DIST,
         policy=PolicyType.BEST,
         policy_epsilon=BASELINE_EPSILON,
-        c=_baseline_c() * 0.25,
+        c=_baseline_c(),
     )
 
 
