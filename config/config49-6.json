@@ -40,5 +40,5 @@
     "system_metrics_interval_seconds": 60.0,
     "c_puct": 1.0,
     "do_player_eval": true,
-    "do_gt_evals": true
+    "do_gt_evals": false
 }
