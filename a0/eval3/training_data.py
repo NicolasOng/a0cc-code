@@ -288,8 +288,8 @@ class AccuracyCollector(Collector):
             self._it_correct_value += 1
             self._total_correct_value += 1
 
-        # value accuracy (no draws)
-        is_draw = (outcome == 0.0)
+        # value accuracy (no draws: excludes states drawn in selfplay OR drawn under GT)
+        is_draw = (outcome == 0.0) or (ti.gt_outcome == 0.0)
         if not is_draw:
             self._it_total_nd += 1
             self._total_nd += 1
@@ -598,7 +598,7 @@ class AccuracyProgressCollector(GameProgressCollector):
         if value_correct:
             s['correct_value'] += 1
 
-        is_draw = (outcome == 0.0)
+        is_draw = (outcome == 0.0) or (ti.gt_outcome == 0.0)
         if not is_draw:
             s['total_nd'] += 1
             if value_correct:
