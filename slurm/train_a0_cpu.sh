@@ -12,8 +12,8 @@ pip install --no-index -r requirements_drac.txt
 
 # Read the (config_path, trial_no) pair for this array task from the tasks file.
 # Usage:
-#   sbatch --array=1-N train_a0_gpu.sh path/to/tasks.txt
-#   sbatch train_a0_gpu.sh config/config.json 1   # legacy single-job mode
+#   sbatch --array=1-N train_a0_cpu.sh path/to/tasks.txt
+#   sbatch train_a0_cpu.sh config/config.json 1   # legacy single-job mode
 TASKS_FILE_OR_CONFIG="${1:-config/config.json}"
 
 if [ -n "$SLURM_ARRAY_TASK_ID" ] && [ -f "$TASKS_FILE_OR_CONFIG" ] && [[ "$TASKS_FILE_OR_CONFIG" == *.txt ]]; then

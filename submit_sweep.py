@@ -258,7 +258,7 @@ def main():
                              "in --local mode) — just print what would run")
     parser.add_argument("--script", default=TRAIN_SCRIPT,
                         help=f"stage-1 .sh to run per task (default: {TRAIN_SCRIPT}). "
-                             "Use slurm/eval_a0.sh / slurm/eval_a03.sh to re-eval an existing sweep.")
+                             "Use slurm/eval_a0_gpu.sh to re-eval an existing sweep.")
     parser.add_argument("--reuse-configs", action="store_true",
                         help="skip rewriting per-HP config.json files; use whatever is on disk. "
                              "Required for re-eval-only runs against an already-trained sweep.")
@@ -353,7 +353,7 @@ def main():
     placeholder_train = "<train_jid>"
     placeholder_combine = "<combine_jid>"
 
-    # 4. Submit stage-1 array (train by default; slurm/eval_a0.sh / slurm/eval_a03.sh for re-eval).
+    # 4. Submit stage-1 array (train by default; slurm/eval_a0_gpu.sh for re-eval).
     train_job_id: str | None = None
     if args.skip_train_eval:
         print(f"\nSkipping train-eval array.")
