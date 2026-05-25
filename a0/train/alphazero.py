@@ -6,6 +6,9 @@ import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 import gc
 import json
+import random
+import subprocess
+import sys
 import time
 import pickle
 import dill
@@ -493,6 +496,9 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
     """
     os.makedirs(config.plot_dir + "training_plots", exist_ok=True)
     diagnostics_log_path = config.log_dir + "iteration_diagnostics.jsonl"
+    
+    np.random.seed(seed)
+    random.seed(seed)
 
     if force_fresh and os.path.isdir(config.training_dir):
         for f in os.listdir(config.training_dir):
@@ -654,8 +660,29 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    # Background system-metrics logger (runs across all retry attempts). System-wide
-    # metrics include all self-play workers, not just this process.
+    # --single-attempt N: this invocation is a subprocess running one attempt;
+    # write the result JSON and exit. The orchestrator (no flag) reads it back.
+    single_attempt: Optional[int] = None
+    if "--single-attempt" in sys.argv:
+        idx = sys.argv.index("--single-attempt")
+        single_attempt = int(sys.argv[idx + 1])
+
+    if single_attempt is not None:
+        attempt = single_attempt
+        force_fresh = attempt > 0
+        logger.log(25, f"=== Single-attempt subprocess: attempt {attempt + 1} (seed={attempt}, force_fresh={force_fresh}) ===")
+        result = train_alphazero(seed=attempt, force_fresh=force_fresh, attempt=attempt + 1)
+        result_path = config.log_dir + f"attempt_result_{attempt}.json"
+        try:
+            with open(result_path, "w") as f:
+                json.dump(result, f)
+        except OSError as e:
+            logger.log(40, f"Failed to write attempt result JSON: {e}")
+            sys.exit(2)
+        sys.exit(0)
+
+    # Orchestrator mode: each retry runs in a fresh subprocess so JAX caches,
+    # GPU memory pools, and OS-level RNG state can't carry over between retries.
     metrics_logger: Optional[SystemMetricsLogger] = None
     if config.log_system_metrics:
         metrics_logger = SystemMetricsLogger(
@@ -666,6 +693,9 @@ if __name__ == "__main__":
 
     retry_log_path = config.log_dir + "retry_log.jsonl"
 
+    # Forward the positional args (config_path, trial_num) that config.py reads from argv.
+    passthrough_argv = sys.argv[1:3]
+
     try:
         # Retry loop: on detected collapse in the early-iteration window, restart
         # with a fresh model and a new seed. max_collapse_retries=N allows up to N+1
@@ -673,22 +703,41 @@ if __name__ == "__main__":
         total_attempts = config.max_collapse_retries + 1
         succeeded = False
         for attempt in range(total_attempts):
-            logger.log(25, f"=== Training attempt {attempt + 1}/{total_attempts} ===")
-            force_fresh = attempt > 0
+            logger.log(25, f"=== Training attempt {attempt + 1}/{total_attempts} (subprocess) ===")
+            result_path = config.log_dir + f"attempt_result_{attempt}.json"
+            if os.path.exists(result_path):
+                os.remove(result_path)
+
+            cmd = [sys.executable, "-m", "a0.train.alphazero", *passthrough_argv,
+                   "--single-attempt", str(attempt)]
             attempt_start = time.time()
-            result = train_alphazero(seed=attempt, force_fresh=force_fresh, attempt=attempt + 1)
+            proc = subprocess.run(cmd)
             attempt_end = time.time()
+
+            crashed = False
+            if proc.returncode != 0:
+                logger.log(40, f"Attempt {attempt + 1} subprocess exited with code {proc.returncode}.")
+                crashed = True
+                result = {"success": False, "collapse_iteration": None, "value_pre_tanh_mean_abs": None}
+            else:
+                try:
+                    with open(result_path, "r") as f:
+                        result = json.load(f)
+                except (OSError, json.JSONDecodeError) as e:
+                    logger.log(40, f"Could not read attempt {attempt + 1} result file: {e}")
+                    crashed = True
+                    result = {"success": False, "collapse_iteration": None, "value_pre_tanh_mean_abs": None}
 
             entry = {
                 "attempt": attempt + 1,
                 "total_attempts_configured": total_attempts,
                 "seed": attempt,
-                "fresh_start": force_fresh,
+                "fresh_start": attempt > 0,
                 "config_path": config.path,
                 "start_time": attempt_start,
                 "end_time": attempt_end,
                 "elapsed_seconds": round(attempt_end - attempt_start, 2),
-                "outcome": "succeeded" if result["success"] else "collapsed",
+                "outcome": "succeeded" if result.get("success") else ("crashed" if crashed else "collapsed"),
                 "collapse_iteration": result.get("collapse_iteration"),
                 "value_pre_tanh_mean_abs": result.get("value_pre_tanh_mean_abs"),
                 "collapse_threshold_pre_tanh": config.collapse_threshold_pre_tanh,
@@ -699,14 +748,17 @@ if __name__ == "__main__":
             except OSError as e:
                 logger.log(30, f"Failed to write retry log entry: {e}")
 
-            if result["success"]:
+            if result.get("success"):
                 logger.log(25, f"Training completed successfully on attempt {attempt + 1}.")
                 succeeded = True
                 break
-            logger.log(30, f"Attempt {attempt + 1} ended early due to collapse detection.")
+            if crashed:
+                logger.log(30, f"Attempt {attempt + 1} crashed; treating as a failed attempt and continuing.")
+            else:
+                logger.log(30, f"Attempt {attempt + 1} ended early due to collapse detection.")
 
         if not succeeded:
-            logger.log(40, f"Training failed on all {total_attempts} attempts (collapse each time). Aborting.")
+            logger.log(40, f"Training failed on all {total_attempts} attempts (collapse/crash each time). Aborting.")
             raise RuntimeError(f"Collapse detected on all {total_attempts} training attempts.")
     finally:
         if metrics_logger is not None:
