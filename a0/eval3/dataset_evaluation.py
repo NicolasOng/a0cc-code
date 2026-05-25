@@ -225,6 +225,14 @@ def main():
         n,
     )
 
+    # Value-prediction distributions on truly-random sample (no GT required)
+    collect_distributions_if_present(
+        models,
+        load_dataset(f"{config.dataset_out_dir}/random.pkl", optional=True),
+        "random_value_distributions",
+        n,
+    )
+
     logger.info("Dataset evaluation completed.")
 
 

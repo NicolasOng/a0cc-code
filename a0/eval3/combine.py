@@ -87,6 +87,7 @@ DISTRIBUTION_SERIES_FILES = [
     "dataset_pre_balance_distributions",
     "dataset_post_balance_distributions",
     "random_nd_value_distributions",
+    "random_value_distributions",
 ]
 
 
@@ -239,6 +240,14 @@ def plot_merged_random_nd_value_distributions() -> None:
         "merged_random_nd_value_distributions.pkl",
         "Model Value Predictions on random_nd (merged)",
         "merged_random_nd_value_distributions",
+    )
+
+
+def plot_merged_random_value_distributions() -> None:
+    _plot_merged_distribution_variants(
+        "merged_random_value_distributions.pkl",
+        "Model Value Predictions on random (merged)",
+        "merged_random_value_distributions",
     )
 
 
@@ -807,6 +816,7 @@ def main():
     safeplot(plot_merged_dataset_pre_balance_distributions)
     safeplot(plot_merged_dataset_post_balance_distributions)
     safeplot(plot_merged_random_nd_value_distributions)
+    safeplot(plot_merged_random_value_distributions)
 
     # training metrics
     safeplot(plot_merged_training_metrics)

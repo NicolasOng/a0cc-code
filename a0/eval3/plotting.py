@@ -79,6 +79,14 @@ def plot_random_nd_value_distributions() -> None:
     )
 
 
+def plot_random_value_distributions() -> None:
+    _plot_distribution_variants(
+        "random_value_distributions.pkl",
+        "Model Value Predictions on random",
+        "random_value_distributions",
+    )
+
+
 # === training metrics ===
 
 def plot_training_metrics_accuracy() -> None:
@@ -628,6 +636,7 @@ def main():
     safeplot(plot_dataset_pre_balance_distributions)
     safeplot(plot_dataset_post_balance_distributions)
     safeplot(plot_random_nd_value_distributions)
+    safeplot(plot_random_value_distributions)
 
     # training metrics
     safeplot(plot_training_metrics_accuracy)

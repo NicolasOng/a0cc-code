@@ -16,7 +16,7 @@ from a0.eval.dataset_evaluation import Series, save_series
 from a0.eval.generate_datasets import get_unique_boards_from_training_data, save_dataset, get_neighbor_boards
 
 from a0.utils.states import (
-    get_gtd_from_states, get_random_states, StateInfo, StatesInfo,
+    get_gtd_from_states, get_rd_from_states, get_random_states, StateInfo, StatesInfo,
     get_state_info_for_states, get_states_info, log_states_info,
     filter_state_list, balance_gt_values, remove_duplicates, sample_states
 )
@@ -164,6 +164,9 @@ def main():
     with open(state_lists_path, 'wb') as f:
         pickle.dump(state_lists, f)
     logger.info(f"Saved state lists ({list(state_lists.keys())}) to {state_lists_path}.")
+
+    # truly-random dataset: n random samples from state space, no GT-based filtering
+    save_dataset("random", get_rd_from_states(get_random_states(1000, ranker), batch_size=256, shuffle=False))
 
     # nd/nt labeled datasets: requires solve data
     if config.do_gt_evals:
