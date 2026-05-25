@@ -244,7 +244,7 @@ def make_baseline() -> MCTSRolloutPlayer:
         evaluator=EvaluatorType.DIST,
         policy=PolicyType.BEST,
         policy_epsilon=BASELINE_EPSILON,
-        c=_baseline_c(),
+        c=_baseline_c() * 0.25,
     )
 
 
