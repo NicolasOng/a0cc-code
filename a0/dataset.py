@@ -276,13 +276,18 @@ class Dataset:
 
         logger.log(25, f"Symmetric balance ({n_buckets} buckets): {old_size} -> {len(self)} samples")
 
-    def compute_value_weights_symmetric(self, n_buckets: int = 2, max_weight_ratio: float = 10.0) -> None:
+    def compute_value_weights_symmetric(self, n_buckets: int = 2, max_weight_ratio: float = 10.0, draw_eps: float = 1e-3) -> None:
         """
         Populate per-sample weights using symmetric-pair inverse-frequency weighting
         over the value range [-1, 1]. Bucket i is paired with bucket n_buckets-1-i;
         each pair's effective target is min(h[i], h[n-1-i]), and each sample in
         bucket b gets w = target / h[b]. Weights are normalized to mean 1.0, clipped
         to max_weight_ratio, then re-normalized.
+
+        If n_buckets is even, a tiny [-draw_eps, draw_eps] band is carved out of
+        the innermost pair to form an implicit "draws" bucket left at weight 1.0.
+        Without this, exact-zero draws fall into the positive bucket and get
+        weighted as wins.
         """
         n = len(self)
         weights = np.ones(n, dtype=np.float32)
@@ -290,16 +295,24 @@ class Dataset:
         edges = np.linspace(-1, 1, n_buckets + 1)
         n_pairs = n_buckets // 2
         has_middle = n_buckets % 2 == 1
+        has_draw_bucket = not has_middle
         flat_values = self.values.reshape(-1)
 
         # assign raw inverse-frequency weights per symmetric pair
         for i in range(n_pairs):
             j = n_buckets - 1 - i
-            neg_mask = (flat_values >= edges[i]) & (flat_values < edges[i + 1])
+            low_neg, high_neg = edges[i], edges[i + 1]
+            low_pos, high_pos = edges[j], edges[j + 1]
+            # innermost pair (touches 0) with even n_buckets: exclude the draw band
+            if has_draw_bucket and i == n_pairs - 1:
+                high_neg = -draw_eps
+                low_pos = draw_eps
+
+            neg_mask = (flat_values >= low_neg) & (flat_values < high_neg)
             if j + 1 == n_buckets:
-                pos_mask = (flat_values >= edges[j]) & (flat_values <= edges[j + 1])
+                pos_mask = (flat_values >= low_pos) & (flat_values <= high_pos)
             else:
-                pos_mask = (flat_values >= edges[j]) & (flat_values < edges[j + 1])
+                pos_mask = (flat_values >= low_pos) & (flat_values < high_pos)
 
             neg_count = int(np.sum(neg_mask))
             pos_count = int(np.sum(pos_mask))
@@ -312,7 +325,9 @@ class Dataset:
             weights[neg_mask] = target / neg_count
             weights[pos_mask] = target / pos_count
 
-        # middle bucket (if any) is untouched — weight 1.0
+        # middle bucket (odd n_buckets) is untouched — weight 1.0.
+        # For even n_buckets, the draw band (-draw_eps, draw_eps) is implicitly
+        # untouched since neither inner-pair mask covers it.
         if has_middle:
             mid = n_pairs
             mid_mask = (flat_values >= edges[mid]) & (flat_values < edges[mid + 1])
