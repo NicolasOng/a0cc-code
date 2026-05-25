@@ -70,12 +70,19 @@ def get_and_save_dataset_diagnostics_distributions() -> None:
     Loads per-iteration dataset diagnostics (pre/post-balance value targets) saved
     during training and stores them as DistributionSeries — one for the pre-balance
     distribution and one for the post-balance distribution.
+
+    For the weighted-buckets balancing path, no rows are dropped: `dataset_values_post`
+    equals `dataset_values_pre` and `dataset_weights_post` holds the per-sample
+    training weights. To make the post-balance plot reflect the *effective* training
+    distribution, we resample (size N, p ∝ weights) so downstream plotters can stay
+    weight-unaware.
     → dataset_pre_balance_distributions.pkl
     → dataset_post_balance_distributions.pkl
     '''
     logger.info("Saving dataset diagnostics distributions...")
     pre = DistributionSeries(name="dataset_values_pre")
     post = DistributionSeries(name="dataset_values_post")
+    rng = np.random.default_rng(0)
 
     found_any = False
     for iteration, diag in dataset_diagnostics_generator(config.training_dir, config.training_iterations):
@@ -83,7 +90,20 @@ def get_and_save_dataset_diagnostics_distributions() -> None:
         pre.x.append(iteration)
         pre.trials[0].append(diag['dataset_values_pre'])
         post.x.append(iteration)
-        post.trials[0].append(diag['dataset_values_post'])
+
+        post_values = diag['dataset_values_post']
+        post_weights = diag.get('dataset_weights_post')
+        if post_weights is not None and len(post_weights) == len(post_values) and len(post_values) > 0:
+            values_arr = np.asarray(post_values, dtype=np.float64)
+            weights_arr = np.asarray(post_weights, dtype=np.float64)
+            total = weights_arr.sum()
+            if total > 0:
+                resampled = rng.choice(values_arr, size=len(values_arr), p=weights_arr / total)
+                post.trials[0].append(resampled.tolist())
+            else:
+                post.trials[0].append(post_values)
+        else:
+            post.trials[0].append(post_values)
 
     if not found_any:
         logger.error("No dataset diagnostics found; skipping distribution series save.")

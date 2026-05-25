@@ -328,10 +328,16 @@ def game_data_to_td_lambda_training_set(game_data: GameData, model: AlphaZeroMod
 def capture_dataset_diagnostics(
     pre_balance_values: np.ndarray,
     post_balance_values: np.ndarray,
-) -> dict[str, list[float]]:
+    post_balance_weights: np.ndarray | None = None,
+) -> dict[str, list[float] | None]:
+    # post_balance_weights is None for the subsample path (rows were dropped);
+    # for the weighted-buckets path it's the per-sample weight aligned with
+    # post_balance_values so the eval layer can reconstruct the effective
+    # (weighted) post-balance distribution.
     return {
         'dataset_values_pre': pre_balance_values.tolist(),
-        'dataset_values_post': post_balance_values.tolist()
+        'dataset_values_post': post_balance_values.tolist(),
+        'dataset_weights_post': post_balance_weights.tolist() if post_balance_weights is not None else None,
     }
 
 def _play(serialized_player: bytes, cancel_event: Optional[Any] = None) -> tuple[list[ExperienceData], GameData]:
@@ -595,8 +601,11 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
         
         # capture dataset diagnostics: distributions before and after balancing
         post_balance_values = eb_dataset.values.flatten().copy()
+        post_balance_weights = (
+            eb_dataset.weights.flatten().copy() if eb_dataset.weights is not None else None
+        )
         dataset_diagnostics = capture_dataset_diagnostics(
-            pre_balance_values, post_balance_values
+            pre_balance_values, post_balance_values, post_balance_weights
         )
         if config.training_dir:
             with open(config.training_dir + f"dataset_diagnostics_{i + 1}.pkl", 'wb') as f:
