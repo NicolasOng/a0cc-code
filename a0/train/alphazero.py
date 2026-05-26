@@ -669,18 +669,24 @@ if __name__ == "__main__":
     except RuntimeError:
         pass
 
-    # --single-attempt N: this invocation is a subprocess running one attempt;
-    # write the result JSON and exit. The orchestrator (no flag) reads it back.
+    # --single-attempt N --seed S: this invocation is a subprocess running one
+    # attempt; write the result JSON and exit.  The orchestrator (no flag) reads
+    # it back.
     single_attempt: Optional[int] = None
+    single_seed: Optional[int] = None
     if "--single-attempt" in sys.argv:
         idx = sys.argv.index("--single-attempt")
         single_attempt = int(sys.argv[idx + 1])
+    if "--seed" in sys.argv:
+        idx = sys.argv.index("--seed")
+        single_seed = int(sys.argv[idx + 1])
 
     if single_attempt is not None:
         attempt = single_attempt
+        seed = single_seed if single_seed is not None else attempt
         force_fresh = attempt > 0
-        logger.log(25, f"=== Single-attempt subprocess: attempt {attempt + 1} (seed={attempt}, force_fresh={force_fresh}) ===")
-        result = train_alphazero(seed=attempt, force_fresh=force_fresh, attempt=attempt + 1)
+        logger.log(25, f"=== Single-attempt subprocess: attempt {attempt + 1} (seed={seed}, force_fresh={force_fresh}) ===")
+        result = train_alphazero(seed=seed, force_fresh=force_fresh, attempt=attempt + 1)
         result_path = config.log_dir + f"attempt_result_{attempt}.json"
         try:
             with open(result_path, "w") as f:
@@ -712,13 +718,14 @@ if __name__ == "__main__":
         total_attempts = config.max_collapse_retries + 1
         succeeded = False
         for attempt in range(total_attempts):
-            logger.log(25, f"=== Training attempt {attempt + 1}/{total_attempts} (subprocess) ===")
+            seed = int.from_bytes(os.urandom(4))
+            logger.log(25, f"=== Training attempt {attempt + 1}/{total_attempts} (subprocess, seed={seed}) ===")
             result_path = config.log_dir + f"attempt_result_{attempt}.json"
             if os.path.exists(result_path):
                 os.remove(result_path)
 
             cmd = [sys.executable, "-m", "a0.train.alphazero", *passthrough_argv,
-                   "--single-attempt", str(attempt)]
+                   "--single-attempt", str(attempt), "--seed", str(seed)]
             attempt_start = time.time()
             proc = subprocess.run(cmd)
             attempt_end = time.time()
@@ -740,7 +747,7 @@ if __name__ == "__main__":
             entry = {
                 "attempt": attempt + 1,
                 "total_attempts_configured": total_attempts,
-                "seed": attempt,
+                "seed": seed,
                 "fresh_start": attempt > 0,
                 "config_path": config.path,
                 "start_time": attempt_start,
