@@ -5,6 +5,11 @@
     "grid": {
         "training_iterations": [50]
     },
+    "points": [
+        {
+            "training_iterations": 100
+        }
+    ],
     "slurm": {
         "train":     {"time": "48:00:00", "cpus-per-task": 32, "mem-per-cpu": "4G", "gpus-per-node": 1},
         "combine":   {"time": "1:00:00",  "cpus-per-task": 4,  "mem-per-cpu": "4G"},
