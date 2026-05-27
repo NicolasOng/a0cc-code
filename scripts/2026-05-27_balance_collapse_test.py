@@ -34,8 +34,8 @@ from a0.model import create_model
 from a0.train.dataset import train_model_epochs
 from a0.eval.model_diagnostics import compute_iteration_diagnostics
 
-NUM_TRIALS = 30
-NUM_ITERATIONS = 3
+NUM_TRIALS = 10
+NUM_ITERATIONS = 2
 DATASET_SIZE = 5000
 COLLAPSE_THRESHOLD = 5.0
 DRAW_FRAC = 0.77

@@ -9,6 +9,12 @@ from cc.ground_truth import GroundTruth
 
 from a0.players.a0 import board_to_input
 
+from a0.utils.states import (
+    get_gtd_from_states, get_rd_from_states, get_random_states, StateInfo, StatesInfo,
+    get_state_info_for_states, get_states_info, log_states_info,
+    filter_state_list, balance_gt_values, remove_duplicates, sample_states
+)
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -135,6 +141,13 @@ def generate_random_dataset(num_states: int | None = None):
     with open(output_path, 'wb') as file:
         pickle.dump(dataset, file)
     logger.info(f"Random dataset saved to {output_path}.")
+
+def generate_random_gtd(gt: GroundTruth, n: int) -> Dataset:
+    # generate n random states
+    random_states = get_random_states(n, gt)
+    random_states, _ = remove_duplicates(random_states)
+    log_states_info(get_states_info(random_states, get_state_info_for_states(random_states, gt)))
+    return get_gtd_from_states(random_states, gt, batch_size=256, shuffle=True)
 
 def main():
     setup_logging(
