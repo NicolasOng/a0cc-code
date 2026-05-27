@@ -33,6 +33,10 @@ or, for explicit points instead of a grid:
             {"learning_rate": 5e-5, "td_lambda": 0.9}
         ]
     }
+Both `grid` and `points` may be specified together — the grid is expanded and
+the explicit points are appended (deduplicated by HP id). Useful for adding a
+baseline or one-off configuration alongside a grid without ballooning it into
+the cartesian product.
 
 Optional `slurm` block overrides the #SBATCH directives in the .sh scripts via
 sbatch CLI flags (which always win over in-script #SBATCH lines). One sub-block
@@ -99,22 +103,36 @@ def load_sweep_spec(path: str) -> dict:
         raise ValueError("sweep spec missing 'base_config'")
     if "num_trials" not in spec:
         raise ValueError("sweep spec missing 'num_trials'")
-    if ("grid" in spec) == ("points" in spec):
-        raise ValueError("sweep spec must have exactly one of 'grid' or 'points'")
+    if "grid" not in spec and "points" not in spec:
+        raise ValueError("sweep spec must have at least one of 'grid' or 'points'")
     return spec
 
 
 def expand_points(spec: dict) -> list[dict]:
-    """Return a list of HP-override dicts, one per point in the sweep."""
+    """Return a list of HP-override dicts, one per point in the sweep.
+
+    If both 'grid' and 'points' are present, the grid is expanded first and
+    the explicit points are appended. Duplicates (same hp_id_for) are dropped,
+    keeping the first occurrence.
+    """
+    points: list[dict] = []
+    if "grid" in spec:
+        grid = spec["grid"]
+        keys = list(grid.keys())
+        value_lists = [grid[k] for k in keys]
+        for combo in itertools.product(*value_lists):
+            points.append({k: v for k, v in zip(keys, combo)})
     if "points" in spec:
-        return list(spec["points"])
-    grid = spec["grid"]
-    keys = list(grid.keys())
-    value_lists = [grid[k] for k in keys]
-    points = []
-    for combo in itertools.product(*value_lists):
-        points.append({k: v for k, v in zip(keys, combo)})
-    return points
+        points.extend(spec["points"])
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for p in points:
+        h = hp_id_for(p)
+        if h in seen:
+            continue
+        seen.add(h)
+        deduped.append(p)
+    return deduped
 
 
 def hp_id_for(overrides: dict) -> str:
