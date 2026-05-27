@@ -340,7 +340,7 @@ def capture_dataset_diagnostics(
         'dataset_weights_post': post_balance_weights.tolist() if post_balance_weights is not None else None,
     }
 
-def _play(serialized_player: bytes, cancel_event: Optional[Any] = None) -> tuple[list[ExperienceData], GameData]:
+def _play(serialized_player: bytes, iteration: int, cancel_event: Optional[Any] = None) -> tuple[list[ExperienceData], GameData]:
     '''
     Plays a game of chinese checkers with the given players,
     then converts the game data into a training set.
@@ -381,10 +381,16 @@ def _play(serialized_player: bytes, cancel_event: Optional[Any] = None) -> tuple
     elif config.alternative_target == "td_lambda":
         lam = config.td_lambda
         return game_data_to_td_lambda_training_set(game_data, player.model, lam), game_data
+    elif config.alternative_target == "interpolated_td_lambda":
+        # linear interpolation: lam = 1 at iteration 0, lam = 0 at the final iteration
+        denom = max(config.training_iterations - 1, 1)
+        lam = 1.0 - (iteration / denom)
+        logger.info(f"interpolated_td_lambda: iteration={iteration}, lam={lam:.4f}")
+        return game_data_to_td_lambda_training_set(game_data, player.model, lam), game_data
     else:
         return game_data_to_training_set(game_data), game_data
 
-def self_play(player: A0Player) -> tuple[list[ExperienceData], list[GameData]]:
+def self_play(player: A0Player, iteration: int) -> tuple[list[ExperienceData], list[GameData]]:
     '''
     Runs self-play to generate a training set for the AlphaZero model.
     This function uses multiprocessing to run multiple games in parallel.
@@ -418,6 +424,7 @@ def self_play(player: A0Player) -> tuple[list[ExperienceData], list[GameData]]:
                 future = executor.submit(
                     _play,
                     serialized_player=player_serialized,
+                    iteration=iteration,
                     cancel_event=cancel_event
                 )
                 futures.append(future)
@@ -563,7 +570,7 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
         )
 
         # generate training data with self-play
-        training_set, game_data = self_play(player)
+        training_set, game_data = self_play(player, i)
 
         # generate and print stats about the game data
         game_data_stats = game_data_list_stats(i, game_data)

@@ -65,7 +65,7 @@ class Config:
     experiment: str
     td_lambda: float
 
-    alternative_target: str  # "gt" | "gt_value" | "gt_next_value" | "td_0" | "td_lambda" | "normal"
+    alternative_target: str  # "gt" | "gt_value" | "gt_next_value" | "td_0" | "td_lambda" | "interpolated_td_lambda" | "normal"
     dataset_balance_method: str  # "none" | "subsample_buckets" | "weighted_buckets"
     num_buckets_for_balance: int
     max_weight_ratio: float
