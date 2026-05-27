@@ -27,8 +27,6 @@ def train_sl_baseline_player():
     # decide on parameters based on config
     num_epochs = config.training_iterations
     n_random_states = config.training_iterations * config.training_samples
-    num_epochs = 2
-    n_random_states = 1000
 
     logger.info(f"Training SL baseline player with {num_epochs} epochs and {n_random_states} random states.")
 
