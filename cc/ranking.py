@@ -550,6 +550,10 @@ class CCPSRank12:
             # assert r1 < self.rb.get_max_single_player_rank_relative()
             return r0 * self.rb.get_max_single_player_rank_relative() + r1, r0, r1
         elif s.to_move == 1:
+            raise NotImplementedError(
+                "rank with to_move == 1 requires CCState.symmetry_flip_vert, "
+                "which is not yet implemented."
+            )
             # Create a copy and flip vertically
             tmp = CCState(len(s.board), len(s.pieces[0]), len(s.pieces))
             tmp.board = s.board[:]
@@ -565,6 +569,43 @@ class CCPSRank12:
             return r0 * self.rb.get_max_single_player_rank_relative() + r1, r0, r1
         else:
             return -1, -1, -1
+
+    def get_max_p1_rank(self) -> int:
+        '''
+        Equivalent to int64_t CCPSRank12::getMaxP1Rank() const in CCRankings.cpp.
+        Returns the number of distinct P1 piece arrangements
+        (C(num_spots, num_pieces)).
+        '''
+        return self.rb.get_max_single_player_rank()
+
+    def rank_p1(self, s: CCState) -> int:
+        '''
+        Equivalent to int64_t CCPSRank12::rankP1(const CCState &s) const in CCRankings.cpp.
+        Returns the rank of P1's piece configuration alone (P2 pieces ignored).
+
+        The to_move == 1 branch in C++ flips the state vertically before
+        ranking; that flip is not yet implemented in this codebase, so this
+        method raises if called with to_move == 1.
+        '''
+        if s.to_move == 0:
+            return self.rb.rank_player(s, 0)
+        elif s.to_move == 1:
+            raise NotImplementedError(
+                "rank_p1 with to_move == 1 requires CCState.symmetry_flip_vert, "
+                "which is not yet implemented."
+            )
+        return -1
+
+    def unrank_p1(self, r1: int, s: CCState) -> bool:
+        '''
+        Equivalent to bool CCPSRank12::unrankP1(int64_t r1, CCState &s) const in CCRankings.cpp.
+        Places P1's pieces on the board according to rank r1 and sets to_move = 0.
+        unrank_player clears the board first, so P2's pieces are not present
+        after this call.
+        '''
+        self.rb.unrank_player(r1, s, 0)
+        s.to_move = 0
+        return True
 
 def rank_board(board: Board) -> int:
     num_pieces, _ = board.num_pieces()
