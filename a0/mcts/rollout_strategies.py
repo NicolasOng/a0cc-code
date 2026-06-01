@@ -3,7 +3,10 @@ from enum import Enum
 from typing import Callable, Iterable, Optional, Protocol
 import random
 
+import numpy as np
+
 from cc.core import Board, Game, Move, Player
+from cc.ranking import CCState, CCPSRank12
 
 
 def goal_corner_for(player: Player, board_size: int) -> tuple[int, int]:
@@ -102,6 +105,68 @@ class LBDistEval(DistEval):
         super().__init__(root_player, board_size, exclude_within=home_size)
 
 
+class DBEval:
+    """Single-agent database (BFS) distance-to-goal evaluator.
+
+    Drop-in for DistEval with the same -d_me + d_opp + turn_bonus shape, but d_me/d_opp
+    are *exact* minimum single-agent moves to each player's goal (opponent absent), read
+    from a precomputed BFS depth array indexed by P1 rank (see
+    scripts/2026-05-29_single_agent_bfs.py). This captures jump shortcuts that the
+    Manhattan-sum DistEval misses.
+
+    The BFS array is seeded at the P1 (PLAYER_X) goal, and rank_p1 only ranks PLAYER_X
+    pieces with to_move == 0. PLAYER_O's distance to its own goal is obtained by the 180-deg
+    rotation symmetry that swaps the two goal corners — reversing the CCState spot index
+    (i -> num_spots-1-i) maps an O configuration into the equivalent X frame.
+    """
+
+    # bfs[rank] == -1 marks a P1 config the BFS never reached. Legal in-game configs are
+    # all reachable, but treat any stray -1 as "infinitely far from goal" so it can never
+    # masquerade as a near-win (small d) in -d_me + d_opp.
+    _UNREACHABLE = 1 << 14
+
+    def __init__(self, root_player: Player, board_size: int, num_pieces: int,
+                 bfs: np.ndarray, ranker: Optional[CCPSRank12] = None):
+        self.root_player = root_player
+        self.num_spots = board_size * board_size
+        self.num_pieces = num_pieces
+        self.bfs = bfs
+        self.ranker = ranker or CCPSRank12(self.num_spots, 2, num_pieces)
+
+    def _depth(self, ccstate_list: list[int], target: int, flip: bool) -> int:
+        '''Min single-agent moves to goal for the pieces marked `target` (1=X, 2=O) in the
+        diagonal-ordered ccstate_list. flip rotates the O frame into the X frame.'''
+        idxs = [i for i, v in enumerate(ccstate_list) if v == target]
+        if flip:
+            idxs = [self.num_spots - 1 - i for i in idxs]
+        s = CCState(self.num_spots, self.num_pieces, 2)
+        s.board = [0] * self.num_spots
+        for i in idxs:
+            s.board[i] = 1
+        s.build_pieces_from_board()
+        s.to_move = 0
+        d = int(self.bfs[self.ranker.rank_p1(s)])
+        return self._UNREACHABLE if d < 0 else d
+
+    def evaluate(self, state: Board) -> float:
+        # Diagonal-ordered list once (1=X, 2=O); each side is ranked toward its OWN goal,
+        # so the O side (whichever player that is) gets the rotation flip.
+        ccstate_list = CCState.grid_to_CCState_order(state.board)
+        if self.root_player == Player.PLAYER_X:
+            me_target, opp_target = 1, 2
+        else:
+            me_target, opp_target = 2, 1
+        d_me = self._depth(ccstate_list, me_target, flip=(self.root_player != Player.PLAYER_X))
+        d_opp = self._depth(ccstate_list, opp_target, flip=(self.root_player == Player.PLAYER_X))
+        turn_bonus = 1 if state.current_player == self.root_player else 0
+        return float(-d_me + d_opp + turn_bonus)
+
+    def terminal_value(self, state: Board, winner: Optional[Player], root_player: Player) -> float:
+        # The goal config has depth 0, so a win minimizes d_me — an extremum of evaluate,
+        # mirroring DistEval; reuse evaluate to keep one value scale.
+        return self.evaluate(state)
+
+
 # --- Rollout policies ---
 
 class RolloutPolicy(Protocol):
@@ -161,6 +226,7 @@ class EvaluatorType(Enum):
     NONE = "none"
     DIST = "dist"
     LBDIST = "lbdist"
+    DB = "db"
 
 
 class PolicyType(Enum):
@@ -170,13 +236,18 @@ class PolicyType(Enum):
     BACK = "back"
 
 
-def make_evaluator(eval_type: EvaluatorType, root_player: Player, board_size: int, home_size: int) -> StateEvaluator:
+def make_evaluator(eval_type: EvaluatorType, root_player: Player, board_size: int, home_size: int,
+                   num_pieces: Optional[int] = None, bfs: Optional[np.ndarray] = None) -> StateEvaluator:
     if eval_type == EvaluatorType.NONE:
         return ZeroEval()
     if eval_type == EvaluatorType.DIST:
         return DistEval(root_player, board_size)
     if eval_type == EvaluatorType.LBDIST:
         return LBDistEval(root_player, board_size, home_size)
+    if eval_type == EvaluatorType.DB:
+        if bfs is None or num_pieces is None:
+            raise ValueError("DB evaluator requires both `bfs` and `num_pieces`.")
+        return DBEval(root_player, board_size, num_pieces, bfs)
     raise ValueError(f"Unknown evaluator type: {eval_type!r}.")
 
 

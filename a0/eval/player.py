@@ -248,6 +248,34 @@ def make_baseline() -> MCTSRolloutPlayer:
     )
 
 
+def _bfs_path() -> str:
+    '''Default location of the single-agent BFS depth array for the current config
+    (scripts/2026-05-29_single_agent_bfs.py output, named bfs_<board_size>_<num_pieces>.npy).'''
+    return f"{config.input_dir}bfs_{config.board_size}_{config.num_pieces}.npy"
+
+
+def make_bfs_baseline(bfs_path: str | None = None) -> MCTSRolloutPlayer:
+    '''Like make_baseline, but uses the exact single-agent BFS distance-to-goal (DB) as the
+    evaluator instead of the Manhattan-sum DIST. c is anchored to the array's true value
+    range (max BFS depth) rather than DIST's analytic half-range.'''
+    bfs = np.load(bfs_path or _bfs_path())
+    max_depth = int(bfs[bfs >= 0].max())
+    return MCTSRolloutPlayer(
+        board_size=config.board_size,
+        num_pieces=config.num_pieces,
+        no_reverse_moves=not config.backwards_moves,
+        no_illegal_moves=True,
+        no_side_moves=not config.sideways_moves,
+        mcts_iterations=BASELINE_MCTS_ITERATIONS,
+        rollout_depth=8,
+        evaluator=EvaluatorType.DB,
+        policy=PolicyType.BEST,
+        policy_epsilon=BASELINE_EPSILON,
+        c=(max_depth / math.sqrt(2)) * 0.25,
+        bfs=bfs,
+    )
+
+
 _STAT_NAMES = (
     'wins', 'losses', 'draws_repeat', 'draws_timeout', 'num_games',
     'ev', 'mean_turns', 'std_turns', 'mean_duration', 'std_duration',

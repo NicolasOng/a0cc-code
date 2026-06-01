@@ -16,13 +16,16 @@ class MCTSRolloutPlayer:
                  evaluator: EvaluatorType = EvaluatorType.NONE,
                  policy: PolicyType = PolicyType.RANDOM,
                  policy_epsilon: float = 0.0,
-                 c: float = math.sqrt(2)):
+                 c: float = math.sqrt(2),
+                 bfs: Optional[Any] = None):
         self.game = Game(board_size=board_size,
                         num_pieces=num_pieces,
                         repeats_for_draw=-1,
                         no_reverse_moves=no_reverse_moves,
                         no_illegal_moves=no_illegal_moves,
                         no_side_moves=no_side_moves)
+        self.num_pieces = num_pieces
+        self.bfs = bfs
         self.mcts_iterations = mcts_iterations
         self.rollout_depth = rollout_depth
         self.evaluator_type = evaluator
@@ -33,7 +36,8 @@ class MCTSRolloutPlayer:
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         # build per-call: evaluator depends on the root player (state.current_player)
         evaluator = make_evaluator(self.evaluator_type, state.current_player,
-                                   board_size=len(state.board), home_size=state.home_size)
+                                   board_size=len(state.board), home_size=state.home_size,
+                                   num_pieces=self.num_pieces, bfs=self.bfs)
         policy = make_policy(self.policy_type, epsilon=self.policy_epsilon)
         search = SearchMoves(state, self.game, self.rollout_depth, evaluator=evaluator, policy=policy)
 
