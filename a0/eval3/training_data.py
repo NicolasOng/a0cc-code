@@ -30,6 +30,22 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
+def normalized_policy_entropy(policy: NDArray[np.float32]) -> float:
+    '''
+    Normalized Shannon entropy of a target policy distribution.
+    `policy` is a probability distribution over actions (illegal/unvisited
+    moves are 0). Entropy is normalized by log(support size) so it lies in
+    [0, 1]: 0 for a one-hot target, 1 for a target uniform over its support.
+    Distributions with <= 1 nonzero entry return 0.
+    '''
+    p = np.asarray(policy, dtype=np.float64)
+    p = p[p > 0]
+    if p.size <= 1:
+        return 0.0
+    p = p / p.sum()
+    ent = -np.sum(p * np.log(p))
+    return float(ent / np.log(p.size))
+
 def get_and_save_avg_training_metrics_per_iteration() -> None:
     '''
     Saves avg training loss/accuracy per iteration from DatasetData files.
@@ -266,11 +282,13 @@ class AccuracyCollector(Collector):
             "Iteration Value Accuracy", "Iteration Value Accuracy ND",
             "Iteration Policy Accuracy", "Iteration Policy PM",
             "Iteration Policy Accuracy NT", "Iteration Policy PM NT",
+            "Iteration Policy Entropy NT",
         ])
         self.overall_series = Series([
             "Overall Value Accuracy", "Overall Value Accuracy ND",
             "Overall Policy Accuracy", "Overall Policy PM",
             "Overall Policy Accuracy NT", "Overall Policy PM NT",
+            "Overall Policy Entropy NT",
         ])
         self._reset_iteration()
         # overall accumulators
@@ -283,6 +301,7 @@ class AccuracyCollector(Collector):
         self._total_pm_policy = 0.0
         self._total_correct_policy_nt = 0
         self._total_pm_policy_nt = 0.0
+        self._total_entropy_policy_nt = 0.0
 
     def _reset_iteration(self):
         self._it_total = 0
@@ -294,6 +313,7 @@ class AccuracyCollector(Collector):
         self._it_pm_policy = 0.0
         self._it_correct_policy_nt = 0
         self._it_pm_policy_nt = 0.0
+        self._it_entropy_policy_nt = 0.0
 
     def on_game(self, gi: GameInfo) -> None:
         pass
@@ -332,6 +352,9 @@ class AccuracyCollector(Collector):
             self._total_nt += 1
             self._it_pm_policy_nt += pm
             self._total_pm_policy_nt += pm
+            entropy = normalized_policy_entropy(policy)
+            self._it_entropy_policy_nt += entropy
+            self._total_entropy_policy_nt += entropy
             if policy_correct:
                 self._it_correct_policy_nt += 1
                 self._total_correct_policy_nt += 1
@@ -350,6 +373,7 @@ class AccuracyCollector(Collector):
         self.iteration_series.ys["Iteration Policy PM"].append(self._it_pm_policy / t if t else 0)
         self.iteration_series.ys["Iteration Policy Accuracy NT"].append(self._it_correct_policy_nt / t_nt if t_nt else 0)
         self.iteration_series.ys["Iteration Policy PM NT"].append(self._it_pm_policy_nt / t_nt if t_nt else 0)
+        self.iteration_series.ys["Iteration Policy Entropy NT"].append(self._it_entropy_policy_nt / t_nt if t_nt else 0)
         self._reset_iteration()
 
     def finalize(self) -> None:
@@ -368,6 +392,7 @@ class AccuracyCollector(Collector):
             self.overall_series.ys["Overall Policy PM"].append(self._total_pm_policy / t if t else 0)
             self.overall_series.ys["Overall Policy Accuracy NT"].append(self._total_correct_policy_nt / t_nt if t_nt else 0)
             self.overall_series.ys["Overall Policy PM NT"].append(self._total_pm_policy_nt / t_nt if t_nt else 0)
+            self.overall_series.ys["Overall Policy Entropy NT"].append(self._total_entropy_policy_nt / t_nt if t_nt else 0)
         save_series(self.overall_series, f"{config.eval_dir}/{self._name}_overall_acc.pkl")
         logger.info(
             f"AccuracyCollector '{self._name}': saved {self._name}_acc.pkl + {self._name}_overall_acc.pkl. "

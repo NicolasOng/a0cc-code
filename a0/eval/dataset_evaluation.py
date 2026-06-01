@@ -143,7 +143,28 @@ def policy_probability_mass_batch(pred_policy: NDArray[np.float32], label_policy
     mean_prob_mass = np.mean(prob_masses)
     return float(mean_prob_mass)
 
-def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[float, float, float, float, float]:
+def policy_entropy_batch(pred_logits: NDArray[np.float32], policy_mask: NDArray[np.bool_]) -> float:
+    '''
+    Mean normalized Shannon entropy of the model's policy over legal moves.
+    pred_logits: 2D (batch, board_size ** 4) raw policy-head logits.
+    policy_mask: 2D (batch, board_size ** 4), truthy for legal moves.
+    The logits are softmaxed over legal moves only, then the entropy of each
+    sample is normalized by log(num legal moves) so it lies in [0, 1] and is
+    comparable across positions with different branching factors. Samples with
+    <= 1 legal move contribute 0.
+    '''
+    mask = np.asarray(policy_mask).astype(bool)
+    masked_logits = np.where(mask, pred_logits, -1e9)
+    probs = np.array(jax.nn.softmax(masked_logits, axis=-1), dtype=np.float32)
+    probs = np.where(mask, probs, 0.0)
+    per_move = np.where(probs > 0, probs * np.log(probs), 0.0)
+    ent = -np.sum(per_move, axis=-1)                       # nats, per sample
+    num_legal = np.sum(mask, axis=-1).astype(np.float32)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        norm = np.where(num_legal > 1, ent / np.log(num_legal), 0.0)
+    return float(np.mean(norm))
+
+def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[float, float, float, float, float, float]:
     '''
     Evaluates the model on the given evaluation dataset.
     The evaluation dataset is a Dataset object containing
@@ -162,6 +183,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[
     total_loss = 0.0
     total_value_loss, total_value_accuracy = 0.0, 0.0
     total_policy_loss, total_policy_accuracy = 0.0, 0.0
+    total_policy_entropy = 0.0
 
     num_batches = 0
     
@@ -201,6 +223,9 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[
         masked_policy_pred = np.where(policy_mask, pred_policy, -1e9)
         policy_accuracy = policy_accuracy_batch(masked_policy_pred, masked_policy_label)
 
+        # Normalized entropy of the model's (softmaxed) policy over legal moves
+        policy_entropy = policy_entropy_batch(pred_policy, np.asarray(policy_mask))
+
         loss = value_loss + policy_loss
 
         total_loss += loss
@@ -208,6 +233,7 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[
         total_value_accuracy += value_accuracy
         total_policy_loss += policy_loss
         total_policy_accuracy += policy_accuracy
+        total_policy_entropy += policy_entropy
         num_batches += 1
     
     avg_loss = total_loss / num_batches
@@ -215,15 +241,17 @@ def evaluate_model(model: AlphaZeroModel, evaluation_dataset: Dataset) -> tuple[
     avg_value_accuracy = total_value_accuracy / num_batches
     avg_policy_loss = total_policy_loss / num_batches
     avg_policy_accuracy = total_policy_accuracy / num_batches
+    avg_policy_entropy = total_policy_entropy / num_batches
 
     logger.info(
         f"Loss: {avg_loss:.4f}, "
         f"Value Loss: {avg_value_loss:.4f}, "
         f"Value Accuracy: {avg_value_accuracy:.2%}, "
         f"Policy Loss: {avg_policy_loss:.4f}, "
-        f"Policy Accuracy: {avg_policy_accuracy:.2%}"
+        f"Policy Accuracy: {avg_policy_accuracy:.2%}, "
+        f"Policy Entropy (norm): {avg_policy_entropy:.4f}"
     )
-    return avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy
+    return avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy, avg_policy_entropy
 
 def evaluate_all_models(models: list[tuple[int, AlphaZeroModel]], evaluation_dataset: Dataset, fn: str) -> None:
     '''
@@ -234,17 +262,18 @@ def evaluate_all_models(models: list[tuple[int, AlphaZeroModel]], evaluation_dat
     logger.info(f"Evaluating all models in the training directory (eval_type={fn})...")
 
     # Iterate through all model files in the training directory
-    metrics = Series(["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"])
+    metrics = Series(["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy", "policy_entropy"])
     for i, model in tqdm(models):
         logger.info(f"Evaluating model {i + 1}")
-        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, evaluation_dataset)
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy, policy_entropy = evaluate_model(model, evaluation_dataset)
         metrics.x.append(i)
         metrics.ys["loss"].append(loss)
         metrics.ys["value_loss"].append(value_loss)
         metrics.ys["policy_loss"].append(policy_loss)
         metrics.ys["value_accuracy"].append(value_accuracy)
         metrics.ys["policy_accuracy"].append(policy_accuracy)
-    
+        metrics.ys["policy_entropy"].append(policy_entropy)
+
     # save the metrics to a file
     metrics_path = f"{config.eval_dir}/{fn}.pkl"
     save_series(metrics, metrics_path)
@@ -265,7 +294,7 @@ def evaluate_all_models_progressive(models: list[AlphaZeroModel], datasets: list
     policy_accuracies: list[float] = []
     for i, (model, dataset) in tqdm(enumerate(zip(models, datasets))):
         logger.info(f"Evaluating model {i + 1}")
-        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, dataset)
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy, _ = evaluate_model(model, dataset)
         losses.append(loss)
         value_losses.append(value_loss)
         policy_losses.append(policy_loss)
@@ -292,7 +321,7 @@ def evaluate_on_all_datasets(model: AlphaZeroModel, datasets: dict[int, Dataset]
     logger.info(f"Evaluating model on all datasets ({fn})...")
 
     # Iterate through all datasets in the dictionary
-    metrics = Series(["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy"])
+    metrics = Series(["loss", "value_loss", "policy_loss", "value_accuracy", "policy_accuracy", "policy_entropy"])
     for bin_key in sorted(datasets.keys()):
         dataset = datasets[bin_key]
         dataset.batch_size = 1
@@ -300,13 +329,14 @@ def evaluate_on_all_datasets(model: AlphaZeroModel, datasets: dict[int, Dataset]
             logger.info(f"Skipping small dataset with progress bin {bin_key}")
             continue
         logger.info(f"Evaluating dataset with progress bin {bin_key}")
-        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = evaluate_model(model, dataset)
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy, policy_entropy = evaluate_model(model, dataset)
         metrics.x.append(bin_key)
         metrics.ys["loss"].append(loss)
         metrics.ys["value_loss"].append(value_loss)
         metrics.ys["policy_loss"].append(policy_loss)
         metrics.ys["value_accuracy"].append(value_accuracy)
         metrics.ys["policy_accuracy"].append(policy_accuracy)
+        metrics.ys["policy_entropy"].append(policy_entropy)
     
     # save the metrics to a file
     metrics_path = f"{config.eval_dir}/{fn}.pkl"

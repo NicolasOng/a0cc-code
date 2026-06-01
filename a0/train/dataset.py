@@ -219,7 +219,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
             # evaluate the model on the test dataset every ... batches
             for test_dataset_name, test_dataset in test_datasets.items():
                 logger.info(f"Evaluating model on test dataset '{test_dataset_name}'...")
-                avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy = evaluate_model(model, test_dataset)
+                avg_loss, avg_value_loss, avg_policy_loss, avg_value_accuracy, avg_policy_accuracy, _ = evaluate_model(model, test_dataset)
                 test_data = TestData()
                 test_data.value_loss = avg_value_loss
                 test_data.policy_loss = avg_policy_loss

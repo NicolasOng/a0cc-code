@@ -547,6 +547,27 @@ def plot_full_policy_accuracy() -> None:
         "Iteration", "Accuracy", "full_policy_accuracy",
     )
 
+
+def plot_full_policy_entropy() -> None:
+    seen_nt   = load_series(f"{config.eval_dir}/seen_nt_eval.pkl")
+    random_nt = load_series(f"{config.eval_dir}/random_nt_eval.pkl")
+    n1_nt     = load_series(f"{config.eval_dir}/neighbor_1_nt_eval.pkl")
+    n2_nt     = load_series(f"{config.eval_dir}/neighbor_2_nt_eval.pkl")
+    iteration = load_series(f"{config.eval_dir}/gamedata_alt_acc.pkl")
+    overall   = load_series(f"{config.eval_dir}/gamedata_alt_overall_acc.pkl")
+    plot_given(
+        "Policy Head Entropy on Ground Truth (NT) and Training Data (normalized)",
+        [
+            ("Seen NT", seen_nt.x, seen_nt.ys["policy_entropy"]),
+            ("Neighbor 1 NT", n1_nt.x, n1_nt.ys["policy_entropy"]),
+            ("Neighbor 2 NT", n2_nt.x, n2_nt.ys["policy_entropy"]),
+            ("Random NT", random_nt.x, random_nt.ys["policy_entropy"]),
+            ("Training Data NT (Alt)", iteration.x, iteration.ys["Iteration Policy Entropy NT"]),
+            ("Overall Training Data NT (Alt)", overall.x, overall.ys["Overall Policy Entropy NT"]),
+        ],
+        "Iteration", "Normalized Entropy", "full_policy_entropy",
+    )
+
 # === player evaluation ===
 
 def _reference_names(ref: Series) -> list[str]:
@@ -685,6 +706,7 @@ def main():
     # combined plots
     safeplot(plot_full_value_accuracy)
     safeplot(plot_full_policy_accuracy)
+    safeplot(plot_full_policy_entropy)
     safeplot(plot_value_accuracies)
     safeplot(plot_policy_accuracies)
 
