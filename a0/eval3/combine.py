@@ -726,6 +726,27 @@ def plot_merged_full_policy_accuracy() -> None:
     )
 
 
+def plot_merged_full_policy_entropy() -> None:
+    seen_nt   = load_series(f"{config.eval_dir}/merged_seen_nt_eval.pkl")
+    random_nt = load_series(f"{config.eval_dir}/merged_random_nt_eval.pkl")
+    n1_nt     = load_series(f"{config.eval_dir}/merged_neighbor_1_nt_eval.pkl")
+    n2_nt     = load_series(f"{config.eval_dir}/merged_neighbor_2_nt_eval.pkl")
+    iteration = load_series(f"{config.eval_dir}/merged_gamedata_alt_acc.pkl")
+    overall   = load_series(f"{config.eval_dir}/merged_gamedata_alt_overall_acc.pkl")
+    plot_shaded_error(
+        "Policy Head Entropy on Ground Truth (NT) and Training Data (normalized, merged)",
+        [
+            ("Seen NT",                        "±95% CI", seen_nt.x,   *_ci_keys(seen_nt,   "policy_entropy")),
+            ("Neighbor 1 NT",                  "±95% CI", n1_nt.x,     *_ci_keys(n1_nt,     "policy_entropy")),
+            ("Neighbor 2 NT",                  "±95% CI", n2_nt.x,     *_ci_keys(n2_nt,     "policy_entropy")),
+            ("Random NT",                      "±95% CI", random_nt.x, *_ci_keys(random_nt, "policy_entropy")),
+            ("Training Data NT (Alt)",         "±95% CI", iteration.x, *_ci_keys(iteration, "Iteration Policy Entropy NT")),
+            ("Overall Training Data NT (Alt)", "±95% CI", overall.x,   *_ci_keys(overall,   "Overall Policy Entropy NT")),
+        ],
+        "Iteration", "Normalized Entropy", "merged_full_policy_entropy", (0, 1),
+    )
+
+
 # === merged player evaluation ===
 
 def _rate_ci_keys(s: Series, key: str, denom_key: str) -> tuple[list[float], list[float]]:
@@ -865,6 +886,7 @@ def main():
     # combined plots
     safeplot(plot_merged_full_value_accuracy)
     safeplot(plot_merged_full_policy_accuracy)
+    safeplot(plot_merged_full_policy_entropy)
     safeplot(plot_merged_value_accuracies)
     safeplot(plot_merged_policy_accuracies)
 
