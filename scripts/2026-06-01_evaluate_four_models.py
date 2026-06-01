@@ -19,6 +19,8 @@ import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
 import sys
+# Put the repo root on sys.path so `a0`/`config` import when run as a script.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 # (label, config_path, model_path) -- one entry per model.
 # IMPORTANT: set the config that matches each model's board/player size.
