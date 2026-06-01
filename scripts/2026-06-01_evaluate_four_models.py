@@ -1,42 +1,70 @@
 """
-Load four trained A0 model checkpoints, evaluate them against the standard
-baseline via a0.eval.player.evaluate_references, and plot the resulting
-expected values (P1 / P2) as a grouped bar chart.
+Load four trained A0 model checkpoints — each for a DIFFERENT board/player size
+— evaluate each against its own standard baseline via
+a0.eval.player.evaluate_references, and plot the resulting expected values
+(P1 / P2) as a grouped bar chart.
 
-Set MODEL_PATHS to the four checkpoint files you want to compare.
+Why subprocesses?
+  a0.eval.player reads the global `config` singleton, which is built from
+  sys.argv[1] both in this process AND in every spawned game-worker (under the
+  'spawn' start method, workers inherit argv and rebuild config from the file).
+  So board/player size is fixed per-process and a single process can only
+  evaluate models of one board size. To mix sizes we evaluate ONE model per
+  subprocess, launching each with its own config file, then aggregate + plot.
+
+Usage:
+    python scripts/2026-06-01_evaluate_four_models.py
 """
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
-import multiprocessing
-from datetime import datetime
+import sys
 
-import numpy as np
-import matplotlib.pyplot as plt
+# (label, config_path, model_path) -- one entry per model.
+# IMPORTANT: set the config that matches each model's board/player size.
+# The config<NN>-6.json files are board sizes 5/6/7/9 (num_pieces=6).
+MODEL_SPECS: list[tuple[str, str, str]] = [
+    ('163sl', 'config/163.json', 'output/trial_163/baseline_sl_player.pkl'),
+    ('256sl', 'config/256long.json', 'output/trial_256/baseline_sl_player.pkl'),
+    ('366sl', 'config/config-366.json', 'output/trial_366/baseline_sl_player.pkl'),
+    ('494sl', 'config/494.json', 'output/trial_494/baseline_sl_player.pkl'),
+]
 
-from a0.eval.player import NUM_GAMES, evaluate_references, make_baseline
-from a0.model import load_model
-from a0.players.a0 import A0Player
-
-from config import config
-
-from utils.log import get_logger, setup_logging
-logger = get_logger(__name__)
-
-
-# Set these to the four checkpoints you want to compare (label -> path).
-MODEL_PATHS: dict[str, str] = {
-    '163sl': 'output/trial_163/baseline_sl_player.pkl',
-    '256sl': 'output/trial_256/baseline_sl_player.pkl',
-    '366sl': 'output/trial_366/baseline_sl_player.pkl',
-    '494sl': 'output/trial_494/baseline_sl_player.pkl',
-}
+# Env-var protocol used to drive a worker invocation of this same script.
+_ENV_OUT = 'A0_EVAL_ONE_OUT'
+_ENV_LABEL = 'A0_EVAL_ONE_LABEL'
+_ENV_MODEL = 'A0_EVAL_ONE_MODEL'
 
 
-def make_player(model_path: str) -> A0Player:
-    '''Load a checkpoint and wrap it in an A0Player (mirrors get_trained_players).'''
+def _run_worker() -> None:
+    '''Evaluate a single model (given via env vars) against its baseline.
+
+    argv[1] is the model's config path (consumed by config.py at import), so the
+    global `config` here — and in the game-workers spawned by run_matchup — is
+    correct for this model's board size.
+    '''
+    import multiprocessing
+    from datetime import datetime
+
+    from a0.eval.player import NUM_GAMES, evaluate_references, make_baseline
+    from a0.model import load_model
+    from a0.players.a0 import A0Player
+    from config import config
+    from utils.log import get_logger, setup_logging
+
+    logger = get_logger(__name__)
+    setup_logging(level=20, log_dir=config.log_dir, process_name='evaluate_four_models')
+    try:
+        multiprocessing.set_start_method('spawn')
+    except RuntimeError:
+        pass
+
+    label = os.environ[_ENV_LABEL]
+    model_path = os.environ[_ENV_MODEL]
+    out_path = os.environ[_ENV_OUT]
+
     model = load_model(model_path, training=False)
-    return A0Player(
+    player = A0Player(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
         model=model,
@@ -52,9 +80,23 @@ def make_player(model_path: str) -> A0Player:
         dirichlet_epsilon=config.dirichlet_epsilon,
     )
 
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    evaluate_references(
+        references={label: player},
+        opponent=make_baseline(),
+        num_games=NUM_GAMES,
+        output_path=out_path,
+        log_games=1,
+        game_log_path=f"{os.path.dirname(out_path)}/{label}_game_logs_{timestamp}.json",
+    )
+    logger.info(f"Wrote evaluation series for '{label}' to {out_path}")
 
-def plot_results(names: list[str], ev_p1: list[float], ev_p2: list[float], fn: str) -> None:
+
+def _plot_results(names: list[str], ev_p1: list[float], ev_p2: list[float], out_png: str) -> None:
     '''Grouped bar chart of P1/P2 expected value per model.'''
+    import numpy as np
+    import matplotlib.pyplot as plt
+
     x = np.arange(len(names))
     width = 0.38
 
@@ -66,44 +108,55 @@ def plot_results(names: list[str], ev_p1: list[float], ev_p2: list[float], fn: s
     plt.ylim(-1, 1)
     plt.xlabel('model')
     plt.ylabel('expected value (vs baseline)')
-    plt.title(f'Model evaluation vs baseline ({NUM_GAMES} games/side)')
+    plt.title('Model evaluation vs baseline (per-model board size)')
     plt.legend()
     plt.grid(True, axis='y', alpha=0.3)
     plt.tight_layout()
-    out = f"{config.plot_dir}/{fn}.png"
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    plt.savefig(out)
+    os.makedirs(os.path.dirname(out_png), exist_ok=True)
+    plt.savefig(out_png)
     plt.close()
-    logger.info(f"Saved plot to {out}")
+    print(f"Saved plot to {out_png}")
 
 
 def main() -> None:
-    setup_logging(level=20, log_dir=config.log_dir, process_name='evaluate_four_models')
-    try:
-        multiprocessing.set_start_method('spawn')
-    except RuntimeError:
-        pass
+    '''Orchestrate: run one eval subprocess per model, then aggregate + plot.'''
+    import subprocess
+    from datetime import datetime
+
+    from a0.utils.plotting import load_series
+    from config import config
 
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    work_dir = f"{config.eval_dir}/four_models_{timestamp}"
+    os.makedirs(work_dir, exist_ok=True)
 
-    references = {name: make_player(path) for name, path in MODEL_PATHS.items()}
-    baseline = make_baseline()
+    names: list[str] = []
+    ev_p1: list[float] = []
+    ev_p2: list[float] = []
 
-    series = evaluate_references(
-        references=references,
-        opponent=baseline,
-        num_games=NUM_GAMES,
-        output_path=f"{config.eval_dir}/four_models_evaluation_{timestamp}.pkl",
-        log_games=1,
-        game_log_path=f"{config.eval_dir}/four_models_game_logs_{timestamp}.json",
-    )
+    for label, config_path, model_path in MODEL_SPECS:
+        out_path = f"{work_dir}/{label}.pkl"
+        print(f"=== Evaluating '{label}' (config={config_path}, model={model_path}) ===")
+        env = {
+            **os.environ,
+            _ENV_OUT: out_path,
+            _ENV_LABEL: label,
+            _ENV_MODEL: model_path,
+        }
+        # argv[1] = this model's config; config.py picks it up in the subprocess
+        # and in every game-worker it spawns.
+        subprocess.run([sys.executable, __file__, config_path], env=env, check=True)
 
-    names = list(MODEL_PATHS.keys())
-    ev_p1 = [series.ys[f'{name}_ev_p1'][0] for name in names]
-    ev_p2 = [series.ys[f'{name}_ev_p2'][0] for name in names]
+        series = load_series(out_path)
+        names.append(label)
+        ev_p1.append(series.ys[f'{label}_ev_p1'][0])
+        ev_p2.append(series.ys[f'{label}_ev_p2'][0])
 
-    plot_results(names, ev_p1, ev_p2, fn=f"four_models_evaluation_{timestamp}")
+    _plot_results(names, ev_p1, ev_p2, out_png=f"{config.plot_dir}/four_models_evaluation_{timestamp}.png")
 
 
 if __name__ == "__main__":
-    main()
+    if os.environ.get(_ENV_OUT):
+        _run_worker()
+    else:
+        main()
