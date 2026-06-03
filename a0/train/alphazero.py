@@ -382,9 +382,10 @@ def _play(serialized_player: bytes, iteration: int, cancel_event: Optional[Any] 
         lam = config.td_lambda
         return game_data_to_td_lambda_training_set(game_data, player.model, lam), game_data
     elif config.alternative_target == "interpolated_td_lambda":
-        # linear interpolation: lam = 1 at iteration 0, lam = 0 at the final iteration
-        denom = max(config.training_iterations - 1, 1)
-        lam = 1.0 - (iteration / denom)
+        # linear interpolation: lam = 1 (td_lambda) at iteration 0, decreasing to
+        # lam = 0 (td_0) by 25% of the way through training, then td_0 for the rest.
+        warmup = max((config.training_iterations - 1) * 0.25, 1)
+        lam = max(1.0 - (iteration / warmup), 0.0)
         logger.info(f"interpolated_td_lambda: iteration={iteration}, lam={lam:.4f}")
         return game_data_to_td_lambda_training_set(game_data, player.model, lam), game_data
     else:
