@@ -70,7 +70,7 @@ def policy_max_rollout(state: Board, game: Game, model: AlphaZeroModel, max_dept
     return False, None, current_board
 
 class MCTS_NN:
-    def __init__(self, initial_state: Board, game: Game, model: AlphaZeroModel, initial_moves: list[Move] | None = None, rollout_type: str = 'none', rollout_depth: int = -1, policy_type: str = 'policy'):
+    def __init__(self, initial_state: Board, game: Game, model: AlphaZeroModel, initial_moves: list[Move] | None = None, rollout_type: str = 'none', rollout_depth: int = -1, policy_type: str = 'policy', value_mode: str = 'raw', value_sign_threshold: float = 0.05):
         self._initial_state = initial_state
         self.game = game
         self.model = model
@@ -78,6 +78,11 @@ class MCTS_NN:
         self.rollout_type = rollout_type
         self.rollout_depth = rollout_depth
         self.policy_type = policy_type
+        # value_mode controls how the model's value output is used as the reward:
+        #   'raw'  -> use the model's value directly
+        #   'sign' -> use sign(value): +1 / -1, or 0 if within value_sign_threshold of 0
+        self.value_mode = value_mode
+        self.value_sign_threshold = value_sign_threshold
         #self.gt = GroundTruth()
     
     def initial_state(self) -> Board:
@@ -172,6 +177,16 @@ class MCTS_NN:
         board_input = board_to_input(state)
         value, _ = self.model.inference(jnp.array(board_input))
         value = float(value[0][0])
+
+        # optionally collapse the model's value to its sign:
+        # +1 / -1, or 0 when the value is within the threshold of 0
+        if self.value_mode == 'sign':
+            if abs(value) <= self.value_sign_threshold:
+                value = 0.0
+            else:
+                value = 1.0 if value > 0 else -1.0
+        elif self.value_mode != 'raw':
+            raise ValueError(f"Unknown value mode: {self.value_mode}")
 
         # print("Value from model:", value)
         # print("State current player:", state.current_player)
