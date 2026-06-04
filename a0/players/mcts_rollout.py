@@ -17,7 +17,8 @@ class MCTSRolloutPlayer:
                  policy: PolicyType = PolicyType.RANDOM,
                  policy_epsilon: float = 0.0,
                  c: float = math.sqrt(2),
-                 bfs: Optional[Any] = None):
+                 bfs: Optional[Any] = None,
+                 print_tree: bool = False):
         self.game = Game(board_size=board_size,
                         num_pieces=num_pieces,
                         repeats_for_draw=-1,
@@ -32,6 +33,7 @@ class MCTSRolloutPlayer:
         self.policy_type = policy
         self.policy_epsilon = policy_epsilon
         self.c = c
+        self.print_tree = print_tree
 
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         # build per-call: evaluator depends on the root player (state.current_player)
@@ -52,11 +54,10 @@ class MCTSRolloutPlayer:
             # if no child is found, select a random move
             move = random.choice(moves)
 
-        if False:
-            mcts.print_children()
+        if self.print_tree:
             mcts.remove_unvisited_nodes(None)
             mcts.print_metrics()
-            #mcts.draw_graph()
+            MCTS.print_tree_full(mcts.root, to_depth=1)
 
         # return the selected move
         return move, None

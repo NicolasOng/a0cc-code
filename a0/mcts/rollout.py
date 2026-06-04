@@ -64,6 +64,13 @@ class SearchMoves:
             if is_done:
                 return self.evaluator.terminal_value(current_board, winner, root_player)
 
+            # if the evaluator is already exact for this state (e.g. the DB eval once the
+            # armies have passed each other), stop the rollout and use it directly. This
+            # also fires on the leaf itself (depth 0), mirroring the C++ UCT::DoPlayout
+            # `(depth > playOutDepth || perfectEval) && canEval` gate.
+            if self.evaluator.perfect_eval(current_board):
+                return self.evaluator.evaluate(current_board)
+
             # otherwise advance one step under the configured rollout policy
             moves = self.cc.generate_moves_for_given_board(current_board)
             if not moves:

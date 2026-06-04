@@ -1,11 +1,8 @@
 from a0.players.human import HumanPlayer
 from a0.players.mcts_rollout import MCTSRolloutPlayer
-from a0.players.gt import GroundTruthPlayer
-from a0.players.model import ModelPlayer
 from a0.players.random import RandomPlayer
-from a0.players.a0 import A0Player
 
-from a0.model import load_model
+from a0.eval.player import make_bfs_baseline, make_baseline
 
 from a0.game import play
 
@@ -17,27 +14,11 @@ def main():
     human_player = HumanPlayer()
     #human_player = RandomPlayer()
 
-    # other_player = MCTSRolloutPlayer(board_size=config.board_size, num_pieces=config.num_pieces, no_reverse_moves=False)
-
-    # other_player = GroundTruthPlayer(mistake_rate=0.1, print_info=True)
-
-    model_filename = "model_49.pkl"
-    model = load_model(model_filename, training=False)
-    # other_player = ModelPlayer(board_size=config.board_size, num_pieces=config.num_pieces, model=model)
-    other_player = A0Player(
-        board_size=config.board_size,
-        num_pieces=config.num_pieces,
-        model=model,
-        exploit=True,
-        mcts_samples=config.mcts_samples,
-        no_reverse_moves=not config.backwards_moves,
-        no_illegal_moves=not config.illegal_moves,
-        no_side_moves=not config.sideways_moves,
-        rollout_type=config.rollout_type,
-        rollout_depth=config.rollout_depth,
-        policy_type=config.policy_type,
-        epsilon=config.epsilon,
-        dirichlet_epsilon=config.dirichlet_epsilon)
+    # DBEval MCTS Rollout player: uses the exact single-agent BFS distance-to-goal
+    # (DB) evaluator. Loads bfs_db/bfs_<board_size>_<num_pieces>.npy from config.input_dir.
+    other_player: MCTSRolloutPlayer = make_bfs_baseline()
+    # print the MCTS search tree after each of this player's moves
+    other_player.print_tree = True
     #other_player = RandomPlayer()
 
     #human_player = other_player
@@ -61,7 +42,7 @@ def main():
     print(f"Game ended: {results.ended}, Winner: {results.winner}, Turns: {len(results.turn_data)}")
     if results.final_board:
         print(f"Final board:\n{results.final_board.board_view()}")
-    
+
     return results.winner is not None, results.final_board
 
 def main2():
@@ -74,7 +55,7 @@ def main2():
             if final_board:
                 print(f"Final board state:\n{final_board.board_view()}")
         print("-" * 40)
-    
+
     print(f"Out of 100 games, {not_draws} were not draws.")
 
 if __name__ == "__main__":

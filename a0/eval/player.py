@@ -250,8 +250,8 @@ def make_baseline() -> MCTSRolloutPlayer:
 
 def _bfs_path() -> str:
     '''Default location of the single-agent BFS depth array for the current config
-    (scripts/2026-05-29_single_agent_bfs.py output, named bfs_<board_size>_<num_pieces>.npy).'''
-    return f"{config.input_dir}bfs_{config.board_size}_{config.num_pieces}.npy"
+    (scripts/2026-05-29_single_agent_bfs.py output, named bfs_db/bfs_<board_size>_<num_pieces>.npy).'''
+    return f"{config.input_dir}bfs_db/bfs_{config.board_size}_{config.num_pieces}.npy"
 
 
 def make_bfs_baseline(bfs_path: str | None = None) -> MCTSRolloutPlayer:

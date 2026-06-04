@@ -50,6 +50,26 @@ def _pick_best_random_tie(items: Iterable[Move], score_fn: Callable[[Move], floa
     return random.choice(best)
 
 
+def is_disentangled(state: Board) -> bool:
+    '''True when the two armies have completely passed each other, so no piece of one
+    player can interact with (jump over / be blocked by) the other. In CCState diagonal
+    order, index 0 is PLAYER_X's home apex and num_spots-1 is PLAYER_O's; X advances
+    toward high indices and O toward low ones, so they are fully separated once every X
+    index exceeds every O index. Port of the C++ DBEval::perfectEval
+    (pieces[0][NUM_PIECES-1] > pieces[1][0], with pieces sorted descending).'''
+    order = CCState.grid_to_CCState_order(state.board)
+    x_min: Optional[int] = None
+    o_max: Optional[int] = None
+    for i, v in enumerate(order):
+        if v == 1 and x_min is None:
+            x_min = i          # first (smallest) X index in diagonal order
+        elif v == 2:
+            o_max = i          # last (largest) O index seen so far
+    if x_min is None or o_max is None:
+        return True
+    return x_min > o_max
+
+
 # --- Evaluators ---
 #
 # Each evaluator owns *both* the depth-cap value (`evaluate`) and the terminal
@@ -62,6 +82,10 @@ def _pick_best_random_tie(items: Iterable[Move], score_fn: Callable[[Move], floa
 class StateEvaluator(Protocol):
     def evaluate(self, state: Board) -> float: ...
     def terminal_value(self, state: Board, winner: Optional[Player], root_player: Player) -> float: ...
+    # True when a rollout can stop early because `evaluate` is already exact for this
+    # state (the C++ perfectEval/canEval gate). Default-False evaluators always roll to
+    # the depth cap; only the exact DB evaluator short-circuits (see DBEval).
+    def perfect_eval(self, state: Board) -> bool: ...
 
 
 class ZeroEval:
@@ -72,6 +96,9 @@ class ZeroEval:
         if winner is None:
             return 0.0
         return 1.0 if winner == root_player else -1.0
+
+    def perfect_eval(self, state: Board) -> bool:
+        return False  # the zero heuristic is never "exact" — always roll to the depth cap
 
 
 class DistEval:
@@ -98,6 +125,11 @@ class DistEval:
         # 6 winning pieces tile the goal triangle — and typically has a large d_opp),
         # so reusing the eval here keeps the value scale uniform.
         return self.evaluate(state)
+
+    def perfect_eval(self, state: Board) -> bool:
+        # The Manhattan-sum distance ignores jump shortcuts, so it is never exact —
+        # even once the armies separate. No early rollout exit.
+        return False
 
 
 class LBDistEval(DistEval):
@@ -165,6 +197,13 @@ class DBEval:
         # The goal config has depth 0, so a win minimizes d_me — an extremum of evaluate,
         # mirroring DistEval; reuse evaluate to keep one value scale.
         return self.evaluate(state)
+
+    def perfect_eval(self, state: Board) -> bool:
+        # Once the two armies have passed each other the single-agent BFS distances are
+        # the exact remaining move counts (the opponent can no longer help or block), so
+        # `evaluate` is the true game value and the rollout can stop here. Mirrors the
+        # C++ DBEval::perfectEval gate in UCT::DoPlayout.
+        return is_disentangled(state)
 
 
 # --- Rollout policies ---
