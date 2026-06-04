@@ -78,6 +78,8 @@ SERIES_FILES = [
     # per-bucket model eval
     "game_progress_10_nd_eval",
     "game_progress_10_nt_eval",
+    # value-derived policy entropy
+    "value_policy_entropy",
     # player evaluation
     "player_evaluation_results",
     "reference_evaluation_results",
@@ -256,6 +258,21 @@ def plot_merged_random_value_distributions() -> None:
 def _ci_keys(series: Series, key: str) -> tuple[list[float], list[float]]:
     '''Return (mean, ci) for a key in a merged series.'''
     return series.ys[key], series.ys[f"{key}_ci"]
+
+
+def plot_merged_value_policy_entropy() -> None:
+    # The per-iteration "Random CI"/"Seen CI" columns (within-run CI across
+    # states) are ignored here; cross-trial bands come from the merge's
+    # "_ci" columns via _ci_keys.
+    s = load_series(f"{config.eval_dir}/merged_value_policy_entropy.pkl")
+    plot_shaded_error(
+        "Value-Derived Policy Entropy by Iteration (merged)",
+        [
+            ("Random", "±95% CI", s.x, *_ci_keys(s, "Random")),
+            ("Seen",   "±95% CI", s.x, *_ci_keys(s, "Seen")),
+        ],
+        "Iteration", "Normalized Entropy", "merged_value_policy_entropy", (0, 1),
+    )
 
 
 def plot_merged_training_metrics() -> None:
@@ -838,6 +855,9 @@ def main():
     safeplot(plot_merged_dataset_post_balance_distributions)
     safeplot(plot_merged_random_nd_value_distributions)
     safeplot(plot_merged_random_value_distributions)
+
+    # value-derived policy entropy
+    safeplot(plot_merged_value_policy_entropy)
 
     # training metrics
     safeplot(plot_merged_training_metrics)

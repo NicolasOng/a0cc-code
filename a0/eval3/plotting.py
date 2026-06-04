@@ -9,6 +9,7 @@ from a0.utils.plotting import (
     plot_stacked,
     plot_stacked_proportional,
     plot_std_error,
+    plot_shaded_error,
     plot_shaded_ridgeline,
     plot_percentile_bands,
     plot_value_proportions,
@@ -84,6 +85,18 @@ def plot_random_value_distributions() -> None:
         "random_value_distributions.pkl",
         "Model Value Predictions on random",
         "random_value_distributions",
+    )
+
+
+def plot_value_policy_entropy() -> None:
+    s = load_series(f"{config.eval_dir}/value_policy_entropy.pkl")
+    plot_shaded_error(
+        "Value-Derived Policy Entropy by Iteration",
+        [
+            ("Random", "Random 95% CI", s.x, s.ys["Random"], s.ys["Random CI"]),
+            ("Seen",   "Seen 95% CI",   s.x, s.ys["Seen"],   s.ys["Seen CI"]),
+        ],
+        "Iteration", "Normalized Entropy", "value_policy_entropy", (0, 1),
     )
 
 
@@ -658,6 +671,9 @@ def main():
     safeplot(plot_dataset_post_balance_distributions)
     safeplot(plot_random_nd_value_distributions)
     safeplot(plot_random_value_distributions)
+
+    # value-derived policy entropy
+    safeplot(plot_value_policy_entropy)
 
     # training metrics
     safeplot(plot_training_metrics_accuracy)

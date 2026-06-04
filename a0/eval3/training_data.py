@@ -22,6 +22,7 @@ from a0.model_utils import board_to_input, get_legal_move_mask_from_state
 from a0.utils.states import convert_experience_list_to_dataset, get_gtd_from_states
 from a0.eval.generate_datasets import save_dataset
 from a0.utils.misc import get_baseline_accuracy, get_branching_factor
+from a0.utils.value_policy_entropy import normalized_policy_entropy
 from a0.eval3.generate_datasets import get_nd_and_nt_datasets_from_state_list
 from a0.eval3.collectors.base import Collector, GameInfo, TurnInfo, GameProgressCollector
 from a0.eval3.collectors.bpp_and_bppma import BPPCollector
@@ -29,22 +30,6 @@ from a0.eval3.collectors.bpp_and_bppma import BPPCollector
 from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
-
-def normalized_policy_entropy(policy: NDArray[np.float32]) -> float:
-    '''
-    Normalized Shannon entropy of a target policy distribution.
-    `policy` is a probability distribution over actions (illegal/unvisited
-    moves are 0). Entropy is normalized by log(support size) so it lies in
-    [0, 1]: 0 for a one-hot target, 1 for a target uniform over its support.
-    Distributions with <= 1 nonzero entry return 0.
-    '''
-    p = np.asarray(policy, dtype=np.float64)
-    p = p[p > 0]
-    if p.size <= 1:
-        return 0.0
-    p = p / p.sum()
-    ent = -np.sum(p * np.log(p))
-    return float(ent / np.log(p.size))
 
 def get_and_save_avg_training_metrics_per_iteration() -> None:
     '''

@@ -4,10 +4,11 @@ import pickle
 from typing import Optional
 
 import numpy as np
+from numpy.typing import NDArray
 from tqdm import tqdm
 
 from cc.core import Board
-from cc.ground_truth import GroundTruth
+from cc.ground_truth import GroundTruth, RankUnrank
 from a0.model import AlphaZeroModel
 from a0.dataset import Dataset
 from a0.eval.dataset_evaluation import (
@@ -18,7 +19,9 @@ from a0.eval.dataset_evaluation import (
     load_models,
 )
 from a0.utils.misc import get_baseline_accuracy
-from a0.utils.plotting import DistributionSeries, save_distribution_series
+from a0.utils.plotting import DistributionSeries, save_distribution_series, Series, save_series
+from a0.utils.safe_load import safe_load_pickle
+from a0.utils.value_policy_entropy import build_child_inputs, child_value_entropies, mean_and_ci
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -58,6 +61,69 @@ def collect_value_distributions_all_models(
         series.x.append(i)
         series.trials[0].append(predictions)
     save_distribution_series(series, f"{config.eval_dir}/{fn}.pkl")
+
+
+def collect_value_policy_entropy(
+    models: list[tuple[int, AlphaZeroModel]],
+    state_lists_path: str,
+    fn: str,
+    temperature: float = 1.0,
+    batch_size: int = 256,
+) -> None:
+    '''
+    Value-derived policy entropy across models, on the "random" and "seen" board
+    lists from state_lists.pkl (actual Boards, needed to enumerate child moves —
+    the encoded random.pkl dataset can't provide them). See
+    a0.utils.value_policy_entropy for the per-board computation.
+
+    Per model iteration, stores the mean normalized entropy and a 95% CI (across
+    boards) for each list as a single Series with "Random"/"Seen" mean lines and
+    matching "Random CI"/"Seen CI" half-width lines.
+    → {eval_dir}/{fn}.pkl
+    '''
+    state_lists: Optional[dict[str, list[Board]]] = safe_load_pickle(state_lists_path, "state lists")  # type: ignore[assignment]
+    if state_lists is None:
+        logger.warning(f"Skipping {fn}: {state_lists_path} not found.")
+        return
+    if not models:
+        logger.warning(f"Skipping {fn}: no models loaded.")
+        return
+
+    ranker = RankUnrank()
+
+    # Precompute child inputs once per list (model-independent), so filtering and
+    # move enumeration aren't repeated for every model iteration.
+    list_specs = [("random", "Random"), ("seen", "Seen")]
+    precomputed: dict[str, tuple[NDArray[np.float32], list[int]]] = {}
+    for name, _label in list_specs:
+        boards = state_lists.get(name)
+        if not boards:
+            logger.warning(f"{fn}: state list '{name}' missing or empty; its line will be NaN.")
+            continue
+        child_inputs, counts = build_child_inputs(boards, ranker)
+        logger.info(f"{fn}: '{name}' kept {len(counts)}/{len(boards)} boards (non-terminal, >1 move).")
+        if counts:
+            precomputed[name] = (child_inputs, counts)
+
+    labels = [label for _name, label in list_specs]
+    series = Series(labels + [f"{label} CI" for label in labels])
+
+    logger.info(f"Collecting value-derived policy entropy across models ({fn}, T={temperature})...")
+    for i, model in tqdm(models):
+        series.x.append(i)
+        for name, label in list_specs:
+            if name not in precomputed:
+                series.ys[label].append(float('nan'))
+                series.ys[f"{label} CI"].append(float('nan'))
+                continue
+            child_inputs, counts = precomputed[name]
+            entropies = child_value_entropies(model, child_inputs, counts, temperature, batch_size)
+            mean, ci = mean_and_ci(entropies)
+            series.ys[label].append(mean)
+            series.ys[f"{label} CI"].append(ci)
+
+    save_series(series, f"{config.eval_dir}/{fn}.pkl")
+    logger.info(f"Saved value-derived policy entropy series to {config.eval_dir}/{fn}.pkl.")
 
 
 def evaluate_if_present(
@@ -231,6 +297,15 @@ def main():
         load_dataset(f"{config.dataset_out_dir}/random.pkl", optional=True),
         "random_value_distributions",
         n,
+    )
+
+    # Value-derived policy entropy on random + seen boards (reads state_lists.pkl
+    # for actual Boards so child moves can be enumerated; no GT required).
+    collect_value_policy_entropy(
+        models,
+        f"{config.dataset_out_dir}/state_lists.pkl",
+        "value_policy_entropy",
+        temperature=1.0,
     )
 
     logger.info("Dataset evaluation completed.")
