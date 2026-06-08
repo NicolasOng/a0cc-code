@@ -25,7 +25,7 @@ from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 #GAMES_PER_SIDE = int(os.environ.get("GAMES", "50"))
-GAMES_PER_SIDE = 100
+GAMES_PER_SIDE = 32
 
 
 def _combine(a: MatchupStats, b: MatchupStats) -> MatchupStats:
