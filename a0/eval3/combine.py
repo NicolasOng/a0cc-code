@@ -271,7 +271,7 @@ def plot_merged_value_policy_entropy() -> None:
             ("Random", "±95% CI", s.x, *_ci_keys(s, "Random")),
             ("Seen",   "±95% CI", s.x, *_ci_keys(s, "Seen")),
         ],
-        "Iteration", "Normalized Entropy", "merged_value_policy_entropy", (0, 1),
+        "Iteration", "Normalized Entropy", "merged_value_policy_entropy", None,
     )
 
 
@@ -777,7 +777,10 @@ def _rate_ci_keys(s: Series, key: str, denom_key: str) -> tuple[list[float], lis
 
 def plot_merged_ev() -> None:
     player = load_series(f"{config.eval_dir}/merged_player_evaluation_results.pkl")
-    ref    = load_series(f"{config.eval_dir}/merged_reference_evaluation_results.pkl")
+    # References are evaluated/merged after the players, so an early-timed-out
+    # eval can leave the reference series missing. Still plot the model EV in
+    # that case, just without the baseline overlays.
+    ref    = load_series(f"{config.eval_dir}/merged_reference_evaluation_results.pkl", optional=True)
     x = player.x
     n = len(x)
     groups = [
@@ -786,7 +789,7 @@ def plot_merged_ev() -> None:
             ("Model (P2)", "±95% CI", x, *_ci_keys(player, "ev_p2")),
         ],
     ]
-    for name in _reference_names(ref):
+    for name in (_reference_names(ref) if ref is not None else []):
         ev_p1, ci_p1 = _ci_keys(ref, f"{name}_ev_p1")
         ev_p2, ci_p2 = _ci_keys(ref, f"{name}_ev_p2")
         groups.append([

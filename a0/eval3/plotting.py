@@ -589,7 +589,10 @@ def _reference_names(ref: Series) -> list[str]:
 
 def plot_ev() -> None:
     player = load_series(f"{config.eval_dir}/player_evaluation_results.pkl")
-    ref = load_series(f"{config.eval_dir}/reference_evaluation_results.pkl")
+    # The reference file is written after the player file (and only once all
+    # player matchups finish), so an early-timed-out eval can leave it missing.
+    # Still plot the model EV in that case, just without the baseline overlays.
+    ref = load_series(f"{config.eval_dir}/reference_evaluation_results.pkl", optional=True)
     x = player.x
     n = len(x)
     groups = [
@@ -598,7 +601,7 @@ def plot_ev() -> None:
             ("Model (P2)", x, player.ys["ev_p2"]),
         ],
     ]
-    for name in _reference_names(ref):
+    for name in (_reference_names(ref) if ref is not None else []):
         ev_p1 = ref.ys[f"{name}_ev_p1"][0]
         ev_p2 = ref.ys[f"{name}_ev_p2"][0]
         groups.append([
