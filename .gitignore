@@ -9,6 +9,7 @@ plots/
 trained_models/
 app.log
 a0_data/
+investigations/
 
 neighboring_states/
 iteration_training_states.p

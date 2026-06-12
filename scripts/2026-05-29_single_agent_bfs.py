@@ -55,8 +55,6 @@ def run_bfs(board_size: int, num_pieces: int, verbose: bool = True) -> np.ndarra
             for move in moves:
                 board.apply_move(move)
                 child.initialize_from_board(board)
-                # Mirrors the C++ trick at InitialParallelSolver.cpp:129 — force
-                # to_move = 0 so rank_p1 takes the unflipped branch.
                 child.to_move = 0
                 new_rank = ranker.rank_p1(child)
                 if bfs[new_rank] == -1:
