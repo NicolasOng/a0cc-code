@@ -27,7 +27,7 @@ from a0.model_utils import board_to_input, get_legal_move_mask_from_state, Polic
 from a0.model import AlphaZeroModel, MultiTrunkAlphaZeroModel, load_model, save_model, create_model
 from cc.core import Game, Player
 from cc.ground_truth import GroundTruth
-from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data
+from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data, make_optimizer
 from a0.eval.model_diagnostics import log_iteration_diagnostics
 from a0.eval.training_data import GameDataStats, game_data_list_stats
 from a0.experience_buffer import ExperienceBuffer, ExperienceData
@@ -543,9 +543,21 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
     random_states = get_random_states(256, RankUnrank())
     random_states, _ = remove_duplicates(random_states)
     rsrd = get_rd_from_states(random_states, 256, shuffle=True)
-    
+
+    # iteration-0 diagnostics: probe the freshly-initialized model BEFORE any
+    # training, so init-time pre-tanh scale is distinguishable from drift
+    # acquired during iteration 1
+    if starting_iteration == 0:
+        log_iteration_diagnostics(model, rsrd, diagnostics_log_path, attempt, 0)
+
     experience_buffer = ExperienceBuffer(
         config.replay_buffer_size
+    )
+
+    # optionally keep one optimizer (and its Adam moments) across all training
+    # iterations instead of re-creating it fresh each iteration
+    persistent_optimizer = (
+        make_optimizer(model) if getattr(config, "persist_optimizer_state", False) else None
     )
 
     iterations = config.training_iterations
@@ -629,7 +641,8 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
             num_epochs=1,
             save="none",
             plot=False,
-            test_datasets={}
+            test_datasets={},
+            optimizer=persistent_optimizer
         )
         train_datas.append(train_data)
 

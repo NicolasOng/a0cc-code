@@ -1,5 +1,6 @@
 from typing import Optional, Any
 import os
+import json
 import pickle
 import matplotlib.pyplot as plt
 import math
@@ -156,14 +157,43 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     # where aux can be any additional information you want to return
     return total_loss, (value_loss, policy_loss, value_accuracy, policy_accuracy)
 
+def _grad_norms(grads: Any) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+    """Global grad norm plus the value head's total and final-layer (dense2)
+    kernel norms — the saturation-relevant components. Path filtering happens
+    at trace time, so this is free inside jit."""
+    total_sq, vh_sq, d2_sq = 0.0, 0.0, 0.0
+    for path, leaf in jax.tree_util.tree_leaves_with_path(grads):
+        name = jax.tree_util.keystr(path)
+        sq = jnp.sum(leaf.astype(jnp.float32) ** 2)
+        total_sq += sq
+        if 'value_head' in name:
+            vh_sq += sq
+            if 'dense2' in name:
+                d2_sq += sq
+    return jnp.sqrt(total_sq), jnp.sqrt(vh_sq), jnp.sqrt(d2_sq)
+
 @nnx.jit
 def train_step(model: AlphaZeroModel, optimizer: nnx.Optimizer, batch: dict[str, Any]):
     grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
     (loss, (value_loss, policy_loss, value_accuracy, policy_accuracy)), grads = grad_fn(model, batch)
+    grad_norm_total, grad_norm_value_head, grad_norm_value_dense2 = _grad_norms(grads)
     optimizer.update(grads)
-    return loss, value_loss, policy_loss, value_accuracy, policy_accuracy
+    return loss, value_loss, policy_loss, value_accuracy, policy_accuracy, (grad_norm_total, grad_norm_value_head, grad_norm_value_dense2)
 
-def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0, test_datasets: dict[str, Dataset] = {}) -> tuple[AlphaZeroModel, EpochData, int]:
+def make_optimizer(model: AlphaZeroModel) -> nnx.Optimizer:
+    """Builds the training optimizer: adamw, optionally preceded by global-norm
+    gradient clipping (config.grad_clip_norm)."""
+    # value: 0.00005
+    tx = optax.adamw(
+        learning_rate=config.learning_rate,
+        weight_decay=config.weight_decay
+    )
+    grad_clip_norm = getattr(config, "grad_clip_norm", None)
+    if grad_clip_norm:
+        tx = optax.chain(optax.clip_by_global_norm(grad_clip_norm), tx)
+    return nnx.Optimizer(model, tx)
+
+def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0, test_datasets: dict[str, Dataset] = {}, optimizer: Optional[nnx.Optimizer] = None) -> tuple[AlphaZeroModel, EpochData, int]:
     logger.info(f"Training model on the given dataset ({len(dataset)})...")
     start = time.perf_counter()
 
@@ -181,11 +211,11 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
     logger.info(f"Batches per save: {batches_per_save}")
     logger.info(f"Total models: {total_models_evaluated}")
 
-    # value: 0.00005
-    optimizer = nnx.Optimizer(model, optax.adamw(
-        learning_rate=config.learning_rate,
-        weight_decay=config.weight_decay
-    ))
+    if optimizer is None:
+        # default: fresh optimizer (and fresh Adam moments) per call
+        optimizer = make_optimizer(model)
+
+    step_log_path = config.log_dir + "train_step_diagnostics.jsonl"
 
     for ts, batch in enumerate(batches):
         # convert the batch to a dictionary
@@ -197,13 +227,36 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
             'mask': mask_batch,  # (N, board_size ** 4)
             'weights': weights_batch  # (N, 1)
         }
-        loss, value_loss, policy_loss, value_accuracy, policy_accuracy = train_step(model, optimizer, batch)
+        loss, value_loss, policy_loss, value_accuracy, policy_accuracy, grad_norms = train_step(model, optimizer, batch)
         logger.info(f"Training Step {ts}/{num_batches}, "
                     f"Loss: {loss:.4f}, "
                     f"Value Loss: {value_loss:.4f}, "
                     f"Value Accuracy: {value_accuracy:.2%}, "
                     f"Policy Loss: {policy_loss:.4f}, "
                     f"Policy Accuracy: {policy_accuracy:.2%}")
+
+        # per-step saturation diagnostics: pre-tanh stats on this batch
+        # (post-update, eval-mode BN) + grad norms from the step just taken
+        pre_tanh = model.value_pre_tanh_inference(batch['board'])
+        step_entry = {
+            'timestamp': time.time(),
+            'step': ts,
+            'batch_size': len(batch['board']),
+            'value_loss': float(value_loss),
+            'policy_loss': float(policy_loss),
+            'grad_norm_total': float(grad_norms[0]),
+            'grad_norm_value_head': float(grad_norms[1]),
+            'grad_norm_value_dense2': float(grad_norms[2]),
+            'pre_tanh_mean_abs': float(jnp.mean(jnp.abs(pre_tanh))),
+            'pre_tanh_max_abs': float(jnp.max(jnp.abs(pre_tanh))),
+            'pre_tanh_mean': float(jnp.mean(pre_tanh)),
+            'sat_frac': float(jnp.mean((jnp.abs(pre_tanh) > 3.0).astype(jnp.float32))),
+        }
+        try:
+            with open(step_log_path, "a") as f:
+                f.write(json.dumps(step_entry) + "\n")
+        except OSError as e:
+            logger.log(30, f"Failed to write train-step diagnostics: {e}")
 
         # create batch data
         batch_data = BatchData()
@@ -243,15 +296,17 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
 
     return model, epoch_data, cur_model_no
 
-def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True, test_datasets: dict[str, Dataset] = {}) -> tuple[AlphaZeroModel, DatasetData]:
+def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True, test_datasets: dict[str, Dataset] = {}, optimizer: Optional[nnx.Optimizer] = None) -> tuple[AlphaZeroModel, DatasetData]:
     """
     Train the model for a number of epochs on the given dataset.
+    If an optimizer is passed, it is reused (its Adam moments persist across
+    calls); otherwise a fresh one is created per epoch.
     """
     dataset_data = DatasetData()
     cur_model_no = 0
     for epoch in range(num_epochs):
         logger.info(f"Training epoch {epoch + 1}/{num_epochs}...")
-        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no, test_datasets)
+        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no, test_datasets, optimizer)
         if save == "epoch":
             # Save the model after each epoch
             logger.info(f"Saving model after epoch {epoch + 1}...")

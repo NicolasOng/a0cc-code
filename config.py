@@ -47,6 +47,12 @@ class Config:
     learning_rate: float
     weight_decay: float
     value_loss_weight: float
+    grad_clip_norm: float | None  # global-norm gradient clipping; null/None = off
+
+    num_filters: int     # conv filters throughout the model trunk
+    num_resblocks: int   # residual blocks in the trunk
+    value_head_zero_init: bool  # zero-init the final value layer so pre-tanh starts at 0
+    persist_optimizer_state: bool  # keep Adam moments across training iterations instead of re-creating the optimizer
 
     eval_neighbors: int
     eval_mcts_samples: list[int]

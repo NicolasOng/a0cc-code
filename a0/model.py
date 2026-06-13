@@ -80,13 +80,23 @@ class ValueHead(nnx.Module):
         '''
         super().__init__()
         self.dense1 = nnx.Linear(in_features=in_features, out_features=256, rngs=rngs)
-        self.dense2 = nnx.Linear(in_features=256, out_features=1, rngs=rngs)
+        if getattr(config, "value_head_zero_init", False):
+            # zero-init the final layer so pre-tanh starts exactly at 0 (tanh's
+            # max-gradient region); gradients still flow since dense1's output
+            # is nonzero (dW2 = g * h even when W2 = 0)
+            self.dense2 = nnx.Linear(
+                in_features=256, out_features=1,
+                kernel_init=jax.nn.initializers.zeros,
+                bias_init=jax.nn.initializers.zeros,
+                rngs=rngs
+            )
+        else:
+            self.dense2 = nnx.Linear(in_features=256, out_features=1, rngs=rngs)
 
-    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+    def pre_tanh(self, x: jnp.ndarray) -> jnp.ndarray:
         '''
-        Applies the value head to the input tensor x.
-        The input tensor x is expected to have shape (batch_size, height, width, in_features).
-        The output tensor will have shape (batch_size, 1).
+        The value head up to (but not including) the final tanh.
+        Input: (batch_size, height, width, in_features); output: (batch_size, 1).
         '''
         # x: (batch_size, height, width, in_features)
         x = x.reshape((x.shape[0], -1))  # flatten
@@ -97,9 +107,15 @@ class ValueHead(nnx.Module):
         # x: (batch_size, 256)
         x = self.dense2(x)
         # x: (batch_size, 1)
-        x = jnp.tanh(x)
-        # x: (batch_size, 1)
         return x
+
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        '''
+        Applies the value head to the input tensor x.
+        The input tensor x is expected to have shape (batch_size, height, width, in_features).
+        The output tensor will have shape (batch_size, 1).
+        '''
+        return jnp.tanh(self.pre_tanh(x))
 
 # class for the AlphaZero model
 class AlphaZeroModel(nnx.Module):
@@ -145,9 +161,22 @@ class AlphaZeroModel(nnx.Module):
         A convenience method for performing inference (i.e., calling the model with train=False).
         '''
         return self.__call__(x, train=False)
-    
+
     def train_inference(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
         return self(x, train=True)
+
+    @nnx.jit
+    def value_pre_tanh_inference(self, x: jnp.ndarray) -> jnp.ndarray:
+        '''
+        Eval-mode forward pass returning the value head's pre-tanh output —
+        used by training-time diagnostics to monitor tanh saturation.
+        '''
+        x = self.conv(x)
+        x = self.bn(x, use_running_average=True)
+        x = jax.nn.relu(x)
+        for block in self.resblocks:
+            x = block(x, train=False)
+        return self.value_head.pre_tanh(x)
 
 # class for the multi-trunk AlphaZero model (separate backbones for value and policy)
 class MultiTrunkAlphaZeroModel(nnx.Module):
@@ -192,9 +221,25 @@ class MultiTrunkAlphaZeroModel(nnx.Module):
     def train_inference(self, x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
         return self(x, train=True)
 
+    @nnx.jit
+    def value_pre_tanh_inference(self, x: jnp.ndarray) -> jnp.ndarray:
+        '''Eval-mode pre-tanh output (value trunk only); see AlphaZeroModel.'''
+        v = self.value_conv(x)
+        v = self.value_bn(v, use_running_average=True)
+        v = jax.nn.relu(v)
+        for block in self.value_resblocks:
+            v = block(v, train=False)
+        return self.value_head.pre_tanh(v)
 
-def create_model(board_size: int, rngs: nnx.Rngs, num_filters: int = 256, num_resblocks: int = 3) -> AlphaZeroModel | MultiTrunkAlphaZeroModel:
-    '''Creates the appropriate model based on config.experiment.'''
+
+def create_model(board_size: int, rngs: nnx.Rngs, num_filters: int | None = None, num_resblocks: int | None = None) -> AlphaZeroModel | MultiTrunkAlphaZeroModel:
+    '''Creates the appropriate model based on config.experiment. Model size
+    defaults come from config (num_filters/num_resblocks) so that load_model
+    reconstructs the same architecture the checkpoint was trained with.'''
+    if num_filters is None:
+        num_filters = getattr(config, "num_filters", 256)
+    if num_resblocks is None:
+        num_resblocks = getattr(config, "num_resblocks", 3)
     if config.experiment == "separate_backbone":
         return MultiTrunkAlphaZeroModel(board_size, rngs=rngs, num_filters=num_filters, num_resblocks=num_resblocks)
     return AlphaZeroModel(board_size, rngs=rngs, num_filters=num_filters, num_resblocks=num_resblocks)
