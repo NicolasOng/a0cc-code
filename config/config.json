@@ -7,7 +7,7 @@
     "input_dir": "input/",
     "training_iterations": 50,
     "training_samples": 5000,
-    "turn_limit": 80,
+    "turn_limit": 200,
     "replay_buffer_size": 10000,
     "training_batch_size": 256,
     "mcts_samples": 512,
