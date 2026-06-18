@@ -619,7 +619,7 @@ class Game:
         # no_reverse_moves -> only set to true for training a0 (if needed)
         # no_illegal_moves -> only set to true for validations
         # if true, player can "jump" off the board during chained jumps
-        self.can_jump_out_of_home = True
+        self.can_jump_out_of_home = False
         # if true, player must use the four non-main corners during chained jumps
         self.use_four_corners_to_jump = False
         # if true, players can't move pieces "backwards" (towards their home area).
