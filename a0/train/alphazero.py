@@ -276,19 +276,28 @@ def game_data_to_td_lambda_training_set(game_data: GameData, model: AlphaZeroMod
     if not turn_data:
         return training_set
 
-    # \hat{v}(S_0), \hat{v}(S_1), ..., \hat{v}(S_{T-1}) via batch inference
-    # pad to fixed batch size so JAX JIT only compiles one kernel for this path
-    FIXED_BATCH_SIZE = config.turn_limit if config.turn_limit else 64
+    # \hat{v}(S_0), \hat{v}(S_1), ..., \hat{v}(S_{T-1}) via batch inference.
+    # Run inference in fixed-size chunks: each chunk is padded to a single static
+    # shape so the JIT still compiles only one kernel for this path, while peak GPU
+    # memory is bounded by the chunk size instead of by turn_limit. Sizing the batch
+    # to turn_limit made a long-turn_limit game allocate a huge forward pass in every
+    # self-play worker, which OOMs the GPU when many workers run concurrently.
+    INFERENCE_BATCH_SIZE = getattr(config, "self_play_value_inference_batch_size", 64)
     board_inputs = [board_to_input(turn.board) for turn in turn_data]
     boards = np.concatenate(board_inputs, axis=0)
     num_real = boards.shape[0]
-    if num_real < FIXED_BATCH_SIZE:
-        padding = np.zeros((FIXED_BATCH_SIZE - num_real, *boards.shape[1:]), dtype=boards.dtype)
-        boards_padded = np.concatenate([boards, padding], axis=0)
-    else:
-        boards_padded = boards
-    model_values, _ = model.inference(boards_padded)
-    model_values = model_values[:num_real]
+
+    value_chunks = []
+    for start in range(0, num_real, INFERENCE_BATCH_SIZE):
+        chunk = boards[start:start + INFERENCE_BATCH_SIZE]
+        chunk_len = chunk.shape[0]
+        # pad the (possibly final) chunk up to the fixed size so the JIT sees one shape
+        if chunk_len < INFERENCE_BATCH_SIZE:
+            padding = np.zeros((INFERENCE_BATCH_SIZE - chunk_len, *chunk.shape[1:]), dtype=chunk.dtype)
+            chunk = np.concatenate([chunk, padding], axis=0)
+        chunk_values, _ = model.inference(chunk)
+        value_chunks.append(chunk_values[:chunk_len])
+    model_values = jnp.concatenate(value_chunks, axis=0)
     model_values = jax.lax.stop_gradient(model_values)
 
     num_turns = len(turn_data)
