@@ -23,7 +23,22 @@ Sweep spec format (see sweeps/example.json):
             "td_lambda": [0.0, 0.5, 0.9]
         }
     }
-or, for explicit points instead of a grid:
+A grid axis may also be a list of dicts instead of scalars — a "coupled" axis
+whose named params vary together rather than independently. The grid key is then
+just a label. This lets you cross-product a coupled set against other axes
+without exploding into the full cartesian product:
+    {
+        "name": "coupled_example",
+        "base_config": "config/config.json",
+        "num_trials": 8,
+        "grid": {
+            "C": [1],
+            "AB": [{"A": 1, "B": 1}, {"A": 2, "B": 2}]
+        }
+    }
+expands to just (A=1, B=1, C=1) and (A=2, B=2, C=1) — two points, not four.
+
+Or, for explicit points instead of a grid:
     {
         "name": "specific_points",
         "base_config": "config/config.json",
@@ -119,9 +134,23 @@ def expand_points(spec: dict) -> list[dict]:
     if "grid" in spec:
         grid = spec["grid"]
         keys = list(grid.keys())
-        value_lists = [grid[k] for k in keys]
-        for combo in itertools.product(*value_lists):
-            points.append({k: v for k, v in zip(keys, combo)})
+        # Each grid key defines one axis; the cartesian product of all axes is
+        # taken. An axis value is a list whose entries are normalized to
+        # "settings dicts":
+        #   - a scalar v     -> {key: v}      (this single param varies)
+        #   - a dict {A:1,..} -> {A:1, ...}   (a *coupled* axis: the named params
+        #     vary together and the grid key is just a label)
+        # so e.g. grid = {"C": [1], "AB": [{"A":1,"B":1}, {"A":2,"B":2}]} yields
+        # the two points {C:1,A:1,B:1} and {C:1,A:2,B:2} rather than all four.
+        axes = []
+        for k in keys:
+            axis = [dict(v) if isinstance(v, dict) else {k: v} for v in grid[k]]
+            axes.append(axis)
+        for combo in itertools.product(*axes):
+            merged: dict = {}
+            for settings in combo:
+                merged.update(settings)
+            points.append(merged)
     if "points" in spec:
         points.extend(spec["points"])
     seen: set[str] = set()
