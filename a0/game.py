@@ -23,6 +23,10 @@ class TurnData:
         self.player_data: Any = player_data
         self.alternative_value_target: float | None = None
         self.alternative_policy_target: NDArray[np.float32] | None = None
+        # target-refresh path: (iteration, refresh, target) tuples for each
+        # refresh this turn was retargeted during its generation iteration.
+        # None on the non-refresh paths (and absent on old pickles; read with getattr).
+        self.refresh_value_targets: list[tuple[int, int, float]] | None = None
 
 class GameData:
     def __init__(self, game: Game, turn_limit: Optional[int] = None):
