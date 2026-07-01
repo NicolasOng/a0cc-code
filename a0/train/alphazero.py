@@ -25,7 +25,8 @@ from a0.players.a0 import A0Player
 from a0.model import load_model, save_model, create_model
 from cc.core import Game
 from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data, make_optimizer
-from a0.train.targets import build_training_set
+from a0.train.targets import build_training_set, resolve_td_lambda
+from a0.train.trajectory_buffer import TrajectoryReplayBuffer
 from a0.eval.model_diagnostics import log_iteration_diagnostics
 from a0.eval.training_data import GameDataStats, game_data_list_stats
 from a0.experience_buffer import ExperienceBuffer, ExperienceData
@@ -50,6 +51,39 @@ def capture_dataset_diagnostics(
         'dataset_values_post': post_balance_values.tolist(),
         'dataset_weights_post': post_balance_weights.tolist() if post_balance_weights is not None else None,
     }
+
+def balance_dataset(eb_dataset) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    '''
+    Applies config.dataset_balance_method to the dataset in place and returns
+    (pre_balance_values, post_balance_values, post_balance_weights) for
+    diagnostics. Shared by the classic and target-refresh training paths.
+    '''
+    win_count, draw_count, loss_count = eb_dataset.get_distribution()
+    logger.log(25, f"Training dataset distribution (pre-balancing): {win_count} wins, {draw_count} draws, {loss_count} losses")
+    eb_dataset.print_bucket_distribution()
+    pre_balance_values = eb_dataset.values.flatten().copy()
+
+    if config.dataset_balance_method == "subsample_buckets":
+        logger.log(25, f"Balancing values into {config.num_buckets_for_balance} buckets (win vs non-win)...")
+        eb_dataset.balance_values_symmetric(n_buckets=config.num_buckets_for_balance)
+        new_win_count, new_draw_count, new_loss_count = eb_dataset.get_distribution()
+        logger.log(25, f"After balancing: {new_win_count} wins, {new_draw_count} draws, {new_loss_count} losses")
+        eb_dataset.print_bucket_distribution()
+    elif config.dataset_balance_method in ("weighted_buckets", "weighted_buckets_ones"):
+        logger.log(25, f"Computing symmetric-pair value weights ({config.num_buckets_for_balance} buckets, max_ratio={config.max_weight_ratio})...")
+        eb_dataset.compute_value_weights_symmetric(
+            n_buckets=config.num_buckets_for_balance,
+            max_weight_ratio=config.max_weight_ratio,
+        )
+        if config.dataset_balance_method == "weighted_buckets_ones":
+            logger.log(25, "Overriding computed weights with ones (weighted_buckets_ones mode)")
+            eb_dataset.weights = np.ones_like(eb_dataset.weights)
+
+    post_balance_values = eb_dataset.values.flatten().copy()
+    post_balance_weights = (
+        eb_dataset.weights.flatten().copy() if eb_dataset.weights is not None else None
+    )
+    return pre_balance_values, post_balance_values, post_balance_weights
 
 def _play(serialized_player: bytes, iteration: int, cancel_event: Optional[Any] = None) -> tuple[list[ExperienceData], GameData]:
     '''
@@ -81,6 +115,11 @@ def _play(serialized_player: bytes, iteration: int, cancel_event: Optional[Any] 
     player: A0Player = dill.loads(serialized_player)
     game_data = play(game, [player, player], config.turn_limit, cancel_event=cancel_event)
 
+    if getattr(config, "use_target_refresh", False):
+        # target-refresh path: value targets are derived at training time from
+        # the trajectory buffer, so the worker returns only the game data and
+        # skips target construction (and its model inference) entirely.
+        return [], game_data
     return build_training_set(game_data, player.model, iteration), game_data
 
 def self_play(player: A0Player, iteration: int) -> tuple[list[ExperienceData], list[GameData]]:
@@ -126,8 +165,12 @@ def self_play(player: A0Player, iteration: int) -> tuple[list[ExperienceData], l
             for _ in range(num_cores):
                 start_game()
 
+            # count positions from the game data rather than the training set:
+            # equal on the classic paths (one example per turn), and the
+            # target-refresh path returns empty training sets from workers.
+            num_positions = 0
             while True:
-                logger.info(f"Current training set size: {len(training_set)}/{config.training_samples}")
+                logger.info(f"Current training set size: {num_positions}/{config.training_samples}")
                 # when a game (or games) finish(es),
                 done, _ = wait(futures, return_when=FIRST_COMPLETED)
 
@@ -141,12 +184,13 @@ def self_play(player: A0Player, iteration: int) -> tuple[list[ExperienceData], l
                     training_set.extend(game_training_set)
                     # and the game data to the list of game data
                     game_data_list.append(game_data)
+                    num_positions += len(game_data.turn_data)
                     # if the training set is not full yet, start a new game
-                    if len(training_set) < config.training_samples:
+                    if num_positions < config.training_samples:
                         start_game()
 
                 # stop when the training set is full
-                if len(training_set) >= config.training_samples:
+                if num_positions >= config.training_samples:
                     logger.info("Training set is full, cancelling all games.")
                     # signal already-running games to exit early (checked between turns)
                     cancel_event.set()
@@ -157,7 +201,7 @@ def self_play(player: A0Player, iteration: int) -> tuple[list[ExperienceData], l
                     # but they now bail out quickly thanks to cancel_event
                     break
     
-    logger.info(f"Generated training set of size: {len(training_set)}/{config.training_samples}")
+    logger.info(f"Generated training set of size: {num_positions}/{config.training_samples}")
     return training_set, game_data_list
 
 def get_most_recent_model_path() -> Optional[tuple[str, int]]:
@@ -242,9 +286,14 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
     if starting_iteration == 0:
         log_iteration_diagnostics(model, rsrd, diagnostics_log_path, attempt, 0)
 
-    experience_buffer = ExperienceBuffer(
-        config.replay_buffer_size
-    )
+    use_target_refresh = getattr(config, "use_target_refresh", False)
+    if use_target_refresh:
+        # trajectory buffer: stores whole games; targets recomputed per refresh
+        trajectory_buffer = TrajectoryReplayBuffer(config.replay_buffer_size)
+    else:
+        experience_buffer = ExperienceBuffer(
+            config.replay_buffer_size
+        )
 
     # optionally keep one optimizer (and its Adam moments) across all training
     # iterations instead of re-creating it fresh each iteration
@@ -281,62 +330,132 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
         game_data_stats = game_data_list_stats(i, game_data)
         logger.log(25, f"{game_data_stats.get_line()}")
         
-        # save the game data to a file
-        if config.training_dir:
-            with open(config.training_dir + f"gamedata_{i + 1}.pkl", 'wb') as f:
-                pickle.dump(game_data, f)
-        
-        # add the training data to the replay buffer
-        for example in training_set:
-            experience_buffer.add(example)
-        
-        # get a dataset from the replay buffer for training, and train the model on it
-        eb_dataset = experience_buffer.get_dataset(config.training_batch_size)
-        # print the distribution of values in the dataset
-        win_count, draw_count, loss_count = eb_dataset.get_distribution()
-        logger.log(25, f"Training dataset distribution (pre-balancing): {win_count} wins, {draw_count} draws, {loss_count} losses")
-        eb_dataset.print_bucket_distribution()
-        pre_balance_values = eb_dataset.values.flatten().copy()
-        
-        if config.dataset_balance_method == "subsample_buckets":
-            logger.log(25, f"Balancing values into {config.num_buckets_for_balance} buckets (win vs non-win)...")
-            eb_dataset.balance_values_symmetric(n_buckets=config.num_buckets_for_balance)
-            new_win_count, new_draw_count, new_loss_count = eb_dataset.get_distribution()
-            logger.log(25, f"After balancing: {new_win_count} wins, {new_draw_count} draws, {new_loss_count} losses")
-            eb_dataset.print_bucket_distribution()
-        elif config.dataset_balance_method in ("weighted_buckets", "weighted_buckets_ones"):
-            logger.log(25, f"Computing symmetric-pair value weights ({config.num_buckets_for_balance} buckets, max_ratio={config.max_weight_ratio})...")
-            eb_dataset.compute_value_weights_symmetric(
-                n_buckets=config.num_buckets_for_balance,
-                max_weight_ratio=config.max_weight_ratio,
-            )
-            if config.dataset_balance_method == "weighted_buckets_ones":
-                logger.log(25, "Overriding computed weights with ones (weighted_buckets_ones mode)")
-                eb_dataset.weights = np.ones_like(eb_dataset.weights)
-        
-        # capture dataset diagnostics: distributions before and after balancing
-        post_balance_values = eb_dataset.values.flatten().copy()
-        post_balance_weights = (
-            eb_dataset.weights.flatten().copy() if eb_dataset.weights is not None else None
-        )
-        dataset_diagnostics = capture_dataset_diagnostics(
-            pre_balance_values, post_balance_values, post_balance_weights
-        )
-        if config.training_dir:
-            with open(config.training_dir + f"dataset_diagnostics_{i + 1}.pkl", 'wb') as f:
-                pickle.dump(dataset_diagnostics, f)
+        if use_target_refresh:
+            # ---- target-refresh path ----
+            # gamedata pkls are saved AFTER the refresh loop (below) so the
+            # per-refresh target tuples land inside them.
+            for game_index, gd in enumerate(game_data):
+                trajectory_buffer.add_game(gd, i, game_index)
+            logger.log(25, f"Trajectory buffer: {len(trajectory_buffer)} positions in {len(trajectory_buffer.games)} games")
 
-        # train the model on the experiences in the replay buffer
-        model, train_data = train_model_epochs(
-            model=model,
-            dataset=eb_dataset,
-            num_epochs=1,
-            save="none",
-            plot=False,
-            test_datasets={},
-            optimizer=persistent_optimizer
-        )
-        train_datas.append(train_data)
+            num_refreshes = max(1, getattr(config, "num_target_refreshes", 1))
+            lam = resolve_td_lambda(i)
+            refresh_pw = getattr(config, "refresh_policy_loss_weight", 1.0)
+            # one optimizer across the whole refresh loop (Adam moments must
+            # survive between refreshes even without persist_optimizer_state)
+            refresh_optimizer = persistent_optimizer if persistent_optimizer is not None else make_optimizer(model)
+
+            # subsampled dist diagnostics: N/num_refreshes per refresh, tagged
+            diag_pre: list[np.ndarray] = []
+            diag_post: list[np.ndarray] = []
+            diag_weights: list[np.ndarray | None] = []
+            diag_refresh_pre: list[np.ndarray] = []
+            diag_refresh_post: list[np.ndarray] = []
+
+            train_data = DatasetData()
+            for refresh in range(num_refreshes):
+                eb_dataset, delta_stats = trajectory_buffer.refresh_and_build_dataset(
+                    model, lam, i, refresh, config.training_batch_size
+                )
+                if delta_stats["mean"] is not None:
+                    logger.log(25, f"Refresh {refresh + 1}/{num_refreshes} (lam={lam:.4f}): "
+                                   f"target delta mean={delta_stats['mean']:.6f}, "
+                                   f"max={delta_stats['max']:.6f}, n={delta_stats['n']}")
+                else:
+                    logger.log(25, f"Refresh {refresh + 1}/{num_refreshes} (lam={lam:.4f}): no previous targets for delta")
+
+                pre_values, post_values, post_weights = balance_dataset(eb_dataset)
+
+                # uniform random subsample so all refreshes fit the same budget
+                for values, out, tags in ((pre_values, diag_pre, diag_refresh_pre),
+                                          (post_values, diag_post, diag_refresh_post)):
+                    n_keep = min(len(values), (len(values) + num_refreshes - 1) // num_refreshes)
+                    idx = np.random.choice(len(values), size=n_keep, replace=False)
+                    out.append(values[idx])
+                    tags.append(np.full(n_keep, refresh, dtype=np.int32))
+                    if values is post_values:
+                        diag_weights.append(post_weights[idx] if post_weights is not None else None)
+
+                # policy targets don't change across refreshes; optionally
+                # down-weight them after the first pass. Omitted at weight 1.0
+                # (and always on refresh 0) so the batch structure — and thus
+                # the JIT trace — matches the classic path.
+                pw = refresh_pw if (refresh > 0 and refresh_pw != 1.0) else None
+                model, refresh_train_data = train_model_epochs(
+                    model=model,
+                    dataset=eb_dataset,
+                    num_epochs=1,
+                    save="none",
+                    plot=False,
+                    test_datasets={},
+                    optimizer=refresh_optimizer,
+                    policy_loss_weight=pw
+                )
+                # merge: one DatasetData per iteration, one epoch per refresh —
+                # keeps iteration_stats/plot file schema identical
+                train_data.epoch_data.extend(refresh_train_data.epoch_data)
+            train_datas.append(train_data)
+
+            # save the game data (now carrying refresh_value_targets tuples)
+            if config.training_dir:
+                with open(config.training_dir + f"gamedata_{i + 1}.pkl", 'wb') as f:
+                    pickle.dump(game_data, f)
+            # from here on, refresh targets for these games route to the sidecar
+            trajectory_buffer.drop_game_data_refs()
+
+            # sidecar: refreshed targets of older buffered games this iteration
+            sidecar = trajectory_buffer.pop_sidecar()
+            sidecar["iteration"] = i + 1
+            if config.training_dir:
+                with open(config.training_dir + f"refresh_targets_{i + 1}.pkl", 'wb') as f:
+                    pickle.dump(sidecar, f)
+
+            weights_all = None
+            if any(w is not None for w in diag_weights):
+                weights_all = np.concatenate([w for w in diag_weights if w is not None])
+            dataset_diagnostics = capture_dataset_diagnostics(
+                np.concatenate(diag_pre), np.concatenate(diag_post), weights_all
+            )
+            # refresh tags parallel to the value arrays, for per-refresh analysis
+            dataset_diagnostics["refresh_index_pre"] = np.concatenate(diag_refresh_pre).tolist()
+            dataset_diagnostics["refresh_index_post"] = np.concatenate(diag_refresh_post).tolist()
+            if config.training_dir:
+                with open(config.training_dir + f"dataset_diagnostics_{i + 1}.pkl", 'wb') as f:
+                    pickle.dump(dataset_diagnostics, f)
+        else:
+            # ---- classic path ----
+            # save the game data to a file
+            if config.training_dir:
+                with open(config.training_dir + f"gamedata_{i + 1}.pkl", 'wb') as f:
+                    pickle.dump(game_data, f)
+
+            # add the training data to the replay buffer
+            for example in training_set:
+                experience_buffer.add(example)
+
+            # get a dataset from the replay buffer for training, and train the model on it
+            eb_dataset = experience_buffer.get_dataset(config.training_batch_size)
+            pre_balance_values, post_balance_values, post_balance_weights = balance_dataset(eb_dataset)
+
+            # capture dataset diagnostics: distributions before and after balancing
+            dataset_diagnostics = capture_dataset_diagnostics(
+                pre_balance_values, post_balance_values, post_balance_weights
+            )
+            if config.training_dir:
+                with open(config.training_dir + f"dataset_diagnostics_{i + 1}.pkl", 'wb') as f:
+                    pickle.dump(dataset_diagnostics, f)
+
+            # train the model on the experiences in the replay buffer
+            model, train_data = train_model_epochs(
+                model=model,
+                dataset=eb_dataset,
+                num_epochs=1,
+                save="none",
+                plot=False,
+                test_datasets={},
+                optimizer=persistent_optimizer
+            )
+            train_datas.append(train_data)
 
         # plot, log, and save the model performance metrics in this iteration's training
         plot_model_performance(f"training_plots/iteration_{i + 1}", [train_data])

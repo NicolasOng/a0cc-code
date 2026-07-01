@@ -319,6 +319,19 @@ def game_data_to_td_lambda_training_set(game_data: GameData, model: AlphaZeroMod
 
     return training_set
 
+def resolve_td_lambda(iteration: int) -> float:
+    '''
+    The lambda in effect at this iteration:
+      - "interpolated_td_lambda": linear interpolation, lam = 1 at iteration 0,
+        decreasing to lam = 0 by 25% of the way through training, then 0.
+      - otherwise: config.td_lambda (default 1.0 = plain MC targets).
+    Shared by the self-play dispatch and the target-refresh path.
+    '''
+    if config.alternative_target == "interpolated_td_lambda":
+        warmup = max((config.training_iterations - 1) * 0.25, 1)
+        return max(1.0 - (iteration / warmup), 0.0)
+    return getattr(config, "td_lambda", 1.0)
+
 def build_training_set(game_data: GameData, model: AlphaZeroModel | MultiTrunkAlphaZeroModel, iteration: int) -> list[ExperienceData]:
     '''
     Dispatches to the target builder selected by config.alternative_target.
@@ -333,13 +346,9 @@ def build_training_set(game_data: GameData, model: AlphaZeroModel | MultiTrunkAl
     elif config.alternative_target == "td_0":
         return game_data_to_model_value_training_set(game_data, model)
     elif config.alternative_target == "td_lambda":
-        lam = config.td_lambda
-        return game_data_to_td_lambda_training_set(game_data, model, lam)
+        return game_data_to_td_lambda_training_set(game_data, model, resolve_td_lambda(iteration))
     elif config.alternative_target == "interpolated_td_lambda":
-        # linear interpolation: lam = 1 (td_lambda) at iteration 0, decreasing to
-        # lam = 0 (td_0) by 25% of the way through training, then td_0 for the rest.
-        warmup = max((config.training_iterations - 1) * 0.25, 1)
-        lam = max(1.0 - (iteration / warmup), 0.0)
+        lam = resolve_td_lambda(iteration)
         logger.info(f"interpolated_td_lambda: iteration={iteration}, lam={lam:.4f}")
         return game_data_to_td_lambda_training_set(game_data, model, lam)
     else:
