@@ -10,7 +10,7 @@ from a0.model import AlphaZeroModel, load_model, save_model
 from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data
 from a0.eval.training_data import GameDataStats, game_data_list_stats
 from a0.experience_buffer import ExperienceBuffer, ExperienceData
-from a0.train.alphazero import game_data_to_training_set, game_data_to_gt_training_set
+from a0.train.targets import game_data_to_training_set, game_data_to_gt_training_set
 from a0.eval.training_data import game_data_generator
 
 from utils.log import get_logger, setup_logging
