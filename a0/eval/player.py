@@ -20,8 +20,8 @@ from a0.players.a0 import A0Player
 from a0.players.random import RandomPlayer
 from a0.mcts.rollout_strategies import EvaluatorType, PolicyType
 from a0.players.mcts_rollout import MCTSRolloutPlayer
-from a0.utils.load_training_data import load_models
-from a0.utils.plotting import Series, save_series
+from a0.model import load_model
+from a0.utils.plotting import Series, save_series, load_series
 
 from config import config
 
@@ -201,10 +201,45 @@ def run_matchup(
     return stats
 
 
-def get_trained_players() -> list[tuple[int, A0Player]]:
-    '''Load every trained-model checkpoint and wrap it in an A0Player.'''
+def available_checkpoint_iters() -> list[int]:
+    '''Iteration numbers i for which model_<i>.pkl exists in training_dir, ascending.'''
+    d = config.training_dir
     return [
-        (i, A0Player(
+        i for i in range(config.training_iterations + 1)
+        if os.path.exists(f"{d}/model_{i}.pkl")
+    ]
+
+
+def iters_to_evaluate(available: list[int], already_done: set[int]) -> list[int]:
+    '''Pick which checkpoints to evaluate this run.
+
+    Honors config.player_eval_stride (evaluate every Nth checkpoint), but always
+    includes iteration 0 and the latest available checkpoint. Anything already
+    present in the results series (already_done) is skipped so extending a run
+    doesn't re-evaluate from 0.
+    '''
+    if not available:
+        return []
+    stride = max(1, int(getattr(config, "player_eval_stride", 1)))
+    selected = {i for i in available if i % stride == 0}
+    selected.add(available[0])   # iteration 0 (baseline / freshly-initialized model)
+    selected.add(available[-1])  # the latest checkpoint
+    return sorted(i for i in selected if i not in already_done)
+
+
+def get_trained_players(iters: list[int]) -> list[tuple[int, A0Player]]:
+    '''Load the requested trained-model checkpoints and wrap each in an A0Player.
+
+    Only the iterations in `iters` are loaded (missing files are skipped), so we
+    don't pay to deserialize checkpoints we won't evaluate.'''
+    players: list[tuple[int, A0Player]] = []
+    for i in iters:
+        model_path = f"{config.training_dir}/model_{i}.pkl"
+        if not os.path.exists(model_path):
+            logger.warning(f"model {i} not found at {model_path}; skipping.")
+            continue
+        model = load_model(model_path)
+        players.append((i, A0Player(
             config.board_size,
             config.num_pieces,
             model,
@@ -218,9 +253,8 @@ def get_trained_players() -> list[tuple[int, A0Player]]:
             policy_type=config.policy_type,
             epsilon=config.epsilon,
             dirichlet_epsilon=config.dirichlet_epsilon
-        ))
-        for i, model in load_models(config.training_dir, config.training_iterations)
-    ]
+        )))
+    return players
 
 
 def _baseline_c() -> float:
@@ -314,6 +348,7 @@ def evaluate_players(
     output_path: str,
     log_games: int = 0,
     game_log_path: str | None = None,
+    existing_series: Series | None = None,
 ) -> Series:
     '''
     Evaluate a list of players against a fixed opponent.
@@ -321,9 +356,17 @@ def evaluate_players(
     Saves and returns a Series with x = player indices and ys keyed {stat}_{side}.
     If log_games > 0, the first log_games games of each matchup are appended to
     a pretty-printed JSON array at game_log_path.
+    If existing_series is given, new points are appended to it (rather than
+    starting fresh) and the series is re-sorted by x before returning — so a run
+    can be extended without re-evaluating checkpoints already present.
     '''
     y_keys = [f'{stat}_{side}' for stat in _STAT_NAMES for side in ('p1', 'p2')]
-    series = Series(ys=y_keys)
+    if existing_series is not None:
+        series = existing_series
+        for k in y_keys:
+            series.ys.setdefault(k, [])
+    else:
+        series = Series(ys=y_keys)
 
     for i, player in players:
         logger.info(f"=== Player {i}: as P1 vs opponent ===")
@@ -343,6 +386,16 @@ def evaluate_players(
             series.ys[f'{stat}_p1'].append(value)
         for stat, value in _matchup_stats_dict(s2).items():
             series.ys[f'{stat}_p2'].append(value)
+        save_series(series, output_path)
+
+    # Keep the series ordered by checkpoint index. Appends are usually already
+    # ascending, but re-sorting keeps things correct even when extending a run
+    # whose stride changed (so newly-added lower iterations slot into place).
+    if series.x:
+        order = sorted(range(len(series.x)), key=lambda k: series.x[k])
+        series.x = [series.x[k] for k in order]
+        for key in series.ys:
+            series.ys[key] = [series.ys[key][k] for k in order]
         save_series(series, output_path)
 
     return series
@@ -446,22 +499,39 @@ def main() -> None:
     baseline = make_baseline()
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-    trained_players = get_trained_players()
-
-    # # remove all players except iteration 4
-    # trained_players = [(i, p) for i, p in trained_players if i == 4]
-    # print(f"Evaluating {len(trained_players)} trained players: {[i for i, _ in trained_players]}")
-
-    evaluate_players(
-        players=trained_players,
-        opponent=baseline,
-        num_games=NUM_GAMES,
-        output_path=f"{config.eval_dir}/player_evaluation_results.pkl",
-        log_games=1,
-        game_log_path=f"{config.eval_dir}/player_game_logs_{timestamp}.json",
+    # Resume-aware selection: load any prior results, then evaluate only the
+    # checkpoints we haven't scored yet (honoring player_eval_stride). This lets
+    # an extended run pick up new checkpoints instead of restarting at 0.
+    player_output_path = f"{config.eval_dir}/player_evaluation_results.pkl"
+    existing = load_series(player_output_path, optional=True)
+    already_done = set(existing.x) if existing is not None else set()
+    available = available_checkpoint_iters()
+    iters = iters_to_evaluate(available, already_done)
+    logger.info(
+        f"Player eval (stride={getattr(config, 'player_eval_stride', 1)}): "
+        f"available={available}, already_done={sorted(already_done)}, to_evaluate={iters}"
     )
 
-    # exit()
+    if iters:
+        trained_players = get_trained_players(iters)
+        evaluate_players(
+            players=trained_players,
+            opponent=baseline,
+            num_games=NUM_GAMES,
+            output_path=player_output_path,
+            log_games=1,
+            game_log_path=f"{config.eval_dir}/player_game_logs_{timestamp}.json",
+            existing_series=existing,
+        )
+    else:
+        logger.info("No new checkpoints to evaluate; leaving existing player results as-is.")
+
+    # References (random / mcts_rollout) don't change with training, so compute
+    # them once and reuse across resumed/extended runs.
+    reference_output_path = f"{config.eval_dir}/reference_evaluation_results.pkl"
+    if load_series(reference_output_path, optional=True) is not None:
+        logger.info("Reference evaluation already present; skipping.")
+        return
 
     evaluate_references(
         references={
@@ -470,7 +540,7 @@ def main() -> None:
         },
         opponent=baseline,
         num_games=NUM_GAMES,
-        output_path=f"{config.eval_dir}/reference_evaluation_results.pkl",
+        output_path=reference_output_path,
         log_games=1,
         game_log_path=f"{config.eval_dir}/reference_game_logs_{timestamp}.json",
     )
