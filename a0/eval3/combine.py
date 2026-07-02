@@ -80,6 +80,11 @@ SERIES_FILES = [
     "game_progress_10_nt_eval",
     # value-derived policy entropy
     "value_policy_entropy",
+    # target-refresh analyses (target-refresh runs only; merge skips when absent)
+    "refresh_targets_acc",
+    "refresh_targets_sidecar_acc",
+    "refresh_target_delta",
+    "refresh_delta_by_distance",
     # player evaluation
     "player_evaluation_results",
     "reference_evaluation_results",
@@ -91,6 +96,16 @@ DISTRIBUTION_SERIES_FILES = [
     "random_nd_value_distributions",
     "random_value_distributions",
 ]
+
+def _per_refresh_distribution_files() -> list[str]:
+    '''Per-refresh distribution series exist only on target-refresh runs; the
+    file count is discovered by globbing the trial dirs (K may not be knowable
+    from the combine-time config).'''
+    names: set[str] = set()
+    for trial_dir in _get_trial_dirs():
+        for path in glob.glob(f"{trial_dir}dataset_*_balance_distributions_refresh_*.pkl"):
+            names.add(path.rsplit("/", 1)[-1].removesuffix(".pkl"))
+    return sorted(names)
 
 
 def _get_trial_dirs() -> list[str]:
@@ -187,8 +202,9 @@ def merge_all_distribution_series() -> None:
     file in one trial doesn't block the others.
     '''
     trial_dirs = _get_trial_dirs()
-    logger.info(f"Merging {len(DISTRIBUTION_SERIES_FILES)} distribution series files from {len(trial_dirs)} trial dirs...")
-    for fn in DISTRIBUTION_SERIES_FILES:
+    files = DISTRIBUTION_SERIES_FILES + _per_refresh_distribution_files()
+    logger.info(f"Merging {len(files)} distribution series files from {len(trial_dirs)} trial dirs...")
+    for fn in files:
         try:
             load_and_merge_distribution_series(trial_dirs, f"{fn}.pkl")
         except Exception as e:
@@ -273,6 +289,73 @@ def plot_merged_value_policy_entropy() -> None:
         ],
         "Iteration", "Normalized Entropy", "merged_value_policy_entropy", None,
     )
+
+
+def _merged_refresh_acc_keys(s: Series, nd: bool) -> list[str]:
+    prefix = "Value Accuracy ND R" if nd else "Value Accuracy R"
+    keys = [k for k in s.ys if k.startswith(prefix) and k[len(prefix):].isdigit()]
+    return sorted(keys, key=lambda k: int(k[len(prefix):]))
+
+
+def _plot_merged_refresh_targets_acc_variant(nd: bool) -> None:
+    s = load_series(f"{config.eval_dir}/merged_refresh_targets_acc.pkl")
+    side = load_series(f"{config.eval_dir}/merged_refresh_targets_sidecar_acc.pkl", optional=True)
+    series = [(k, "±95% CI", s.x, *_ci_keys(s, k)) for k in _merged_refresh_acc_keys(s, nd)]
+    if side is not None:
+        series += [(f"Buffered {k}", "±95% CI", side.x, *_ci_keys(side, k)) for k in _merged_refresh_acc_keys(side, nd)]
+    suffix = "_nd" if nd else ""
+    plot_shaded_error(
+        f"Refresh Target Value Accuracy{' (no draws)' if nd else ''} vs GT (merged)",
+        series,
+        "Iteration", "Accuracy", f"merged_refresh_targets_acc{suffix}", (0, 1),
+    )
+
+
+def plot_merged_refresh_targets_acc() -> None:
+    _plot_merged_refresh_targets_acc_variant(nd=False)
+
+
+def plot_merged_refresh_targets_acc_nd() -> None:
+    _plot_merged_refresh_targets_acc_variant(nd=True)
+
+
+def plot_merged_refresh_target_delta() -> None:
+    s = load_series(f"{config.eval_dir}/merged_refresh_target_delta.pkl")
+    mean_keys = sorted([k for k in s.ys if k.startswith("Delta Mean ") and not k.endswith(("_std", "_ci"))])
+    max_keys = sorted([k for k in s.ys if k.startswith("Delta Max ") and not k.endswith(("_std", "_ci"))])
+    plot_shaded_error_groups(
+        "Refresh Target Delta by Iteration (merged; mean | max)",
+        [
+            [(k, "±95% CI", s.x, *_ci_keys(s, k)) for k in mean_keys],
+            [(k, "±95% CI", s.x, *_ci_keys(s, k)) for k in max_keys],
+        ],
+        "Iteration", "|target change|", "merged_refresh_target_delta", use_log_y=True,
+    )
+
+
+def plot_merged_refresh_delta_by_distance() -> None:
+    s = load_series(f"{config.eval_dir}/merged_refresh_delta_by_distance.pkl")
+    keys = [k for k in s.ys if not k.endswith(("_std", "_ci"))]
+    plot_shaded_error(
+        "Refresh Target Delta by Distance from Terminal (merged propagation front)",
+        [(k, "±95% CI", s.x, *_ci_keys(s, k)) for k in keys],
+        "Distance from terminal (plies)", "Mean |target change|", "merged_refresh_delta_by_distance", None,
+    )
+
+
+def plot_merged_per_refresh_dataset_distributions() -> None:
+    for kind, title in (("pre", "Pre"), ("post", "Post")):
+        refresh = 0
+        while True:
+            fn = f"dataset_{kind}_balance_distributions_refresh_{refresh}"
+            if load_distribution_series(f"{config.eval_dir}/merged_{fn}.pkl", optional=True) is None:
+                break
+            _plot_merged_distribution_variants(
+                f"merged_{fn}.pkl",
+                f"Dataset {title} Balance Distributions (refresh {refresh}, merged)",
+                f"merged_{fn}",
+            )
+            refresh += 1
 
 
 def plot_merged_training_metrics() -> None:
@@ -873,6 +956,13 @@ def main():
     safeplot(plot_merged_gamedata_outcomes_lines)
     safeplot(plot_merged_gamedata_game_length)
     safeplot(plot_merged_gamedata_game_time)
+
+    # target-refresh analyses
+    safeplot(plot_merged_refresh_targets_acc)
+    safeplot(plot_merged_refresh_targets_acc_nd)
+    safeplot(plot_merged_refresh_target_delta)
+    safeplot(plot_merged_refresh_delta_by_distance)
+    safeplot(plot_merged_per_refresh_dataset_distributions)
 
     # gamedata accuracy & bias (experienced + alt targets)
     safeplot(plot_merged_gamedata_accuracy)
