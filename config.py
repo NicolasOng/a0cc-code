@@ -88,6 +88,7 @@ class Config:
 
     do_player_eval: bool  # gates a0.eval.player
     do_gt_evals: bool     # gates eval3 analyses that need the solve-data file
+    player_eval_stride: int  # eval every Nth checkpoint (1 = all); iter 0 and the latest are always included
 
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''

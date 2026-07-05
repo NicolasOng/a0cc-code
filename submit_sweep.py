@@ -53,6 +53,22 @@ the explicit points are appended (deduplicated by HP id). Useful for adding a
 baseline or one-off configuration alongside a grid without ballooning it into
 the cartesian product.
 
+The slurm pipeline runs train and eval as SEPARATE stages: a train-only array,
+then an eval array (afterany:train) that also rolls up the per-setting combine
+and whole-sweep aggregate inline. Optionally, `auto_resubmit` makes training
+self-resubmitting — each train job queues a continuation (so training survives
+the wall clock) plus a paired eval per chunk — until it reaches
+training_iterations or the `max_resubmissions` cap:
+    {
+        ...,
+        "auto_resubmit": true,
+        "max_resubmissions": 20
+    }
+To just extend a finished run, bump training_iterations and resubmit with
+--reuse-configs; training resumes from the latest checkpoint and player eval
+skips checkpoints it already scored (config.player_eval_stride evaluates every
+Nth checkpoint).
+
 Optional `slurm` block overrides the #SBATCH directives in the .sh scripts via
 sbatch CLI flags (which always win over in-script #SBATCH lines). One sub-block
 per stage; keys are passed through as `--<key>=<value>` to sbatch:
@@ -60,10 +76,14 @@ per stage; keys are passed through as `--<key>=<value>` to sbatch:
         ...,
         "slurm": {
             "train":     {"time": "24:00:00", "cpus-per-task": 16, "mem-per-cpu": "4G", "gpus-per-node": 1},
+            "eval":      {"time": "12:00:00", "cpus-per-task": 32, "mem-per-cpu": "4G", "gpus-per-node": 1},
             "combine":   {"time": "1:00:00",  "cpus-per-task": 4,  "mem-per-cpu": "4G"},
             "aggregate": {"time": "30:00",    "cpus-per-task": 2}
         }
     }
+(In auto-resubmit mode, continuation/paired-eval jobs use the eval/train
+script's own #SBATCH defaults; the per-sweep `slurm` overrides apply to the
+first submitted job of each task.)
 
 Local mode (no slurm) runs the same per-task / per-HP / per-sweep stages on
 this machine, sequentially, by shelling out to python directly:
@@ -82,6 +102,7 @@ import sys
 
 SWEEP_ROOT = "sweep-output"
 TRAIN_SCRIPT = "slurm/train_a0_gpu.sh"
+EVAL_SCRIPT = "slurm/eval_a0_gpu.sh"
 COMBINE_SCRIPT = "slurm/combine_a0.sh"
 AGGREGATE_SCRIPT = "slurm/aggregate_sweep.sh"  # built in Stage C/D
 
@@ -304,8 +325,28 @@ def main():
                         help="materialize files but don't actually call sbatch (or python, "
                              "in --local mode) — just print what would run")
     parser.add_argument("--script", default=TRAIN_SCRIPT,
-                        help=f"stage-1 .sh to run per task (default: {TRAIN_SCRIPT}). "
-                             "Use slurm/eval_a0_gpu.sh to re-eval an existing sweep.")
+                        help=f"train-stage .sh to run per task (default: {TRAIN_SCRIPT}).")
+    parser.add_argument("--eval-script", default=EVAL_SCRIPT,
+                        help=f"eval-stage .sh to run per task (default: {EVAL_SCRIPT}). "
+                             "In slurm mode the eval stage runs after training and also "
+                             "does the per-setting combine + whole-sweep aggregate roll-up "
+                             "inline (unless --skip-combine/--skip-aggregate).")
+    parser.add_argument("--auto-resubmit", action="store_true",
+                        help="(slurm) self-resubmitting training: each train job queues a "
+                             "continuation (afterany on itself) so training survives the "
+                             "wall clock, plus a paired eval job per chunk. The chain stops "
+                             "when training reaches config.training_iterations or the "
+                             "--max-resubmissions cap is hit. Can also be set via "
+                             "spec['auto_resubmit'].")
+    parser.add_argument("--max-resubmissions", type=int, default=None,
+                        help="(slurm, --auto-resubmit) max continuation jobs per task "
+                             "(safety cap). Default: spec['max_resubmissions'] or 20.")
+    parser.add_argument("--skip-train", action="store_true",
+                        help="skip only the train stage (eval/roll-up still run). Use with "
+                             "--reuse-configs to re-eval an already-trained sweep.")
+    parser.add_argument("--skip-eval", action="store_true",
+                        help="skip only the eval stage. With --skip-train-eval, both are "
+                             "skipped and combine+aggregate run standalone over existing results.")
     parser.add_argument("--reuse-configs", action="store_true",
                         help="skip rewriting per-HP config.json files; use whatever is on disk. "
                              "Required for re-eval-only runs against an already-trained sweep.")
@@ -327,16 +368,16 @@ def main():
                         help="(--local only) per-sweep aggregate stages. "
                              f"Default: {' '.join(DEFAULT_AGGREGATE_STAGES)}.")
     parser.add_argument("--skip-train-eval", action="store_true",
-                        help="skip the per-(config, trial) train+eval pipeline. "
-                             "Combine and aggregate stages still run (in slurm mode "
-                             "they submit without a train dependency). Use with "
-                             "--reuse-configs to re-run combine/aggregate over an "
-                             "already-trained sweep.")
+                        help="skip BOTH the train and eval stages. In slurm mode this "
+                             "triggers the standalone combine+aggregate roll-up over "
+                             "existing results (no train dependency). Use with "
+                             "--reuse-configs to re-roll-up an already-trained sweep.")
     parser.add_argument("--skip-combine", action="store_true",
-                        help="skip combine stages. In slurm mode aggregate depends "
-                             "on train instead (or runs immediately if --skip-train-eval).")
+                        help="skip the combine part of the roll-up (per-setting merge).")
     parser.add_argument("--skip-aggregate", action="store_true",
-                        help="skip aggregate stages.")
+                        help="skip the aggregate part of the roll-up (whole-sweep). In "
+                             "slurm mode this also drops SWEEP_DIR from the eval jobs so "
+                             "they don't aggregate.")
     args = parser.parse_args()
 
     spec = load_sweep_spec(args.sweep_spec)
@@ -395,59 +436,115 @@ def main():
     slurm_logs = os.path.join(sweep_dir, "slurm_logs")
     os.makedirs(slurm_logs, exist_ok=True)
 
-    # In dry-run we use placeholder job IDs so the printed sbatch commands still
+    # In dry-run we use a placeholder job ID so the printed sbatch commands still
     # show the dependency wiring for stages that were submitted.
     placeholder_train = "<train_jid>"
-    placeholder_combine = "<combine_jid>"
 
-    # 4. Submit stage-1 array (train by default; slurm/eval_a0_gpu.sh for re-eval).
+    # Resolve auto-resubmit (CLI overrides spec) and the per-task chain cap.
+    auto_resubmit = args.auto_resubmit or bool(spec.get("auto_resubmit", False))
+    max_resub = args.max_resubmissions if args.max_resubmissions is not None \
+        else int(spec.get("max_resubmissions", 20))
+
+    skip_train = args.skip_train or args.skip_train_eval
+    skip_eval = args.skip_eval or args.skip_train_eval
+
+    # Roll-up env passed to eval jobs: RUN_ROLLUP gates combine (+aggregate);
+    # SWEEP_DIR enables the whole-sweep aggregate (dropped when --skip-aggregate).
+    rollup_env: dict[str, object] = {
+        "RUN_ROLLUP": 0 if (args.skip_combine and args.skip_aggregate) else 1,
+    }
+    if not args.skip_aggregate:
+        rollup_env["SWEEP_DIR"] = sweep_dir
+
+    def export_flag(extra: dict[str, object]) -> str:
+        """Build an sbatch --export=ALL,K=V,... string (ALL keeps the login env)."""
+        kv = ",".join(f"{k}={v}" for k, v in extra.items())
+        return "--export=ALL" + ("," + kv if kv else "")
+
+    # 4. Train stage.
     train_job_id: str | None = None
-    if args.skip_train_eval:
-        print(f"\nSkipping train-eval array.")
+    if skip_train:
+        print("\nSkipping train stage.")
     else:
         stage_name = os.path.splitext(os.path.basename(args.script))[0]
-        print(f"\nSubmitting {stage_name} array ({n_tasks} tasks)...")
+        # SELF_SCRIPT/EVAL_SCRIPT let a train job resubmit itself and its paired
+        # eval; rollup_env rides along so those per-chunk evals also roll up.
+        train_env: dict[str, object] = {
+            "SELF_SCRIPT": args.script,
+            "EVAL_SCRIPT": args.eval_script,
+            **rollup_env,
+        }
+        if auto_resubmit:
+            train_env.update({"AUTO_RESUBMIT": 1, "CHAIN_IDX": 0, "MAX_CHAIN": max_resub})
+            if skip_eval:
+                train_env["AUTO_EVAL"] = 0
+        print(f"\nSubmitting {stage_name} array ({n_tasks} tasks; auto_resubmit={auto_resubmit})...")
         train_job_id = sbatch(
             [f"--array=1-{n_tasks}",
              f"--output={slurm_logs}/{stage_name}_%A_%a.out",
+             export_flag(train_env),
              *slurm_flags_for(spec, "train"),
              args.script, tasks_file],
             args.dry_run,
         ) or (placeholder_train if args.dry_run else None)
 
-    # 5. Submit combine array, dependent on train if train was submitted.
-    combine_job_id: str | None = None
-    if args.skip_combine:
-        print(f"\nSkipping combine array.")
+    # 5. Eval stage. In auto-resubmit mode each train job submits its own paired
+    # eval (one per training chunk), so no eval array is submitted here. In
+    # normal mode we submit a single eval array (afterany:train) that also does
+    # the combine+aggregate roll-up inline.
+    if skip_eval:
+        print("\nSkipping eval stage.")
+    elif auto_resubmit:
+        print("\n(auto-resubmit: eval jobs are submitted per training chunk by the train jobs)")
     else:
-        print(f"\nSubmitting combine array ({n_hps} tasks)...")
+        eval_name = os.path.splitext(os.path.basename(args.eval_script))[0]
         dep_flags = [f"--dependency=afterany:{train_job_id}"] if train_job_id else []
-        combine_job_id = sbatch(
-            [f"--array=1-{n_hps}",
-             f"--output={slurm_logs}/combine_%A_%a.out",
-             *dep_flags,
-             *slurm_flags_for(spec, "combine"),
-             COMBINE_SCRIPT, hp_list_file],
-            args.dry_run,
-        ) or (placeholder_combine if args.dry_run else None)
-
-    # 6. Submit sweep aggregate (Stage C/D). Depends on combine if submitted,
-    # else train if submitted, else runs immediately.
-    if args.skip_aggregate:
-        print(f"\nSkipping sweep aggregate.")
-    elif os.path.exists(AGGREGATE_SCRIPT):
-        print(f"\nSubmitting sweep aggregate...")
-        dep_id = combine_job_id or train_job_id
-        dep_flags = [f"--dependency=afterany:{dep_id}"] if dep_id else []
+        print(f"\nSubmitting {eval_name} array ({n_tasks} tasks)...")
         sbatch(
-            [f"--output={slurm_logs}/aggregate_%j.out",
+            [f"--array=1-{n_tasks}",
+             f"--output={slurm_logs}/{eval_name}_%A_%a.out",
              *dep_flags,
-             *slurm_flags_for(spec, "aggregate"),
-             AGGREGATE_SCRIPT, sweep_dir],
+             export_flag(rollup_env),
+             *slurm_flags_for(spec, "eval"),
+             args.eval_script, tasks_file],
             args.dry_run,
         )
-    else:
-        print(f"\n(skipping sweep-aggregate submit: {AGGREGATE_SCRIPT} not found yet — added in Stage C/D)")
+
+    # 6. Standalone roll-up. The eval stage already rolls up combine+aggregate
+    # inline, so this only runs when eval is skipped (e.g. --skip-train-eval to
+    # re-roll-up a finished sweep). Not used in auto-resubmit mode, where a
+    # train-dependent combine would fire before the chain completes.
+    if skip_eval and not auto_resubmit:
+        combine_job_id: str | None = None
+        if args.skip_combine:
+            print("\nSkipping standalone combine.")
+        else:
+            print(f"\nSubmitting standalone combine array ({n_hps} tasks)...")
+            dep_flags = [f"--dependency=afterany:{train_job_id}"] if train_job_id else []
+            combine_job_id = sbatch(
+                [f"--array=1-{n_hps}",
+                 f"--output={slurm_logs}/combine_%A_%a.out",
+                 *dep_flags,
+                 *slurm_flags_for(spec, "combine"),
+                 COMBINE_SCRIPT, hp_list_file],
+                args.dry_run,
+            ) or ("<combine_jid>" if args.dry_run else None)
+
+        if args.skip_aggregate:
+            print("\nSkipping standalone aggregate.")
+        elif os.path.exists(AGGREGATE_SCRIPT):
+            print("\nSubmitting standalone sweep aggregate...")
+            dep_id = combine_job_id or train_job_id
+            dep_flags = [f"--dependency=afterany:{dep_id}"] if dep_id else []
+            sbatch(
+                [f"--output={slurm_logs}/aggregate_%j.out",
+                 *dep_flags,
+                 *slurm_flags_for(spec, "aggregate"),
+                 AGGREGATE_SCRIPT, sweep_dir],
+                args.dry_run,
+            )
+        else:
+            print(f"\n(skipping aggregate submit: {AGGREGATE_SCRIPT} not found)")
 
     print(f"\nDone. Sweep directory: {sweep_dir}")
 

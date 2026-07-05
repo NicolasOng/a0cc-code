@@ -32,12 +32,38 @@ fi
 echo "Using configuration file: $CONFIG_FILE"
 echo "Using trial number: $TRIAL_NO"
 
-time python -m a0.train.alphazero "$CONFIG_FILE" "$TRIAL_NO"
+# ---------------------------------------------------------------------------
+# Train-only stage; eval runs separately (slurm/eval_a0_cpu.sh). See the header
+# comment in slurm/train_a0_gpu.sh for the self-resubmit (AUTO_RESUBMIT) design.
+# ---------------------------------------------------------------------------
+AUTO_RESUBMIT="${AUTO_RESUBMIT:-0}"
+CHAIN_IDX="${CHAIN_IDX:-0}"
+MAX_CHAIN="${MAX_CHAIN:-0}"
+SELF_SCRIPT="${SELF_SCRIPT:-slurm/train_a0_cpu.sh}"
+EVAL_SCRIPT="${EVAL_SCRIPT:-slurm/eval_a0_cpu.sh}"
 
-time python -m a0.eval3.training_data "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval3.generate_datasets "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval3.dataset_evaluation "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval.model_diagnostics "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval.player "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval3.plotting "$CONFIG_FILE" "$TRIAL_NO"
-time python -m a0.eval3.extract_summary "$CONFIG_FILE" "$TRIAL_NO"
+REMAINING=$(python -m a0.train.check_progress "$CONFIG_FILE" "$TRIAL_NO")
+echo "Iterations remaining: $REMAINING  (auto_resubmit=$AUTO_RESUBMIT, chain $CHAIN_IDX/$MAX_CHAIN)"
+
+if [ "$AUTO_RESUBMIT" = "1" ] && [ -n "$SLURM_JOB_ID" ] && [ "${REMAINING:-0}" -gt 0 ]; then
+    if [ "${AUTO_EVAL:-1}" = "1" ]; then
+        echo "Queuing paired eval job (afterany:$SLURM_JOB_ID)."
+        sbatch --dependency="afterany:$SLURM_JOB_ID" $EVAL_SBATCH_FLAGS \
+            --export=ALL "$EVAL_SCRIPT" "$CONFIG_FILE" "$TRIAL_NO"
+    fi
+    if [ "$CHAIN_IDX" -lt "$MAX_CHAIN" ]; then
+        NEXT_IDX=$((CHAIN_IDX + 1))
+        echo "Queuing continuation train job (chain $NEXT_IDX/$MAX_CHAIN, afterany:$SLURM_JOB_ID)."
+        sbatch --dependency="afterany:$SLURM_JOB_ID" $TRAIN_SBATCH_FLAGS \
+            --export=ALL,CHAIN_IDX=$NEXT_IDX "$SELF_SCRIPT" "$CONFIG_FILE" "$TRIAL_NO"
+    else
+        echo "Max chain ($MAX_CHAIN) reached; not resubmitting a continuation."
+    fi
+fi
+
+if [ "${REMAINING:-0}" -le 0 ]; then
+    echo "Training already complete for this (config, trial); nothing to do."
+    exit 0
+fi
+
+time python -m a0.train.alphazero "$CONFIG_FILE" "$TRIAL_NO"
