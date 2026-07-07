@@ -96,7 +96,7 @@ def sample_states(states: list[Board], n: int, state_info_list: Optional[list[St
     Returns n randomly selected states from the given list.
     '''
     before_n = len(states)
-    indices = random.sample(range(len(states)), n)
+    indices = random.sample(range(len(states)), min(n, len(states)))
     sampled_states = [states[i] for i in indices]
     logger.info(f"sample_states: {before_n} -> {n} states ({100 * n / before_n:.2f}% kept)")
     if state_info_list is not None:

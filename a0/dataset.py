@@ -55,8 +55,12 @@ class Dataset:
             if self.weights is not None:
                 self.weights = self.weights[:new_size]
 
-    def split_off_test(self, test_size: int, shuffle: bool) -> Dataset:
-        """Split off a test set of the specified size."""
+    def split_off_test(self, test_size: int, shuffle: bool, keep_original: bool = False) -> Dataset:
+        """Split off a test set of the specified size.
+
+        If keep_original is True, the original dataset is left intact (no data is
+        removed); otherwise the test rows are trimmed off the original dataset.
+        """
         assert test_size < self.states.shape[0], "Test size must be less than the dataset size."
 
         # shuffle the dataset before splitting
@@ -70,8 +74,9 @@ class Dataset:
         test_weights = self.weights[-test_size:] if self.weights is not None else None
         test_dataset.set(self.states[-test_size:], self.values[-test_size:], self.policies[-test_size:], self.masks[-test_size:], test_weights)
 
-        # Trim the original dataset
-        self.trim(len(self) - test_size, False)
+        # Trim the original dataset, unless we've been asked to preserve it
+        if not keep_original:
+            self.trim(len(self) - test_size, False)
 
         return test_dataset
 

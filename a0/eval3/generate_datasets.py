@@ -95,6 +95,32 @@ def get_random_state_list(n: int, r: RankUnrank) -> list[Board]:
     random_states, _ = remove_duplicates(random_states)
     return random_states
 
+def get_training_dataset(n: int, gt: GroundTruth) -> tuple[Dataset, list[Board]]:
+    '''
+    Gets a dataset that can be used to train a model.
+    '''
+    # get random states
+    states = get_random_states(n * 3, gt)
+    states, _ = remove_duplicates(states)
+
+    # get the state info for the states to use in filtering and logging,
+    states_si = get_state_info_for_states(states, gt)
+
+    # log the info for the states before filtering
+    logger.info(f"Logging info on states before filtering:")
+    log_states_info(get_states_info(states, states_si))
+
+    # balance the wins/draws
+    states, states_si = balance_gt_values(
+        states,
+        states_si
+    )
+
+    # logging the final info for the states after filtering and balancing
+    logger.info(f"Logging info for states after filtering and balancing:")
+    log_states_info(get_states_info(states, states_si))
+
+    return get_gtd_from_states(states, gt, batch_size=256, shuffle=True), states
 
 def get_seen_and_neighbor_state_lists(temporary_size: int | None, num_neighbors: int) -> dict[str, list[Board]]:
     '''
