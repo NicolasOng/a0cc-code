@@ -99,8 +99,8 @@ def train_models_sequential() -> None:
             )
 
     # set the model sizes to test
-    # model_sizes = [1, 2, 3, 4, 5]
-    model_sizes = [3]
+    model_sizes = [1, 2, 3, 4, 5]
+    # model_sizes = [3]
     logger.info(f"Model sizes to test: {model_sizes}")
 
     # run all training runs sequentially
