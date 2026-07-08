@@ -60,11 +60,17 @@ REMAINING=$(python -m a0.train.check_progress "$CONFIG_FILE" "$TRIAL_NO")
 echo "Iterations remaining: $REMAINING  (auto_resubmit=$AUTO_RESUBMIT, chain $CHAIN_IDX/$MAX_CHAIN)"
 
 if [ "$AUTO_RESUBMIT" = "1" ] && [ -n "$SLURM_JOB_ID" ] && [ "${REMAINING:-0}" -gt 0 ]; then
+    # Chained jobs are not array tasks, so without --output they'd land as
+    # ./slurm-%j.out; route them next to the sweep's other logs instead.
+    CHAIN_LOG_DIR="$(dirname "$(dirname "$CONFIG_FILE")")/slurm_logs"
+    mkdir -p "$CHAIN_LOG_DIR"
+    HP_ID="$(basename "$(dirname "$CONFIG_FILE")")"
     # Paired eval of this chunk's checkpoints (runs once this job ends, finished
     # or timed out). $EVAL_SBATCH_FLAGS is optional extra sbatch flags.
     if [ "${AUTO_EVAL:-1}" = "1" ]; then
         echo "Queuing paired eval job (afterany:$SLURM_JOB_ID)."
         sbatch --dependency="afterany:$SLURM_JOB_ID" $EVAL_SBATCH_FLAGS \
+            --output="$CHAIN_LOG_DIR/eval_chain_${HP_ID}_t${TRIAL_NO}_%j.out" \
             --export=ALL "$EVAL_SCRIPT" "$CONFIG_FILE" "$TRIAL_NO"
     fi
     # Continuation to keep training past this job's wall clock.
@@ -72,6 +78,7 @@ if [ "$AUTO_RESUBMIT" = "1" ] && [ -n "$SLURM_JOB_ID" ] && [ "${REMAINING:-0}" -
         NEXT_IDX=$((CHAIN_IDX + 1))
         echo "Queuing continuation train job (chain $NEXT_IDX/$MAX_CHAIN, afterany:$SLURM_JOB_ID)."
         sbatch --dependency="afterany:$SLURM_JOB_ID" $TRAIN_SBATCH_FLAGS \
+            --output="$CHAIN_LOG_DIR/train_chain_${HP_ID}_t${TRIAL_NO}_%j.out" \
             --export=ALL,CHAIN_IDX=$NEXT_IDX "$SELF_SCRIPT" "$CONFIG_FILE" "$TRIAL_NO"
     else
         echo "Max chain ($MAX_CHAIN) reached; not resubmitting a continuation."
