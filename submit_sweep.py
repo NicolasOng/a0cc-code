@@ -489,12 +489,14 @@ def main():
         ) or (placeholder_train if args.dry_run else None)
 
     # 5. Eval stage. In auto-resubmit mode each train job submits its own paired
-    # eval (one per training chunk), so no eval array is submitted here. In
-    # normal mode we submit a single eval array (afterany:train) that also does
-    # the combine+aggregate roll-up inline.
+    # eval (one per training chunk), so no eval array is submitted here — unless
+    # the train stage was skipped, in which case there are no train jobs to pair
+    # evals and we must submit the eval array directly. In normal mode we submit
+    # a single eval array (afterany:train) that also does the combine+aggregate
+    # roll-up inline.
     if skip_eval:
         print("\nSkipping eval stage.")
-    elif auto_resubmit:
+    elif auto_resubmit and not skip_train:
         print("\n(auto-resubmit: eval jobs are submitted per training chunk by the train jobs)")
     else:
         eval_name = os.path.splitext(os.path.basename(args.eval_script))[0]
