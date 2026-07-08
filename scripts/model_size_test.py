@@ -49,7 +49,7 @@ def training_run(dataset_type: str, dataset_size: int, model_size: int, training
         fn=f"{dataset_type}_{dataset_size}_{model_size}",
         dataset=training_dataset,
         eval_datasets=eval_datasets,
-        num_epochs=1,
+        num_epochs=20,
         res_blocks=model_size
     )
     end_time = time.time()
