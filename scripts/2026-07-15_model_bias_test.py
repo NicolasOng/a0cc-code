@@ -110,7 +110,7 @@ def main():
 
     seeds = [random.randint(0, 1000000) for _ in range(num_seeds)]
     for seed in seeds:
-        for b in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+        for b in [0.5, 0.525, 0.55, 0.6, 0.65, 0.7, 0.8, 0.9, 1.0]:
             biased_dataset = make_biased_dataset(full_train, b, train_size)
             trained_model, _ = train_model(seed, biased_dataset)
             acc, mean, std = get_model_value_head_accuracy_and_distribution(trained_model, eval_nd)
