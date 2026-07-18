@@ -1,0 +1,19 @@
+{
+    "name": "td_lambda",
+    "base_config": "config/config-200.json",
+    "num_trials": 25,
+    "auto_resubmit": true,
+    "grid": {
+        "config": [{
+            "alternative_target": "td_lambda",
+            "value_head_zero_init": true,
+            "dataset_balance_method": "none"
+        }],
+        "td_lambda": [0.0, 0.5, 0.75, 0.9, 1.0]
+    },
+    "slurm": {
+        "train":     {"time": "48:00:00", "cpus-per-task": 32, "mem-per-cpu": "4G", "gpus-per-node": 1},
+        "combine":   {"time": "1:00:00",  "cpus-per-task": 4,  "mem-per-cpu": "4G"},
+        "aggregate": {"time": "1:00:00",  "cpus-per-task": 4,  "mem-per-cpu": "4G"}
+    }
+}
