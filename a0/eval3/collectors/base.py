@@ -21,6 +21,9 @@ class TurnInfo:
     progress: int    # 0-99, percentage through the game
     alternative_value_target: float | None
     alternative_policy_target: NDArray[np.float32] | None
+    # target-refresh path: (iteration, refresh, target) tuples from the
+    # generation iteration; None on classic runs and old pickles
+    refresh_value_targets: list[tuple[int, int, float]] | None = None
 
 @dataclass
 class GameInfo:

@@ -100,6 +100,75 @@ def plot_value_policy_entropy() -> None:
     )
 
 
+# === target-refresh analyses (target-refresh runs only; safeplot skips otherwise) ===
+
+def _refresh_acc_keys(s: Series, nd: bool) -> list[str]:
+    prefix = "Value Accuracy ND R" if nd else "Value Accuracy R"
+    keys = [k for k in s.ys if k.startswith(prefix) and k[len(prefix):].isdigit()]
+    return sorted(keys, key=lambda k: int(k[len(prefix):]))
+
+
+def _plot_refresh_targets_acc_variant(nd: bool) -> None:
+    s = load_series(f"{config.eval_dir}/refresh_targets_acc.pkl")
+    side = load_series(f"{config.eval_dir}/refresh_targets_sidecar_acc.pkl", optional=True)
+    series = [(k, s.x, s.ys[k]) for k in _refresh_acc_keys(s, nd)]
+    if side is not None:
+        series += [(f"Buffered {k}", side.x, side.ys[k]) for k in _refresh_acc_keys(side, nd)]
+    suffix = "_nd" if nd else ""
+    plot_given(
+        f"Refresh Target Value Accuracy{' (no draws)' if nd else ''} vs GT",
+        series,
+        "Iteration", "Accuracy", f"refresh_targets_acc{suffix}", (0, 1),
+    )
+
+
+def plot_refresh_targets_acc() -> None:
+    _plot_refresh_targets_acc_variant(nd=False)
+
+
+def plot_refresh_targets_acc_nd() -> None:
+    _plot_refresh_targets_acc_variant(nd=True)
+
+
+def plot_refresh_target_delta() -> None:
+    s = load_series(f"{config.eval_dir}/refresh_target_delta.pkl")
+    mean_keys = sorted([k for k in s.ys if k.startswith("Delta Mean ")])
+    max_keys = sorted([k for k in s.ys if k.startswith("Delta Max ")])
+    plot_given_groups(
+        "Refresh Target Delta by Iteration (mean | max)",
+        [
+            [(k, s.x, s.ys[k]) for k in mean_keys],
+            [(k, s.x, s.ys[k]) for k in max_keys],
+        ],
+        "Iteration", "|target change|", "refresh_target_delta", use_log_y=True,
+    )
+
+
+def plot_refresh_delta_by_distance() -> None:
+    s = load_series(f"{config.eval_dir}/refresh_delta_by_distance.pkl")
+    plot_given(
+        "Refresh Target Delta by Distance from Terminal (propagation front)",
+        [(k, s.x, s.ys[k]) for k in s.ys],
+        "Distance from terminal (plies)", "Mean |target change|", "refresh_delta_by_distance",
+    )
+
+
+def plot_per_refresh_dataset_distributions() -> None:
+    # dynamic file count: keep going while files exist (inner misses tolerated)
+    for kind, title in (("pre", "Pre"), ("post", "Post")):
+        refresh = 0
+        while True:
+            fn = f"dataset_{kind}_balance_distributions_refresh_{refresh}"
+            if load_distribution_series(f"{config.eval_dir}/{fn}.pkl", optional=True) is None:
+                break
+            _plot_distribution_variants(
+                f"{fn}.pkl",
+                f"Dataset {title} Balance Distributions (refresh {refresh})",
+                fn,
+            )
+            refresh += 1
+
+
 # === training metrics ===
 
 def plot_training_metrics_accuracy() -> None:
@@ -689,6 +758,13 @@ def main():
     safeplot(plot_gamedata_outcomes_lines)
     safeplot(plot_gamedata_game_length)
     safeplot(plot_gamedata_game_time)
+
+    # target-refresh analyses
+    safeplot(plot_refresh_targets_acc)
+    safeplot(plot_refresh_targets_acc_nd)
+    safeplot(plot_refresh_target_delta)
+    safeplot(plot_refresh_delta_by_distance)
+    safeplot(plot_per_refresh_dataset_distributions)
 
     # gamedata accuracy & bias (experienced + alt targets)
     safeplot(plot_gamedata_accuracy)

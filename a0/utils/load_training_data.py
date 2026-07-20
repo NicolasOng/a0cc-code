@@ -80,6 +80,18 @@ def load_models(dir: str, n: int) -> list[tuple[int, AlphaZeroModel]]:
     logger.info(f"Loading {n} models from {dir}...")
     return list(models_generator_function(dir, n))
 
+def refresh_targets_generator(training_dir: str, n: int) -> Generator[tuple[int, dict[str, Any]], None, None]:
+    '''
+    Yields (iteration, sidecar payload) for each refresh_targets_<iteration>.pkl
+    in 1..n that exists (target-refresh training path only). Missing files are
+    skipped. Payload keys: columns, rows, lam_by_refresh, iteration.
+    '''
+    for i in range(n):
+        file_path = f"{training_dir}/refresh_targets_{i + 1}.pkl"
+        data: dict[str, Any] | None = safe_load_pickle(file_path, f"refresh targets {i + 1}")  # type: ignore[assignment]
+        if data is not None:
+            yield i + 1, data
+
 def dataset_diagnostics_generator(training_dir: str, n: int) -> Generator[tuple[int, dict[str, list[float]]], None, None]:
     '''
     Yields (iteration, diagnostics dict) for each dataset_diagnostics_<iteration>.pkl

@@ -10,7 +10,7 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-from a0.train.alphazero import game_data_to_training_set, game_data_to_gt_training_set, game_data_to_gt_value_training_set, game_data_to_gt_next_value_training_set
+from a0.train.targets import game_data_to_training_set, game_data_to_gt_training_set, game_data_to_gt_value_training_set, game_data_to_gt_next_value_training_set
 
 def check_game_data_bias(game_data_lists: list[tuple[int, list[GameData]]]) -> None:
     '''

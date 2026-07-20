@@ -26,6 +26,7 @@ from a0.utils.value_policy_entropy import normalized_policy_entropy
 from a0.eval3.generate_datasets import get_nd_and_nt_datasets_from_state_list
 from a0.eval3.collectors.base import Collector, GameInfo, TurnInfo, GameProgressCollector
 from a0.eval3.collectors.bpp_and_bppma import BPPCollector
+from a0.eval3.refresh_targets import RefreshTargetAccuracyCollector, run_refresh_target_analyses
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -115,6 +116,69 @@ def get_and_save_dataset_diagnostics_distributions() -> None:
     save_distribution_series(post, f"{config.eval_dir}/dataset_post_balance_distributions.pkl")
     logger.info("Saved dataset_pre_balance_distributions.pkl and dataset_post_balance_distributions.pkl.")
 
+def get_and_save_per_refresh_dataset_distributions() -> None:
+    '''
+    Target-refresh runs tag the dataset diagnostics with parallel
+    refresh_index_pre/post arrays (each refresh contributed an N/K subsample).
+    Splits the pre/post value distributions by refresh into one
+    DistributionSeries per refresh so the standard distribution plots can be
+    rendered per refresh. Skips silently on classic runs (no tags).
+    → dataset_pre_balance_distributions_refresh_{k}.pkl
+    → dataset_post_balance_distributions_refresh_{k}.pkl
+    '''
+    logger.info("Saving per-refresh dataset diagnostics distributions...")
+    pre_by_refresh: dict[int, DistributionSeries] = {}
+    post_by_refresh: dict[int, DistributionSeries] = {}
+    rng = np.random.default_rng(0)
+
+    def _series_for(store: dict[int, DistributionSeries], refresh: int, kind: str) -> DistributionSeries:
+        if refresh not in store:
+            store[refresh] = DistributionSeries(name=f"dataset_values_{kind}_refresh_{refresh}")
+        return store[refresh]
+
+    found_tags = False
+    for iteration, diag in dataset_diagnostics_generator(config.training_dir, config.training_iterations):
+        tags_pre = diag.get('refresh_index_pre')
+        tags_post = diag.get('refresh_index_post')
+        if tags_pre is None or tags_post is None:
+            continue
+        found_tags = True
+
+        pre_values = np.asarray(diag['dataset_values_pre'], dtype=np.float64)
+        tags_pre = np.asarray(tags_pre)
+        for refresh in np.unique(tags_pre):
+            s = _series_for(pre_by_refresh, int(refresh), "pre")
+            s.x.append(iteration)
+            s.trials[0].append(pre_values[tags_pre == refresh].tolist())
+
+        post_values = np.asarray(diag['dataset_values_post'], dtype=np.float64)
+        tags_post = np.asarray(tags_post)
+        post_weights = diag.get('dataset_weights_post')
+        post_weights = np.asarray(post_weights, dtype=np.float64) if post_weights is not None else None
+        for refresh in np.unique(tags_post):
+            mask = tags_post == refresh
+            values = post_values[mask]
+            s = _series_for(post_by_refresh, int(refresh), "post")
+            s.x.append(iteration)
+            # weighted-buckets path: resample (p ∝ weights) so plotters can stay
+            # weight-unaware — same convention as the un-split function above
+            if post_weights is not None and len(post_weights) == len(post_values) and len(values) > 0:
+                weights = post_weights[mask]
+                total = weights.sum()
+                if total > 0:
+                    values = rng.choice(values, size=len(values), p=weights / total)
+            s.trials[0].append(values.tolist())
+
+    if not found_tags:
+        logger.info("No refresh_index tags in dataset diagnostics (classic run); skipping per-refresh distributions.")
+        return
+
+    for refresh, s in sorted(pre_by_refresh.items()):
+        save_distribution_series(s, f"{config.eval_dir}/dataset_pre_balance_distributions_refresh_{refresh}.pkl")
+    for refresh, s in sorted(post_by_refresh.items()):
+        save_distribution_series(s, f"{config.eval_dir}/dataset_post_balance_distributions_refresh_{refresh}.pkl")
+    logger.info(f"Saved per-refresh distribution series for {len(pre_by_refresh)} refreshes.")
+
 def traverse_game_data_with_collectors(collectors: list[Collector], gt: GroundTruth | None) -> None:
     '''
     Walks all game data once, computing per-turn facts and handing them
@@ -178,6 +242,8 @@ def traverse_game_data_with_collectors(collectors: list[Collector], gt: GroundTr
                     progress=progress,
                     alternative_value_target=turn.alternative_value_target,
                     alternative_policy_target=turn.alternative_policy_target,
+                    # getattr: absent on pickles predating the target-refresh path
+                    refresh_value_targets=getattr(turn, "refresh_value_targets", None),
                 )
                 for c in collectors:
                     c.on_turn(turn_info)
@@ -846,6 +912,8 @@ def run_collectors(ranker: RankUnrank, gt: GroundTruth | None) -> None:
                 get_outcome=alt_outcome,
                 get_policy=alt_policy
             ),
+            # per-refresh target accuracy (target-refresh runs; no-op otherwise)
+            RefreshTargetAccuracyCollector(),
             BPPCollector(gt=gt),
             BPPCollector(
                 gt=gt,
@@ -913,14 +981,18 @@ def main():
         gt = None
         logger.info("config.do_gt_evals=False; GT-using collectors will be skipped.")
 
-    logger.info("[1/3] avg training metrics per iteration")
+    logger.info("[1/4] avg training metrics per iteration")
     get_and_save_avg_training_metrics_per_iteration()
 
-    logger.info("[2/3] dataset diagnostics distributions")
+    logger.info("[2/4] dataset diagnostics distributions")
     get_and_save_dataset_diagnostics_distributions()
+    get_and_save_per_refresh_dataset_distributions()
 
-    logger.info("[3/3] traversal-based collectors")
+    logger.info("[3/4] traversal-based collectors")
     run_collectors(ranker, gt)
+
+    logger.info("[4/4] refresh-target analyses (target-refresh runs only)")
+    run_refresh_target_analyses(gt)
 
     logger.info("training_data.py: all analyses complete")
 

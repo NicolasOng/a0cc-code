@@ -10,7 +10,7 @@ from cc.core import Board, Game
 from cc.ground_truth import GroundTruth
 from a0.dataset import Dataset
 from a0.experience_buffer import ExperienceData
-from a0.train.alphazero import board_to_input
+from a0.model_utils import board_to_input
 from a0.eval.training_data import game_data_generator
 from a0.train.generate_datasets import generate_ground_truth_dataset, load_ground_truth_dataset
 from a0.train.dataset import train_model_on_given_dataset

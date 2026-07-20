@@ -150,8 +150,11 @@ def loss_fn(model: AlphaZeroModel, batch: dict[str, Any]):
     masked_pred_logits = jnp.where(policy_mask, masked_pred_logits, -1e9)
     policy_accuracy = policy_accuracy_function(masked_pred_logits, masked_label_policy)
     
-    # calculate the total loss
-    total_loss = config.value_loss_weight * value_loss + policy_loss
+    # calculate the total loss. policy_weight is only present on the
+    # target-refresh path (down-weights repeated policy targets on refreshes
+    # >= 1); absent -> trace-time constant 1.0, old path unchanged.
+    policy_weight = batch.get('policy_weight', 1.0)
+    total_loss = config.value_loss_weight * value_loss + policy_weight * policy_loss
 
     # JAX requires the loss function to return a tuple of (loss, aux)
     # where aux can be any additional information you want to return
@@ -193,7 +196,7 @@ def make_optimizer(model: AlphaZeroModel) -> nnx.Optimizer:
         tx = optax.chain(optax.clip_by_global_norm(grad_clip_norm), tx)
     return nnx.Optimizer(model, tx)
 
-def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0, test_datasets: dict[str, Dataset] = {}, optimizer: Optional[nnx.Optimizer] = None) -> tuple[AlphaZeroModel, EpochData, int]:
+def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None", cur_model_no: int = 0, test_datasets: dict[str, Dataset] = {}, optimizer: Optional[nnx.Optimizer] = None, policy_loss_weight: Optional[float] = None) -> tuple[AlphaZeroModel, EpochData, int]:
     logger.info(f"Training model on the given dataset ({len(dataset)})...")
     start = time.perf_counter()
 
@@ -227,6 +230,9 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
             'mask': mask_batch,  # (N, board_size ** 4)
             'weights': weights_batch  # (N, 1)
         }
+        if policy_loss_weight is not None:
+            # traced scalar: weight changes don't retrigger JIT compilation
+            batch['policy_weight'] = jnp.asarray(policy_loss_weight, dtype=jnp.float32)
         loss, value_loss, policy_loss, value_accuracy, policy_accuracy, grad_norms = train_step(model, optimizer, batch)
         logger.info(f"Training Step {ts}/{num_batches}, "
                     f"Loss: {loss:.4f}, "
@@ -296,7 +302,7 @@ def train_model_epoch(model: AlphaZeroModel, dataset: Dataset, save: str = "None
 
     return model, epoch_data, cur_model_no
 
-def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True, test_datasets: dict[str, Dataset] = {}, optimizer: Optional[nnx.Optimizer] = None) -> tuple[AlphaZeroModel, DatasetData]:
+def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int, save: str = "None", plot: bool = True, test_datasets: dict[str, Dataset] = {}, optimizer: Optional[nnx.Optimizer] = None, policy_loss_weight: Optional[float] = None) -> tuple[AlphaZeroModel, DatasetData]:
     """
     Train the model for a number of epochs on the given dataset.
     If an optimizer is passed, it is reused (its Adam moments persist across
@@ -306,7 +312,7 @@ def train_model_epochs(model: AlphaZeroModel, dataset: Dataset, num_epochs: int,
     cur_model_no = 0
     for epoch in range(num_epochs):
         logger.info(f"Training epoch {epoch + 1}/{num_epochs}...")
-        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no, test_datasets, optimizer)
+        model, epoch_data, cur_model_no = train_model_epoch(model, dataset, save, cur_model_no, test_datasets, optimizer, policy_loss_weight)
         if save == "epoch":
             # Save the model after each epoch
             logger.info(f"Saving model after epoch {epoch + 1}...")
