@@ -70,6 +70,7 @@ class Config:
     illegal_moves: bool
     experiment: str
     td_lambda: float
+    interpolated_td_lambda_iterations: int | None  # warmup length for "interpolated_td_lambda"; None → 25% of training_iterations
 
     alternative_target: str  # "gt" | "gt_value" | "gt_next_value" | "td_0" | "td_lambda" | "interpolated_td_lambda" | "normal"
     dataset_balance_method: str  # "none" | "subsample_buckets" | "weighted_buckets"
@@ -89,6 +90,13 @@ class Config:
     do_player_eval: bool  # gates a0.eval.player
     do_gt_evals: bool     # gates eval3 analyses that need the solve-data file
     player_eval_stride: int  # eval every Nth checkpoint (1 = all); iter 0 and the latest are always included
+
+    # target-refresh training path (fitted-VI target refreshes; a0.train.targets)
+    use_target_refresh: bool  # enable the target-refresh path instead of plain self-play targets
+    num_target_refreshes: int  # K: refresh passes per iteration (the starting value when decayed)
+    refresh_k_decay_iterations: int | None  # decay K→1 linearly over this many iterations; None → constant num_target_refreshes
+    refresh_policy_loss_weight: float  # policy-loss weight during refresh training passes
+    refresh_inference_batch_size: int  # chunk size for batched value inference during refreshes
 
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''

@@ -40,6 +40,7 @@
     "illegal_moves": true,
     "experiment": "td_lambda",
     "td_lambda": 1.0,
+    "interpolated_td_lambda_iterations": null,
     "alternative_target": "td_lambda",
     "dataset_balance_method": "weighted_buckets",
     "num_buckets_for_balance": 2,
@@ -53,5 +54,10 @@
     "c_puct": 1.0,
     "do_player_eval": true,
     "do_gt_evals": true,
-    "player_eval_stride": 1
+    "player_eval_stride": 1,
+    "use_target_refresh": false,
+    "num_target_refreshes": 8,
+    "refresh_k_decay_iterations": 25,
+    "refresh_policy_loss_weight": 0.0,
+    "refresh_inference_batch_size": 256
 }

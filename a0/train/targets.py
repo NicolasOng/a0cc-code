@@ -323,12 +323,14 @@ def resolve_td_lambda(iteration: int) -> float:
     '''
     The lambda in effect at this iteration:
       - "interpolated_td_lambda": linear interpolation, lam = 1 at iteration 0,
-        decreasing to lam = 0 by 25% of the way through training, then 0.
+        decreasing to lam = 0 over config.interpolated_td_lambda_iterations
+        iterations (falling back to 25% of training when unset), then 0.
       - otherwise: config.td_lambda (default 1.0 = plain MC targets).
     Shared by the self-play dispatch and the target-refresh path.
     '''
     if config.alternative_target == "interpolated_td_lambda":
-        warmup = max((config.training_iterations - 1) * 0.25, 1)
+        decay_iters = getattr(config, "interpolated_td_lambda_iterations", None)
+        warmup = decay_iters if decay_iters else max((config.training_iterations - 1) * 0.25, 1)
         return max(1.0 - (iteration / warmup), 0.0)
     return getattr(config, "td_lambda", 1.0)
 

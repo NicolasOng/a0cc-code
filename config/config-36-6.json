@@ -1,8 +1,0 @@
-{
-    "output_dir": "output-36-6/",
-    "experiment": "refresh_36_6",
-
-    "board_size": 6,
-    "num_pieces": 6,
-    "do_gt_evals": false
-}
