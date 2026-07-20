@@ -25,7 +25,7 @@ from a0.players.a0 import A0Player
 from a0.model import load_model, save_model, create_model
 from cc.core import Game
 from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data, make_optimizer
-from a0.train.targets import build_training_set, resolve_td_lambda
+from a0.train.targets import build_training_set, resolve_td_lambda, resolve_num_target_refreshes
 from a0.train.trajectory_buffer import TrajectoryReplayBuffer
 from a0.eval.model_diagnostics import log_iteration_diagnostics
 from a0.eval.training_data import GameDataStats, game_data_list_stats
@@ -338,7 +338,7 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
                 trajectory_buffer.add_game(gd, i, game_index)
             logger.log(25, f"Trajectory buffer: {len(trajectory_buffer)} positions in {len(trajectory_buffer.games)} games")
 
-            num_refreshes = max(1, getattr(config, "num_target_refreshes", 1))
+            num_refreshes = resolve_num_target_refreshes(i)
             lam = resolve_td_lambda(i)
             refresh_pw = getattr(config, "refresh_policy_loss_weight", 1.0)
             # one optimizer across the whole refresh loop (Adam moments must

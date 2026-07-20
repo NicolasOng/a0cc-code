@@ -332,6 +332,22 @@ def resolve_td_lambda(iteration: int) -> float:
         return max(1.0 - (iteration / warmup), 0.0)
     return getattr(config, "td_lambda", 1.0)
 
+def resolve_num_target_refreshes(iteration: int) -> int:
+    '''
+    K (refreshes/iteration) in effect at this iteration, for the target-refresh
+    path. If config.refresh_k_decay_iterations is set, K decays linearly from
+    config.num_target_refreshes at iteration 0 to 1 at that iteration, then
+    holds at 1 (never 0: refresh-0 semantics — the alternative_value_target
+    saved for eval3 — require at least one pass every iteration). Otherwise
+    constant at config.num_target_refreshes.
+    '''
+    k0 = max(1, getattr(config, "num_target_refreshes", 1))
+    decay_iters = getattr(config, "refresh_k_decay_iterations", None)
+    if not decay_iters:
+        return k0
+    frac = max(1.0 - (iteration / decay_iters), 0.0)
+    return max(1, round(k0 * frac))
+
 def build_training_set(game_data: GameData, model: AlphaZeroModel | MultiTrunkAlphaZeroModel, iteration: int) -> list[ExperienceData]:
     '''
     Dispatches to the target builder selected by config.alternative_target.
