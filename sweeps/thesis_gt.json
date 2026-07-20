@@ -11,7 +11,7 @@
         "dataset_balance_method": ["none", "subsample_buckets"]
     },
     "slurm": {
-        "train":     {"time": "48:00:00", "cpus-per-task": 32, "mem-per-cpu": "4G", "gpus-per-node": 1},
+        "train":     {"time": "12:00:00", "cpus-per-task": 32, "mem-per-cpu": "4G", "gpus-per-node": 1},
         "combine":   {"time": "1:00:00",  "cpus-per-task": 4,  "mem-per-cpu": "4G"},
         "aggregate": {"time": "1:00:00",  "cpus-per-task": 4,  "mem-per-cpu": "4G"}
     }
