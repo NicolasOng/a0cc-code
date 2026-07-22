@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 from flax import nnx
 
+import os
 import pickle
 
 from config import config
@@ -249,9 +250,12 @@ def save_model(filepath: str, model: AlphaZeroModel) -> None:
     # get the state of the model
     _, state = nnx.split(model)
 
-    # use pickle to save the state
-    with open(filepath, 'wb') as f:
+    # use pickle to save the state — atomically (tmp + rename), so a job
+    # killed mid-write can never leave a truncated checkpoint behind
+    tmp_path = filepath + ".tmp"
+    with open(tmp_path, 'wb') as f:
         pickle.dump(state, f)
+    os.replace(tmp_path, filepath)
 
 def load_model(filepath: str, training: bool = True) -> AlphaZeroModel | MultiTrunkAlphaZeroModel:
     # create a new model instance with the same parameters

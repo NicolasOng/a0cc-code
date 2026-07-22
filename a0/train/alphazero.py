@@ -27,6 +27,9 @@ from cc.core import Game
 from a0.train.dataset import train_model_epochs, plot_model_performance, DatasetData, save_dataset_data, stats_from_dataset_data, make_optimizer
 from a0.train.targets import build_training_set, resolve_td_lambda, resolve_num_target_refreshes
 from a0.train.trajectory_buffer import TrajectoryReplayBuffer
+from a0.train.buffer_checkpoint import (
+    save_replay_buffer, load_replay_buffer, rollback_for_buffer_consistency, replay_buffer_path,
+)
 from a0.eval.model_diagnostics import log_iteration_diagnostics
 from a0.eval.training_data import GameDataStats, game_data_list_stats
 from a0.experience_buffer import ExperienceBuffer, ExperienceData
@@ -254,6 +257,11 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
         for f in os.listdir(config.training_dir):
             if f.startswith("model_") and f.endswith(".pkl"):
                 os.remove(os.path.join(config.training_dir, f))
+        # also drop the buffer checkpoint: it pairs with the deleted models,
+        # and must not be mistaken for a rollback candidate by the new attempt
+        for stale in (replay_buffer_path(), replay_buffer_path() + ".tmp"):
+            if os.path.exists(stale):
+                os.remove(stale)
         logger.info(f"Fresh-start retry (seed={seed}); cleared prior model checkpoints.")
         most_recent_model = None
     else:
@@ -261,6 +269,13 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
 
     if most_recent_model is not None:
         model_path, starting_iteration = most_recent_model
+        if getattr(config, "persist_replay_buffer", False):
+            # if the buffer checkpoint is exactly one iteration behind (crash
+            # between/during the end-of-iteration saves), resume from the
+            # paired older (model, buffer) instead of newest-model + empty
+            model_path, starting_iteration = rollback_for_buffer_consistency(
+                model_path, starting_iteration
+            )
         logger.info(f"Resuming training from model: {model_path} at iteration {starting_iteration}")
     else:
         model_path = None
@@ -293,6 +308,14 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
     else:
         experience_buffer = ExperienceBuffer(
             config.replay_buffer_size
+        )
+
+    # optionally restore the replay buffer checkpointed alongside the model,
+    # so a resumed run doesn't restart with an empty buffer
+    if getattr(config, "persist_replay_buffer", False) and starting_iteration > 0:
+        load_replay_buffer(
+            starting_iteration,
+            trajectory_buffer if use_target_refresh else experience_buffer,
         )
 
     # optionally keep one optimizer (and its Adam moments) across all training
@@ -469,6 +492,11 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
         # save the model after each iteration
         if config.training_dir:
             save_model(config.training_dir + f'model_{i + 1}.pkl', model)
+            if getattr(config, "persist_replay_buffer", False):
+                save_replay_buffer(
+                    i + 1,
+                    trajectory_buffer if use_target_refresh else experience_buffer,
+                )
 
         # per-iteration diagnostics on the rsrd probe batch (always on, independent
         # of config.detect_collapse — the flag only gates the early-abort below).

@@ -28,6 +28,7 @@ class Config:
     training_samples: int
     turn_limit: int | None
     replay_buffer_size: int
+    persist_replay_buffer: bool  # checkpoint the replay buffer alongside model_<i>.pkl so resume doesn't restart it empty
     training_batch_size: int
     mcts_samples: int
     
