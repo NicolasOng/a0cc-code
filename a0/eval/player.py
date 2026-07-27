@@ -1,4 +1,5 @@
 import os
+import gc
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
 import json
@@ -227,19 +228,22 @@ def iters_to_evaluate(available: list[int], already_done: set[int]) -> list[int]
     return sorted(i for i in selected if i not in already_done)
 
 
-def get_trained_players(iters: list[int]) -> list[tuple[int, A0Player]]:
-    '''Load the requested trained-model checkpoints and wrap each in an A0Player.
+def get_trained_players(iters: list[int]):
+    '''Yield (iteration, A0Player) one checkpoint at a time.
 
-    Only the iterations in `iters` are loaded (missing files are skipped), so we
-    don't pay to deserialize checkpoints we won't evaluate.'''
-    players: list[tuple[int, A0Player]] = []
+    Loading lazily (instead of building the whole list up front) keeps the main
+    process holding at most one model on the GPU at once. Preloading every
+    checkpoint here exhausts GPU memory when combined with the per-worker CUDA
+    contexts spawned during matchups, so this must be consumed lazily and each
+    player released before advancing (see evaluate_players). Missing checkpoint
+    files are skipped.'''
     for i in iters:
         model_path = f"{config.training_dir}/model_{i}.pkl"
         if not os.path.exists(model_path):
             logger.warning(f"model {i} not found at {model_path}; skipping.")
             continue
         model = load_model(model_path)
-        players.append((i, A0Player(
+        yield (i, A0Player(
             config.board_size,
             config.num_pieces,
             model,
@@ -253,8 +257,7 @@ def get_trained_players(iters: list[int]) -> list[tuple[int, A0Player]]:
             policy_type=config.policy_type,
             epsilon=config.epsilon,
             dirichlet_epsilon=config.dirichlet_epsilon
-        )))
-    return players
+        ))
 
 
 def _baseline_c() -> float:
@@ -387,6 +390,12 @@ def evaluate_players(
         for stat, value in _matchup_stats_dict(s2).items():
             series.ys[f'{stat}_p2'].append(value)
         save_series(series, output_path)
+
+        # Release this checkpoint's model (and its GPU buffers) before the
+        # generator loads the next one, so the main process holds at most one
+        # model at a time and leaves room for the worker CUDA contexts.
+        del player
+        gc.collect()
 
     # Keep the series ordered by checkpoint index. Appends are usually already
     # ascending, but re-sorting keeps things correct even when extending a run
