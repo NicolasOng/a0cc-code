@@ -30,7 +30,7 @@ from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 
-NUM_GAMES = 64
+NUM_GAMES = config.player_eval_num_games  # games/side per checkpoint for the win-rate curve
 BASELINE_MCTS_ITERATIONS = 512
 BASELINE_EPSILON = 0.1   # for the BEST rollout policy used by the baseline
 TURN_LIMIT = 80
@@ -248,7 +248,7 @@ def get_trained_players(iters: list[int]):
             config.num_pieces,
             model,
             exploit=True,
-            mcts_samples=config.mcts_samples,
+            mcts_samples=config.player_eval_mcts_samples,
             no_reverse_moves=not config.backwards_moves,
             no_illegal_moves=not config.illegal_moves,
             no_side_moves=not config.sideways_moves,

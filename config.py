@@ -91,6 +91,8 @@ class Config:
     do_player_eval: bool  # gates a0.eval.player
     do_gt_evals: bool     # gates eval3 analyses that need the solve-data file
     player_eval_stride: int  # eval every Nth checkpoint (1 = all); iter 0 and the latest are always included
+    player_eval_mcts_samples: int  # MCTS sims/move for the win-rate CURVE eval; separate from training mcts_samples. Lower → value quality is less masked by search, so lambda banding is more visible.
+    player_eval_num_games: int  # games per side, per checkpoint, in the win-rate curve (replaces the old hard-coded NUM_GAMES=64)
 
     # target-refresh training path (fitted-VI target refreshes; a0.train.targets)
     use_target_refresh: bool  # enable the target-refresh path instead of plain self-play targets
