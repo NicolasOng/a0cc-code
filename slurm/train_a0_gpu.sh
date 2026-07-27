@@ -5,6 +5,8 @@
 #SBATCH --mem-per-cpu=4G
 #SBATCH --gpus-per-node=1
 
+# CC module system isn't inherited by non-login `ssh host 'sbatch ...'`; source it.
+source /cvmfs/soft.computecanada.ca/config/profile/bash.sh
 module load cuda/12.6 cudnn/9.10 python/3.11
 virtualenv --no-download $SLURM_TMPDIR/env
 source $SLURM_TMPDIR/env/bin/activate
@@ -65,15 +67,9 @@ if [ "$AUTO_RESUBMIT" = "1" ] && [ -n "$SLURM_JOB_ID" ] && [ "${REMAINING:-0}" -
     CHAIN_LOG_DIR="$(dirname "$(dirname "$CONFIG_FILE")")/slurm_logs"
     mkdir -p "$CHAIN_LOG_DIR"
     HP_ID="$(basename "$(dirname "$CONFIG_FILE")")"
-    # Paired eval of this chunk's checkpoints (runs once this job ends, finished
-    # or timed out). $EVAL_SBATCH_FLAGS is optional extra sbatch flags.
-    if [ "${AUTO_EVAL:-1}" = "1" ]; then
-        echo "Queuing paired eval job (afterany:$SLURM_JOB_ID)."
-        sbatch --dependency="afterany:$SLURM_JOB_ID" $EVAL_SBATCH_FLAGS \
-            --output="$CHAIN_LOG_DIR/eval_chain_${HP_ID}_t${TRIAL_NO}_%j.out" \
-            --export=ALL "$EVAL_SCRIPT" "$CONFIG_FILE" "$TRIAL_NO"
-    fi
-    # Continuation to keep training past this job's wall clock.
+    # Continuation to keep training past this job's wall clock. (No per-chunk
+    # eval anymore — the non-player eval runs once at the terminal slot below,
+    # and player eval / plateau sweep / combine are submitted manually.)
     if [ "$CHAIN_IDX" -lt "$MAX_CHAIN" ]; then
         NEXT_IDX=$((CHAIN_IDX + 1))
         echo "Queuing continuation train job (chain $NEXT_IDX/$MAX_CHAIN, afterany:$SLURM_JOB_ID)."
@@ -86,7 +82,12 @@ if [ "$AUTO_RESUBMIT" = "1" ] && [ -n "$SLURM_JOB_ID" ] && [ "${REMAINING:-0}" -
 fi
 
 if [ "${REMAINING:-0}" -le 0 ]; then
-    echo "Training already complete for this (config, trial); nothing to do."
+    # Terminal slot: training is complete. In the auto-resubmit chain this is the
+    # pre-queued continuation job that finds nothing left to train — so it runs
+    # the non-player eval once, on the GPU it was already allocated, then exits.
+    # (Player eval, plateau sweep, and combine/aggregate are submitted manually.)
+    echo "Training complete for ($CONFIG_FILE, trial $TRIAL_NO); running non-player eval."
+    bash slurm/run_nonplayer_eval.sh "$CONFIG_FILE" "$TRIAL_NO"
     exit 0
 fi
 
