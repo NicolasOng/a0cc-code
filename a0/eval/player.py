@@ -228,6 +228,27 @@ def iters_to_evaluate(available: list[int], already_done: set[int]) -> list[int]
     return sorted(i for i in selected if i not in already_done)
 
 
+def build_a0_player(model, mcts_samples: int) -> A0Player:
+    '''Wrap a loaded model in an A0Player using the shared eval settings, at the
+    given MCTS search budget. Shared by the win-rate curve (a0.eval.player) and
+    the plateau sweep (a0.eval.player_sweep) so both build identical players.'''
+    return A0Player(
+        config.board_size,
+        config.num_pieces,
+        model,
+        exploit=True,
+        mcts_samples=mcts_samples,
+        no_reverse_moves=not config.backwards_moves,
+        no_illegal_moves=not config.illegal_moves,
+        no_side_moves=not config.sideways_moves,
+        rollout_type=config.rollout_type,
+        rollout_depth=config.rollout_depth,
+        policy_type=config.policy_type,
+        epsilon=config.epsilon,
+        dirichlet_epsilon=config.dirichlet_epsilon,
+    )
+
+
 def get_trained_players(iters: list[int]):
     '''Yield (iteration, A0Player) one checkpoint at a time.
 
@@ -243,21 +264,7 @@ def get_trained_players(iters: list[int]):
             logger.warning(f"model {i} not found at {model_path}; skipping.")
             continue
         model = load_model(model_path)
-        yield (i, A0Player(
-            config.board_size,
-            config.num_pieces,
-            model,
-            exploit=True,
-            mcts_samples=config.player_eval_mcts_samples,
-            no_reverse_moves=not config.backwards_moves,
-            no_illegal_moves=not config.illegal_moves,
-            no_side_moves=not config.sideways_moves,
-            rollout_type=config.rollout_type,
-            rollout_depth=config.rollout_depth,
-            policy_type=config.policy_type,
-            epsilon=config.epsilon,
-            dirichlet_epsilon=config.dirichlet_epsilon
-        ))
+        yield (i, build_a0_player(model, config.player_eval_mcts_samples))
 
 
 def _baseline_c() -> float:

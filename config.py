@@ -94,6 +94,13 @@ class Config:
     player_eval_mcts_samples: int  # MCTS sims/move for the win-rate CURVE eval; separate from training mcts_samples. Lower → value quality is less masked by search, so lambda banding is more visible.
     player_eval_num_games: int  # games per side, per checkpoint, in the win-rate curve (replaces the old hard-coded NUM_GAMES=64)
 
+    # Plateau MCTS-sweep eval (a0.eval.player_sweep): winrate of the last few
+    # converged checkpoints vs the baseline at several search budgets, averaged
+    # for a low-variance, value-sensitive measurement. Manually submitted.
+    plateau_sweep_mcts_samples: list[int]  # search budgets to sweep (e.g. [8, 32, 128, 512])
+    plateau_sweep_num_checkpoints: int     # how many of the latest checkpoints to average over
+    plateau_sweep_num_games: int           # games per side, per (checkpoint, budget)
+
     # target-refresh training path (fitted-VI target refreshes; a0.train.targets)
     use_target_refresh: bool  # enable the target-refresh path instead of plain self-play targets
     num_target_refreshes: int  # K: refresh passes per iteration (the starting value when decayed)
