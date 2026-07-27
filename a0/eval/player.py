@@ -156,7 +156,10 @@ def run_matchup(
     logger.info(f"Using {config.num_workers} workers; running {num_games} games (focal_first={focal_first}).")
 
     stats = MatchupStats()
-    with concurrent.futures.ProcessPoolExecutor(max_workers=config.num_workers, max_tasks_per_child=1) as executor:
+    # Reuse each worker for several games to amortize per-process JAX/CUDA init,
+    # but recycle periodically so per-worker memory stays bounded (de-risk showed
+    # ~38 GB stable at this reuse level; a fresh process per game was the old =1).
+    with concurrent.futures.ProcessPoolExecutor(max_workers=config.num_workers, max_tasks_per_child=8) as executor:
         futures: list[Future[tuple[GameStats, list[dict] | None]]] = [
             executor.submit(_play_single_game, p1_serialized, p2_serialized, i < log_games)
             for i in range(num_games)
