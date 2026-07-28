@@ -57,6 +57,7 @@ class Config:
 
     eval_neighbors: int
     eval_mcts_samples: list[int]
+    distribution_max_samples: int  # cap on raw samples kept per (trial, iteration) in DistributionSeries pkls (0 = keep all); the plots histogram the samples anyway, so a subsample preserves them at a fraction of the size
 
     model_training: bool
 
