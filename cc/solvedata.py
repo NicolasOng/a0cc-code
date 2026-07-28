@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.typing as npt
+import os
 import struct
 from enum import Enum
 
@@ -10,11 +11,25 @@ class Outcome(Enum):
     ILLEGAL = 3
 
 class SolveData:
-    def __init__(self, filename: str, mmap: bool = False):
+    def __init__(self, filename: str, mmap: bool = True):
         self.entries, self.mem = self.read_solve_data_file(filename, mmap)
 
     @staticmethod
-    def read_solve_data_file(filename: str, mmap: bool = False) -> tuple[int, npt.NDArray[np.uint64]]:
+    def _resolve_staged_path(filename: str) -> str:
+        '''If a copy of this solve file has been staged into $SLURM_TMPDIR
+        (node-local NVMe; see slurm/stage_solve_data.sh), read that instead of
+        the original path so mmap page faults hit local disk rather than the
+        network filesystem. Off-cluster ($SLURM_TMPDIR unset) this is a no-op and
+        the original path is mmapped in place.'''
+        tmp = os.environ.get('SLURM_TMPDIR')
+        if tmp:
+            staged = os.path.join(tmp, os.path.basename(filename))
+            if os.path.exists(staged):
+                return staged
+        return filename
+
+    @staticmethod
+    def read_solve_data_file(filename: str, mmap: bool = True) -> tuple[int, npt.NDArray[np.uint64]]:
         '''
         reads a file from disk.
         format of file:
@@ -24,6 +39,7 @@ class SolveData:
         - [memory size] * 8 bytes: the actual data to load
         Based on NBitArray<numBits>::Read(FILE *f) in NBitArray.h
         '''
+        filename = SolveData._resolve_staged_path(filename)
         with open(filename, 'rb') as f:
             header = f.read(16)
             if len(header) != 16:

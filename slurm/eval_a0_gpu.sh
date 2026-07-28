@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=aip-nathanst
 #SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=4G
+#SBATCH --cpus-per-task=4
+#SBATCH --mem-per-cpu=6G
 #SBATCH --gpus-per-node=1
 
 # CC module system isn't inherited by non-login `ssh host 'sbatch ...'`; source it.
@@ -34,6 +34,9 @@ fi
 
 echo "Using configuration file: $CONFIG_FILE"
 echo "Using trial number: $TRIAL_NO"
+
+# Stage the solve file to node-local NVMe so GT lookups mmap a fast local copy.
+bash slurm/stage_solve_data.sh "$CONFIG_FILE"
 
 # Non-player eval only. Player eval (a0.eval.player) and the plateau sweep
 # (a0.eval.player_sweep) are submitted manually; combine/aggregate roll-up is

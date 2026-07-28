@@ -2,7 +2,7 @@
 #SBATCH --account=aip-nathanst
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=4G
+#SBATCH --mem-per-cpu=2G
 #SBATCH --gpus-per-node=1
 
 # Manual player-eval WIN-RATE CURVE (a0.eval.player): win rate vs the baseline
@@ -35,6 +35,9 @@ else
     CONFIG_FILE="$TASKS_FILE_OR_CONFIG"
     TRIAL_NO="${2}"
 fi
+
+# Stage the solve file to node-local NVMe so GT lookups mmap a fast local copy.
+bash slurm/stage_solve_data.sh "$CONFIG_FILE"
 
 echo "Player-curve eval: config=$CONFIG_FILE trial=$TRIAL_NO"
 time python -m a0.eval.player "$CONFIG_FILE" "$TRIAL_NO"

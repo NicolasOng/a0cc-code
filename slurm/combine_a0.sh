@@ -1,9 +1,12 @@
 #!/bin/bash
 #SBATCH --account=aip-nathanst
 #SBATCH --time=1:00:00
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=4G
 
+# CC module system is not inherited by non-login `ssh host 'sbatch ...'`; source
+# it explicitly so this script works however it's submitted.
+source /cvmfs/soft.computecanada.ca/config/profile/bash.sh
 module load python/3.11
 virtualenv --no-download $SLURM_TMPDIR/env
 source $SLURM_TMPDIR/env/bin/activate

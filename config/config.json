@@ -56,7 +56,7 @@
     "c_puct": 1.0,
     "do_player_eval": true,
     "do_gt_evals": true,
-    "player_eval_stride": 1,
+    "player_eval_stride": 4,
     "player_eval_mcts_samples": 32,
     "player_eval_num_games": 128,
     "plateau_sweep_mcts_samples": [8, 32, 128, 512],
