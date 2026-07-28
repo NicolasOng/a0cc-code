@@ -199,7 +199,21 @@ class DistributionSeries:
         self.name = name
 
 def save_distribution_series(series: DistributionSeries, series_path: str) -> None:
-    '''Saves a DistributionSeries to the given path.'''
+    '''Saves a DistributionSeries to the given path.
+
+    Each trial's per-iteration sample list is randomly subsampled to at most
+    config.distribution_max_samples (0 = keep all). The distribution plots
+    histogram the samples anyway, so a representative subsample preserves them
+    while keeping these pkls small (raw targets are ~5k samples/iteration).
+    '''
+    cap = getattr(config, "distribution_max_samples", 0) or 0
+    if cap > 0:
+        for trial in series.trials:
+            for i, samples in enumerate(trial):
+                if samples is not None and len(samples) > cap:
+                    arr = np.asarray(samples)
+                    sel = np.random.choice(arr.shape[0], cap, replace=False)
+                    trial[i] = arr[sel].tolist()
     logger.info(f"Saving distribution series to {series_path}...")
     os.makedirs(os.path.dirname(series_path), exist_ok=True)
     with open(series_path, 'wb') as f:

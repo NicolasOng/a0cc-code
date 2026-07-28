@@ -30,7 +30,7 @@ from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 
-NUM_GAMES = 64
+NUM_GAMES = config.player_eval_num_games  # games/side per checkpoint for the win-rate curve
 BASELINE_MCTS_ITERATIONS = 512
 BASELINE_EPSILON = 0.1   # for the BEST rollout policy used by the baseline
 TURN_LIMIT = 80
@@ -156,7 +156,10 @@ def run_matchup(
     logger.info(f"Using {config.num_workers} workers; running {num_games} games (focal_first={focal_first}).")
 
     stats = MatchupStats()
-    with concurrent.futures.ProcessPoolExecutor(max_workers=config.num_workers, max_tasks_per_child=1) as executor:
+    # Reuse each worker for several games to amortize per-process JAX/CUDA init,
+    # but recycle periodically so per-worker memory stays bounded (de-risk showed
+    # ~38 GB stable at this reuse level; a fresh process per game was the old =1).
+    with concurrent.futures.ProcessPoolExecutor(max_workers=config.num_workers, max_tasks_per_child=8) as executor:
         futures: list[Future[tuple[GameStats, list[dict] | None]]] = [
             executor.submit(_play_single_game, p1_serialized, p2_serialized, i < log_games)
             for i in range(num_games)
@@ -228,6 +231,27 @@ def iters_to_evaluate(available: list[int], already_done: set[int]) -> list[int]
     return sorted(i for i in selected if i not in already_done)
 
 
+def build_a0_player(model, mcts_samples: int) -> A0Player:
+    '''Wrap a loaded model in an A0Player using the shared eval settings, at the
+    given MCTS search budget. Shared by the win-rate curve (a0.eval.player) and
+    the plateau sweep (a0.eval.player_sweep) so both build identical players.'''
+    return A0Player(
+        config.board_size,
+        config.num_pieces,
+        model,
+        exploit=True,
+        mcts_samples=mcts_samples,
+        no_reverse_moves=not config.backwards_moves,
+        no_illegal_moves=not config.illegal_moves,
+        no_side_moves=not config.sideways_moves,
+        rollout_type=config.rollout_type,
+        rollout_depth=config.rollout_depth,
+        policy_type=config.policy_type,
+        epsilon=config.epsilon,
+        dirichlet_epsilon=config.dirichlet_epsilon,
+    )
+
+
 def get_trained_players(iters: list[int]):
     '''Yield (iteration, A0Player) one checkpoint at a time.
 
@@ -243,21 +267,7 @@ def get_trained_players(iters: list[int]):
             logger.warning(f"model {i} not found at {model_path}; skipping.")
             continue
         model = load_model(model_path)
-        yield (i, A0Player(
-            config.board_size,
-            config.num_pieces,
-            model,
-            exploit=True,
-            mcts_samples=config.mcts_samples,
-            no_reverse_moves=not config.backwards_moves,
-            no_illegal_moves=not config.illegal_moves,
-            no_side_moves=not config.sideways_moves,
-            rollout_type=config.rollout_type,
-            rollout_depth=config.rollout_depth,
-            policy_type=config.policy_type,
-            epsilon=config.epsilon,
-            dirichlet_epsilon=config.dirichlet_epsilon
-        ))
+        yield (i, build_a0_player(model, config.player_eval_mcts_samples))
 
 
 def _baseline_c() -> float:

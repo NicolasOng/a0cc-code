@@ -57,6 +57,7 @@ class Config:
 
     eval_neighbors: int
     eval_mcts_samples: list[int]
+    distribution_max_samples: int  # cap on raw samples kept per (trial, iteration) in DistributionSeries pkls (0 = keep all); the plots histogram the samples anyway, so a subsample preserves them at a fraction of the size
 
     model_training: bool
 
@@ -91,6 +92,15 @@ class Config:
     do_player_eval: bool  # gates a0.eval.player
     do_gt_evals: bool     # gates eval3 analyses that need the solve-data file
     player_eval_stride: int  # eval every Nth checkpoint (1 = all); iter 0 and the latest are always included
+    player_eval_mcts_samples: int  # MCTS sims/move for the win-rate CURVE eval; separate from training mcts_samples. Lower → value quality is less masked by search, so lambda banding is more visible.
+    player_eval_num_games: int  # games per side, per checkpoint, in the win-rate curve (replaces the old hard-coded NUM_GAMES=64)
+
+    # Plateau MCTS-sweep eval (a0.eval.player_sweep): winrate of the last few
+    # converged checkpoints vs the baseline at several search budgets, averaged
+    # for a low-variance, value-sensitive measurement. Manually submitted.
+    plateau_sweep_mcts_samples: list[int]  # search budgets to sweep (e.g. [8, 32, 128, 512])
+    plateau_sweep_num_checkpoints: int     # how many of the latest checkpoints to average over
+    plateau_sweep_num_games: int           # games per side, per (checkpoint, budget)
 
     # target-refresh training path (fitted-VI target refreshes; a0.train.targets)
     use_target_refresh: bool  # enable the target-refresh path instead of plain self-play targets
