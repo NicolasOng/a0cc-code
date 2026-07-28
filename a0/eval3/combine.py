@@ -88,6 +88,8 @@ SERIES_FILES = [
     # player evaluation
     "player_evaluation_results",
     "reference_evaluation_results",
+    # plateau MCTS sweep (x = mcts budgets); merged -> cross-seed mean + CI
+    "player_sweep_results",
 ]
 
 DISTRIBUTION_SERIES_FILES = [

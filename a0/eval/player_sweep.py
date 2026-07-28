@@ -66,9 +66,10 @@ def main() -> None:
                 f"(last {n_ck} of {len(available)}), games/side={num_games}")
 
     baseline = make_baseline()
-    series = Series(ys=['winrate', 'winrate_p1', 'winrate_p2',
-                        'winrate_std', 'winrate_p1_std', 'winrate_p2_std',
-                        'winrate_ci', 'winrate_p1_ci', 'winrate_p2_ci'])
+    # Per-trial point estimate at each budget: win rate averaged over the last-N
+    # checkpoints. Cross-seed mean + CI is produced by the combine merge
+    # (merged_player_sweep_results.pkl), consistent with the other per-trial evals.
+    series = Series(ys=['winrate', 'winrate_p1', 'winrate_p2'])
 
     for budget in budgets:
         per_ck, per_ck_p1, per_ck_p2 = [], [], []
@@ -88,15 +89,11 @@ def main() -> None:
             gc.collect()
 
         series.x.append(budget)
-        for name, vals in [('winrate', per_ck), ('winrate_p1', per_ck_p1),
-                           ('winrate_p2', per_ck_p2)]:
-            arr = np.asarray(vals, dtype=float)
-            std = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
-            series.ys[name].append(float(np.mean(arr)))
-            series.ys[f'{name}_std'].append(std)
-            series.ys[f'{name}_ci'].append(1.96 * std / max(1, len(arr)) ** 0.5)
+        series.ys['winrate'].append(float(np.mean(per_ck)))
+        series.ys['winrate_p1'].append(float(np.mean(per_ck_p1)))
+        series.ys['winrate_p2'].append(float(np.mean(per_ck_p2)))
         logger.info(f"=> mcts={budget}: mean winrate={series.ys['winrate'][-1]:.3f} "
-                    f"+/-{series.ys['winrate_ci'][-1]:.3f} over {len(per_ck)} checkpoints")
+                    f"over {len(per_ck)} checkpoints")
 
     out = f"{config.eval_dir}/player_sweep_results.pkl"
     save_series(series, out)
