@@ -8,11 +8,12 @@ games generated at i":
 
   classic run   turn.alternative_value_target, in its own file's iteration.
   refresh run   the turn.refresh_value_targets tuples, each landing in the
-                column named by its own iteration field, all refreshes pooled.
-                Targets of OLDER buffered games retargeted at iteration i live
-                in the refresh_targets_{i}.pkl sidecars and are folded in
-                separately (a0.eval3.refresh_targets), since they aren't
-                reachable from this traversal.
+                column named by its own iteration field, all refreshes pooled,
+                PLUS the refresh_targets_{i}.pkl sidecar rows — the targets of
+                older buffered trajectories retargeted at iteration i, which the
+                gamedata traversal cannot see. With both folded in, column i is
+                every target created at iteration i regardless of how old the
+                trajectory is.
 
 One rule covers both and avoids double-counting: on a refresh run
 alternative_value_target IS the refresh-0 target (trajectory_buffer.py sets it
@@ -40,6 +41,7 @@ from typing import Callable
 import numpy as np
 
 from a0.utils.plotting import Series, save_series
+from a0.utils.load_training_data import refresh_targets_generator
 from a0.eval3.collectors.base import (
     Collector, GameInfo, TurnInfo, progress_bucket_for, progress_bucket_upper_bounds,
 )
@@ -91,11 +93,18 @@ class AccuracyHeatmapCollector(Collector):
         get_targets: Callable[[TurnInfo], list[tuple[int, float]]] = alt_targets,
         n_progress_buckets: int = 10,
         max_distance: int | None = None,
+        fold_refresh_sidecars: bool = False,
     ):
         self._name = name
         self._get_targets = get_targets
         self._n_progress_buckets = n_progress_buckets
         self._max_distance = max_distance if max_distance is not None else config.heatmap_max_distance
+        self._fold_refresh_sidecars = fold_refresh_sidecars
+        # (generation iteration, game index) -> trajectory facts the sidecar rows
+        # need but don't carry: game length, whether it finished, and the GT
+        # outcome per turn. Only built when folding, since it is dead weight
+        # otherwise. ~4MB of float32 for a 200-iteration run at 5k states each.
+        self._games: dict[tuple[int, int], tuple[int, bool, np.ndarray]] = {}
         # iteration -> bin -> accumulator
         self._distance: dict[int, dict[int | str, list[float]]] = {}
         self._progress: dict[int, dict[int, list[float]]] = {}
@@ -137,6 +146,9 @@ class AccuracyHeatmapCollector(Collector):
         pass
 
     def on_turn(self, ti: TurnInfo) -> None:
+        if self._fold_refresh_sidecars:
+            self._index_turn(ti)
+
         targets = self._get_targets(ti)
         if not targets:
             return
@@ -156,6 +168,99 @@ class AccuracyHeatmapCollector(Collector):
 
     def on_iteration_end(self, iteration: int) -> None:
         pass
+
+    def _index_turn(self, ti: TurnInfo) -> None:
+        '''
+        Records the trajectory facts a sidecar row can't supply. Keyed by
+        0-based generation iteration to match the sidecar rows (ti.iteration is
+        1-based, like every other eval3 series).
+        '''
+        key = (ti.iteration - 1, ti.game_index)
+        entry = self._games.get(key)
+        if entry is None:
+            entry = (ti.game_length, ti.ended, np.full(ti.game_length, np.nan, dtype=np.float32))
+            self._games[key] = entry
+        entry[2][ti.turn_index] = ti.gt_outcome
+
+    def fold_refresh_sidecars(self) -> None:
+        '''
+        Adds the sidecar rows — targets of OLDER buffered trajectories retargeted
+        during each iteration — into the same cells, so a column ends up holding
+        every target created at that iteration rather than only those of the
+        trajectories generated then.
+
+        Streams one sidecar file at a time and bins immediately. Deliberately
+        does NOT build a per-game record store the way _collect_target_records
+        does: at ~50k buffer positions x K refreshes x hundreds of iterations
+        that store is multi-GB, while the bins are a fixed ~20k cells.
+
+        Rows are (generation_iteration, game_index, turn_idx, rank, iteration,
+        refresh, target), with both iteration fields 0-based.
+        '''
+        rows_seen = 0
+        rows_folded = 0
+        orphan_rows = 0
+        orphan_games: set[tuple[int, int]] = set()
+        unfinished_rows = 0
+
+        for _file_iteration, payload in refresh_targets_generator(config.training_dir, config.training_iterations):
+            for generation_iteration, game_index, turn_index, _rank, iteration, refresh, target in payload["rows"]:
+                rows_seen += 1
+                entry = self._games.get((generation_iteration, game_index))
+                if entry is None:
+                    # generation gamedata pkl missing — chained job with its own
+                    # training_dir, or rolled back. The row carries `rank`, so GT
+                    # is recoverable, but game length isn't, so there is no
+                    # distance or progress to bin it into.
+                    orphan_rows += 1
+                    orphan_games.add((generation_iteration, game_index))
+                    continue
+
+                game_length, ended, gt_outcomes = entry
+                if not 0 <= turn_index < game_length:
+                    orphan_rows += 1
+                    continue
+                gt_outcome = float(gt_outcomes[turn_index])
+                if np.isnan(gt_outcome):
+                    orphan_rows += 1
+                    continue
+
+                column = iteration + 1
+                progress = (turn_index * 100) // game_length
+                self._accumulate(
+                    self._progress, column,
+                    progress_bucket_for(progress, self._n_progress_buckets),
+                    float(target), gt_outcome,
+                )
+                if ended:
+                    distance = game_length - 1 - turn_index
+                    self._accumulate(self._distance, column, self._distance_bin(distance),
+                                     float(target), gt_outcome)
+                else:
+                    unfinished_rows += 1
+
+                counts = self._entries_per_turn.setdefault(column, [0, 0])
+                counts[0] += 1
+                # every turn contributes exactly one row per refresh, so the
+                # refresh-0 rows count the distinct turns behind this column
+                if refresh == 0:
+                    counts[1] += 1
+                rows_folded += 1
+
+        if rows_seen == 0:
+            logger.info(f"AccuracyHeatmapCollector '{self._name}': no refresh sidecars (classic run); nothing to fold.")
+            return
+        logger.info(
+            f"AccuracyHeatmapCollector '{self._name}': folded {rows_folded}/{rows_seen} sidecar rows "
+            f"({len(self._games)} indexed trajectories, {unfinished_rows} rows from unfinished games "
+            f"kept on the progress axis only)."
+        )
+        if orphan_rows:
+            logger.warning(
+                f"AccuracyHeatmapCollector '{self._name}': dropped {orphan_rows} sidecar rows with no "
+                f"trajectory context ({len(orphan_games)} games missing from the gamedata files). "
+                f"Expected if this run was chained from a different training_dir or rolled back."
+            )
 
     def _build_series(
         self,
@@ -194,6 +299,11 @@ class AccuracyHeatmapCollector(Collector):
         return series
 
     def finalize(self) -> None:
+        # must run before the pivot: the sidecar rows belong in the same cells,
+        # and the traversal index they join against is only complete now
+        if self._fold_refresh_sidecars:
+            self.fold_refresh_sidecars()
+
         if not self._progress:
             logger.info(f"AccuracyHeatmapCollector '{self._name}': no targets found; skipping save.")
             return

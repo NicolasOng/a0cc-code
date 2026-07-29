@@ -925,7 +925,8 @@ def run_collectors(ranker: RankUnrank, gt: GroundTruth | None) -> None:
             # the point (those are the targets the value head trains on); the
             # experienced one is the control, and costs ~nothing since GT is
             # already computed once per turn for the whole traversal.
-            AccuracyHeatmapCollector(name="alt_targets", get_targets=alt_targets),
+            AccuracyHeatmapCollector(name="alt_targets", get_targets=alt_targets,
+                                     fold_refresh_sidecars=True),
             AccuracyHeatmapCollector(name="experienced", get_targets=experienced_targets),
             BPPCollector(gt=gt),
             BPPCollector(
