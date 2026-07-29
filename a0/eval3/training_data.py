@@ -24,8 +24,14 @@ from a0.eval.generate_datasets import save_dataset
 from a0.utils.misc import get_baseline_accuracy, get_branching_factor
 from a0.utils.value_policy_entropy import normalized_policy_entropy
 from a0.eval3.generate_datasets import get_nd_and_nt_datasets_from_state_list
-from a0.eval3.collectors.base import Collector, GameInfo, TurnInfo, GameProgressCollector
+from a0.eval3.collectors.base import (
+    Collector, GameInfo, TurnInfo, GameProgressCollector,
+    progress_bucket_upper_bounds, progress_bucket_for,
+)
 from a0.eval3.collectors.bpp_and_bppma import BPPCollector
+from a0.eval3.collectors.accuracy_heatmap import (
+    AccuracyHeatmapCollector, alt_targets, experienced_targets,
+)
 from a0.eval3.refresh_targets import RefreshTargetAccuracyCollector, run_refresh_target_analyses
 
 from config import config
@@ -597,14 +603,12 @@ class GameProgressMetaCollector(Collector):
         for c in self._collectors:
             c.init_buckets(bounds)
 
-    @staticmethod
-    def bucket_upper_bounds(n_buckets: int) -> list[int]:
-        size = 100 / n_buckets
-        return [int((b + 1) * size) for b in range(n_buckets)]
+    # shared with AccuracyHeatmapCollector, which needs the same bucketing
+    # without being a GameProgressCollector — see collectors/base.py
+    bucket_upper_bounds = staticmethod(progress_bucket_upper_bounds)
 
     def _get_bucket_upper(self, progress: int) -> int:
-        bucket_idx = min(int(progress / self._bucket_size), self._n_buckets - 1)
-        return int((bucket_idx + 1) * self._bucket_size)
+        return progress_bucket_for(progress, self._n_buckets)
 
     def on_game(self, gi: GameInfo) -> None:
         pass
@@ -870,6 +874,7 @@ def run_collectors(ranker: RankUnrank, gt: GroundTruth | None) -> None:
     - accuracy files (experienced + alt-target, x4)
     - BPP / BPPMA files (experienced + alt-target, x8)
     - {experienced,alt_targets}_{n_buckets}_progress_acc.pkl
+    - {experienced,alt_targets}_iter_{distance,progress}_acc.pkl (heatmaps)
     - gamedata_{n_buckets}_progress_baseline_accuracy.pkl
     - game_progress_{n_buckets}_nd.pkl (and nt)
     '''
@@ -916,6 +921,12 @@ def run_collectors(ranker: RankUnrank, gt: GroundTruth | None) -> None:
             ),
             # per-refresh target accuracy (target-refresh runs; no-op otherwise)
             RefreshTargetAccuracyCollector(),
+            # iteration x progress/distance accuracy heatmaps. The alt one is
+            # the point (those are the targets the value head trains on); the
+            # experienced one is the control, and costs ~nothing since GT is
+            # already computed once per turn for the whole traversal.
+            AccuracyHeatmapCollector(name="alt_targets", get_targets=alt_targets),
+            AccuracyHeatmapCollector(name="experienced", get_targets=experienced_targets),
             BPPCollector(gt=gt),
             BPPCollector(
                 gt=gt,

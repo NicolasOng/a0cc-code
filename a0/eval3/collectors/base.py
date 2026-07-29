@@ -40,6 +40,17 @@ class GameInfo:
     game_length: int
     game_time: float
 
+def progress_bucket_upper_bounds(n_buckets: int) -> list[int]:
+    '''Upper bounds of n equal game-progress buckets over 0-99, e.g. [10, 20, ... 100].'''
+    size = 100 / n_buckets
+    return [int((b + 1) * size) for b in range(n_buckets)]
+
+def progress_bucket_for(progress: int, n_buckets: int) -> int:
+    '''The bucket upper bound that `progress` (0-99) falls into.'''
+    size = 100 / n_buckets
+    idx = min(int(progress / size), n_buckets - 1)
+    return int((idx + 1) * size)
+
 class Collector(Protocol):
     def on_game(self, gi: GameInfo) -> None: ...
 
