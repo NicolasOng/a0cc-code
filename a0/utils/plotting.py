@@ -2,6 +2,7 @@ import sys
 import os
 
 import pickle
+import warnings
 from typing import Literal, Optional, overload
 
 import matplotlib.pyplot as plt
@@ -135,9 +136,14 @@ def merge_series(series: list[Series], confidence: float = 0.95) -> Series:
         # count of non-NaN values at each x position
         n = np.sum(~np.isnan(y_data), axis=0)
 
-        # calculate mean and std ignoring NaNs
-        mean = np.nanmean(y_data, axis=0)
-        std = np.nanstd(y_data, axis=0)
+        # calculate mean and std ignoring NaNs. An all-NaN column is normal for
+        # heatmap series (they emit a fixed D0..D_MAX key set, NaN where no run
+        # reached that distance) and NaN is the correct answer there, so silence
+        # numpy's "Mean of empty slice" rather than let it spam a real run.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            mean = np.nanmean(y_data, axis=0)
+            std = np.nanstd(y_data, axis=0)
 
         # Calculate confidence interval (per-x degrees of freedom)
         alpha = 1 - confidence
@@ -703,10 +709,20 @@ def plot_bar_with_error(title: str, series: tuple[str, list[int], list[float], l
 # "further from the terminal than D_MAX" row, matching accuracy_heatmap.OVERFLOW
 HEATMAP_OVERFLOW = "OVER"
 
-def _heatmap_bins(series: "Series", metric: str, label: str) -> list[int | str]:
-    '''The bins present for `metric`, numerically sorted, overflow last.'''
+def _heatmap_bins(series: "Series", metric: str, label: str, key_suffix: str = "") -> list[int | str]:
+    '''
+    The bins present for `metric`, numerically sorted, overflow last.
+
+    `key_suffix` covers the merged series: merge_series appends "_std"/"_ci" to
+    the WHOLE key, so a merged CI key is "Value Accuracy ND D5_ci" — the bin is
+    in the middle, not at the end.
+    '''
     prefix = f"{metric} {label}"
-    suffixes = [key[len(prefix):] for key in series.ys if key.startswith(prefix)]
+    suffixes = [
+        key[len(prefix):-len(key_suffix)] if key_suffix else key[len(prefix):]
+        for key in series.ys
+        if key.startswith(prefix) and key.endswith(key_suffix)
+    ]
     numeric = sorted(int(s) for s in suffixes if s.isdigit())
     bins: list[int | str] = list(numeric)
     if HEATMAP_OVERFLOW in suffixes:
@@ -720,6 +736,7 @@ def heatmap_matrix(
     min_count: int | None = None,
     count_metric: str | None = None,
     drop_empty_rows: bool = True,
+    key_suffix: str = "",
 ) -> tuple[NDArray[np.float64], list[int | str]]:
     '''
     Pivots a flattened heatmap Series into (n_bins, n_iterations), y ascending.
@@ -731,14 +748,15 @@ def heatmap_matrix(
     the furthest distance meeting `min_count` in EVERY iteration, so no row is
     ragged. Rows are never dropped from the middle.
     '''
-    bins = _heatmap_bins(series, metric, label)
+    bins = _heatmap_bins(series, metric, label, key_suffix)
     if not bins:
-        raise KeyError(f"no keys matching '{metric} {label}*' in series")
+        raise KeyError(f"no keys matching '{metric} {label}*{key_suffix}' in series")
 
-    matrix = np.array([series.ys[f"{metric} {label}{b}"] for b in bins], dtype=np.float64)
+    matrix = np.array([series.ys[f"{metric} {label}{b}{key_suffix}"] for b in bins], dtype=np.float64)
 
     if min_count is not None:
         key = count_metric or ("Count ND" if metric.endswith("ND") else "Count")
+        # counts are always the plain merged mean, never the _std/_ci variant
         counts = np.array([series.ys[f"{key} {label}{b}"] for b in bins], dtype=np.float64)
         matrix = np.where(counts >= min_count, matrix, np.nan)
 
@@ -763,6 +781,7 @@ def plot_heatmap(
     diverging_center: float | None = None,
     v_lim: tuple[float, float] | None = None,
     cbar_label: str | None = None,
+    key_suffix: str = "",
 ) -> None:
     '''
     Renders one flattened heatmap Series as a matrix.
@@ -776,7 +795,8 @@ def plot_heatmap(
     Masked (low-count) cells get their own light grey so "not enough data" never
     reads as a real value.
     '''
-    matrix, bins = heatmap_matrix(series, metric, label, min_count=min_count)
+    matrix, bins = heatmap_matrix(series, metric, label, min_count=min_count,
+                                  key_suffix=key_suffix)
     x = list(series.x)
 
     if diverging_center is not None:

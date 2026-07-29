@@ -27,8 +27,9 @@ from a0.utils.plotting import (
     plot_stacked,
     plot_stacked_proportional,
     plot_value_proportions,
+    plot_heatmap,
 )
-from a0.eval3.plotting import safeplot, _reference_names
+from a0.eval3.plotting import safeplot, _reference_names, _plot_accuracy_heatmaps
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -64,6 +65,13 @@ SERIES_FILES = [
     "alt_targets_10_progress_acc",
     "gamedata_10_progress_baseline_accuracy",
     "gamedata_10_progress_branching_factor",
+    # accuracy heatmaps (iteration x progress / distance-from-terminal).
+    # Mergeable because the collector always emits the full D0..D_MAX key set,
+    # so runs whose games differ in length still share a key set.
+    "experienced_iter_distance_acc",
+    "experienced_iter_progress_acc",
+    "alt_targets_iter_distance_acc",
+    "alt_targets_iter_progress_acc",
     # per-dataset model eval
     "seen_nd_eval",
     "random_nd_eval",
@@ -703,6 +711,38 @@ def plot_merged_gp_branching_factor() -> None:
     )
 
 
+def plot_merged_heatmap_alt_targets() -> None:
+    _plot_accuracy_heatmaps("alt_targets", "Training targets", merged=True)
+
+
+def plot_merged_heatmap_experienced() -> None:
+    _plot_accuracy_heatmaps("experienced", "Experienced (MC) outcomes", merged=True)
+
+
+def plot_merged_heatmap_seed_agreement() -> None:
+    '''
+    Across-seed 95% CI half-width per cell. merge_series emits a "<key>_ci"
+    alongside every merged key, so this is free — and on a heatmap it answers the
+    question the mean cannot: which parts of the picture actually reproduce
+    across seeds, and which are one seed's noise.
+    '''
+    for name, label_name in (("alt_targets", "Training targets"),
+                             ("experienced", "Experienced (MC) outcomes")):
+        for axis, axis_label, y_label in (
+            ("distance", "D", "Distance from terminal (plies)"),
+            ("progress", "P", "Game progress (%)"),
+        ):
+            s = load_series(f"{config.eval_dir}/merged_{name}_iter_{axis}_acc.pkl")
+            plot_heatmap(
+                f"{label_name} value accuracy: across-seed 95% CI half-width",
+                s, "Value Accuracy ND", axis_label,
+                "Training iteration", y_label,
+                f"merged_heatmap_{name}_{axis}_value_accuracy_nd_ci",
+                cbar_label="CI half-width (lower = more reproducible)",
+                key_suffix="_ci",
+            )
+
+
 def plot_merged_gp_state_count() -> None:
     s = load_series(f"{config.eval_dir}/merged_gamedata_10_progress_count.pkl")
     plot_bar_with_error(
@@ -983,6 +1023,11 @@ def main():
     safeplot(plot_merged_gp_alt_targets_accuracy)
     safeplot(plot_merged_gp_baseline_accuracy)
     safeplot(plot_merged_gp_branching_factor)
+
+    # accuracy heatmaps (iteration x progress / distance-from-terminal)
+    safeplot(plot_merged_heatmap_alt_targets)
+    safeplot(plot_merged_heatmap_experienced)
+    safeplot(plot_merged_heatmap_seed_agreement)
 
     # per-dataset model evaluation
     safeplot(plot_merged_seen_nd_eval)
