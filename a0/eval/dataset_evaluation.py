@@ -157,7 +157,12 @@ def policy_entropy_batch(pred_logits: NDArray[np.float32], policy_mask: NDArray[
     masked_logits = np.where(mask, pred_logits, -1e9)
     probs = np.array(jax.nn.softmax(masked_logits, axis=-1), dtype=np.float32)
     probs = np.where(mask, probs, 0.0)
-    per_move = np.where(probs > 0, probs * np.log(probs), 0.0)
+    # np.where evaluates BOTH branches, so log(0) -> -inf -> 0*-inf = nan fires a
+    # RuntimeWarning on every call even though the result is discarded. Feeding
+    # the log a safe 1.0 where probs == 0 gives the same answer (0 * log(1) = 0)
+    # without the warning — this runs millions of times in the model heatmaps.
+    safe_probs = np.where(probs > 0, probs, 1.0)
+    per_move = np.where(probs > 0, probs * np.log(safe_probs), 0.0)
     ent = -np.sum(per_move, axis=-1)                       # nats, per sample
     num_legal = np.sum(mask, axis=-1).astype(np.float32)
     with np.errstate(divide='ignore', invalid='ignore'):
