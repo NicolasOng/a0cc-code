@@ -198,7 +198,7 @@ def traverse_game_data_with_collectors(collectors: list[Collector], gt: GroundTr
     total_turns = 0
     for i, game_data_list in tqdm(gd_gen, desc="Iterations"):
         total_iterations += 1
-        for game_data in game_data_list:
+        for game_index, game_data in enumerate(game_data_list):
             total_games += 1
             game_length = len(game_data.turn_data)
             winner = game_data.winner
@@ -244,6 +244,8 @@ def traverse_game_data_with_collectors(collectors: list[Collector], gt: GroundTr
                     alternative_policy_target=turn.alternative_policy_target,
                     # getattr: absent on pickles predating the target-refresh path
                     refresh_value_targets=getattr(turn, "refresh_value_targets", None),
+                    ended=game_data.ended,
+                    game_index=game_index,
                 )
                 for c in collectors:
                     c.on_turn(turn_info)

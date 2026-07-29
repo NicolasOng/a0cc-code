@@ -24,6 +24,13 @@ class TurnInfo:
     # target-refresh path: (iteration, refresh, target) tuples from the
     # generation iteration; None on classic runs and old pickles
     refresh_value_targets: list[tuple[int, int, float]] | None = None
+    # game-level facts needed by trajectory-keyed collectors. `ended` separates
+    # real terminal states from turn-limit timeouts (an unfinished game has no
+    # terminal state, so distance-from-terminal is meaningless for it).
+    # `game_index` is this game's position in its iteration's gamedata list —
+    # the key the refresh sidecar rows join on.
+    ended: bool = True
+    game_index: int = -1
 
 @dataclass
 class GameInfo:
