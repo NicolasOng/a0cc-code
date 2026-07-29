@@ -60,7 +60,7 @@
     "player_eval_mcts_samples": 32,
     "player_eval_num_games": 128,
     "plateau_sweep_mcts_samples": [8, 32, 128],
-    "plateau_sweep_num_checkpoints": 5,
+    "plateau_sweep_num_checkpoints": 8,
     "plateau_sweep_num_games": 128,
     "use_target_refresh": false,
     "num_target_refreshes": 8,
