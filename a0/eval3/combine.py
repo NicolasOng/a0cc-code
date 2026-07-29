@@ -29,7 +29,9 @@ from a0.utils.plotting import (
     plot_value_proportions,
     plot_heatmap,
 )
-from a0.eval3.plotting import safeplot, _reference_names, _plot_accuracy_heatmaps
+from a0.eval3.plotting import (
+    safeplot, _reference_names, _plot_accuracy_heatmaps, _plot_model_heatmaps,
+)
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -72,6 +74,13 @@ SERIES_FILES = [
     "experienced_iter_progress_acc",
     "alt_targets_iter_distance_acc",
     "alt_targets_iter_progress_acc",
+    # model-accuracy heatmaps (checkpoint x progress / distance) + the class
+    # balance of the unbalanced distance buckets
+    "model_heatmap_progress_nd",
+    "model_heatmap_progress_nt",
+    "model_heatmap_distance_nd",
+    "model_heatmap_distance_nt",
+    "distance_class_balance",
     # per-dataset model eval
     "seen_nd_eval",
     "random_nd_eval",
@@ -719,6 +728,24 @@ def plot_merged_heatmap_experienced() -> None:
     _plot_accuracy_heatmaps("experienced", "Experienced (MC) outcomes", merged=True)
 
 
+def plot_merged_model_heatmaps() -> None:
+    _plot_model_heatmaps(merged=True)
+
+
+def plot_merged_distance_class_balance() -> None:
+    s = load_series(f"{config.eval_dir}/merged_distance_class_balance.pkl")
+    plot_shaded_error(
+        "Class balance of the distance-from-terminal eval buckets (merged)",
+        [
+            ("Majority class rate (= chance)", "±95% CI", s.x, *_ci_keys(s, "Majority Class Rate")),
+            ("Win rate", "±95% CI", s.x, *_ci_keys(s, "Win Rate")),
+        ],
+        "Distance from terminal (plies)", "Fraction of bucket",
+        "merged_model_distance_class_balance",
+        y_lim=(0.0, 1.0),
+    )
+
+
 def plot_merged_heatmap_seed_agreement() -> None:
     '''
     Across-seed 95% CI half-width per cell. merge_series emits a "<key>_ci"
@@ -1028,6 +1055,10 @@ def main():
     safeplot(plot_merged_heatmap_alt_targets)
     safeplot(plot_merged_heatmap_experienced)
     safeplot(plot_merged_heatmap_seed_agreement)
+
+    # model-accuracy heatmaps
+    safeplot(plot_merged_model_heatmaps)
+    safeplot(plot_merged_distance_class_balance)
 
     # per-dataset model evaluation
     safeplot(plot_merged_seen_nd_eval)

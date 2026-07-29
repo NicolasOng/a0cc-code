@@ -544,6 +544,79 @@ def _plot_accuracy_heatmaps(name: str, label_name: str, merged: bool = False) ->
             cbar_label="Mean absolute error",
         )
 
+def _plot_model_heatmaps(merged: bool = False) -> None:
+    '''
+    Model-accuracy heatmaps: checkpoint x bucket.
+
+    Colour differs by axis on purpose, because "chance" does:
+      progress/nd  the buckets ARE win/loss balanced, so 0.5 is chance
+                   everywhere -> diverging about 0.5.
+      distance/nd  the buckets are NOT balanced (balancing empties the
+                   near-terminal rows, where every state is a win for the player
+                   to move), so chance is the per-row majority-class rate and
+                   there is no single centre -> sequential, with the class
+                   balance plotted separately as distance_class_balance.
+      policy       chance is 1/(legal moves), which varies by position ->
+                   sequential.
+    '''
+    prefix = "merged_" if merged else ""
+    suffix = " (merged)" if merged else ""
+    specs = [
+        ("progress_nd", "P", "Game progress (%)", "Value Accuracy", 0.5,
+         "Model value accuracy vs GT, no draws (balanced: 0.5 = chance)"),
+        ("progress_nt", "P", "Game progress (%)", "Policy Accuracy", None,
+         "Model policy accuracy vs GT, non-trivial"),
+        ("distance_nd", "D", "Distance from terminal (plies)", "Value Accuracy", None,
+         "Model value accuracy vs GT, no draws (UNBALANCED - see class-balance plot)"),
+        ("distance_nt", "D", "Distance from terminal (plies)", "Policy Accuracy", None,
+         "Model policy accuracy vs GT, non-trivial"),
+    ]
+    for name, label, y_label, metric, centre, title in specs:
+        series = load_series(f"{config.eval_dir}/{prefix}model_heatmap_{name}.pkl")
+        plot_heatmap(
+            f"{title}{suffix}",
+            series, metric, label,
+            "Model checkpoint", y_label,
+            f"{prefix}heatmap_model_{name}",
+            diverging_center=centre,
+            v_lim=(0.0, 1.0) if centre is not None else None,
+            cbar_label=metric,
+        )
+
+def plot_model_heatmaps() -> None:
+    _plot_model_heatmaps()
+
+def plot_distance_class_balance() -> None:
+    '''
+    Class balance of each distance-from-terminal eval bucket. This is what
+    "chance" means in the corresponding row of the unbalanced distance value
+    heatmap: a row at 1.0 is entirely one outcome, so NO metric on it can
+    separate a model that understands the position from one that always guesses
+    the majority class. It is a 1D curve rather than a heatmap because the eval
+    board set is fixed across checkpoints.
+    '''
+    s = load_series(f"{config.eval_dir}/distance_class_balance.pkl")
+    plot_given(
+        "Class balance of the distance-from-terminal eval buckets "
+        "(1.0 = one outcome only, no metric can discriminate)",
+        [
+            ("Majority class rate (= chance)", s.x, s.ys["Majority Class Rate"]),
+            ("Win rate", s.x, s.ys["Win Rate"]),
+        ],
+        "Distance from terminal (plies)", "Fraction of bucket",
+        "model_distance_class_balance",
+        y_lim=(0.0, 1.0),
+    )
+    # Bucket size as its OWN chart, not a second y-axis: the far tail holds only
+    # a handful of boards, so its balance snaps to 0 or 1 and reads as
+    # structure. This is what says which end of the balance curve to trust.
+    plot_given(
+        "Size of each distance-from-terminal eval bucket",
+        [("Boards in bucket", s.x, s.ys["N"])],
+        "Distance from terminal (plies)", "Boards",
+        "model_distance_bucket_size",
+    )
+
 def plot_heatmap_alt_targets() -> None:
     _plot_accuracy_heatmaps("alt_targets", "Training targets")
 
@@ -829,6 +902,10 @@ def main():
     # accuracy heatmaps (iteration x progress / distance-from-terminal)
     safeplot(plot_heatmap_alt_targets)
     safeplot(plot_heatmap_experienced)
+
+    # model-accuracy heatmaps (checkpoint x progress / distance)
+    safeplot(plot_model_heatmaps)
+    safeplot(plot_distance_class_balance)
 
     # per-dataset model evaluation
     safeplot(plot_seen_nd_eval)

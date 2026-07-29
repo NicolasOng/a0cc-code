@@ -26,9 +26,17 @@ from config import config
 from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
-def get_nd_and_nt_datasets_from_state_list(states: list[Board], gt: GroundTruth, n: int, batch_size: int) -> tuple[Dataset, Dataset]:
+def get_nd_and_nt_datasets_from_state_list(states: list[Board], gt: GroundTruth, n: int, batch_size: int,
+                                           balance: bool = True) -> tuple[Dataset, Dataset]:
     '''
     Gets two Datasets from the given state list - one with non-draw states and one with non-trivial states.
+
+    balance=False skips the win/loss balancing of the nd set. Needed for
+    distance-from-terminal buckets, which are inherently one-sided near the end
+    of the game (every distance-0 state is a win for the player to move), so
+    balancing empties or decimates exactly the rows of most interest. Callers
+    that skip it should report the class balance alongside the accuracy, since
+    "chance" is then the majority-class rate rather than 0.5.
     '''
     # get the state info for the states to use in filtering and logging,
     states_si = get_state_info_for_states(states, gt)
@@ -44,10 +52,11 @@ def get_nd_and_nt_datasets_from_state_list(states: list[Board], gt: GroundTruth,
         states_si,
         remove_draws=True
     )
-    states_nd, states_nd_si = balance_gt_values(
-        states_nd,
-        states_nd_si
-    )
+    if balance:
+        states_nd, states_nd_si = balance_gt_values(
+            states_nd,
+            states_nd_si
+        )
     states_nd, states_nd_si = sample_states(
         states_nd,
         n,

@@ -806,11 +806,23 @@ class DistanceBucketDatasetCollector(Collector):
         gt = GroundTruth()
         datasets_nd: dict[int, Dataset] = {}
         datasets_nt: dict[int, Dataset] = {}
+        # class balance per distance: with balancing off, THIS is what "chance"
+        # means in each row, so it has to be reported next to the accuracy.
+        # It's a 1D curve, not a heatmap, because the eval board set is fixed
+        # across checkpoints.
+        balance_series = Series(["Majority Class Rate", "Win Rate", "N"])
         for distance in sorted(self._boards):
             boards = self._boards[distance]
             nd_dataset, nt_dataset = get_nd_and_nt_datasets_from_state_list(
-                boards, gt, self._n, self._batch_size
+                boards, gt, self._n, self._batch_size, balance=False
             )
+            if len(nd_dataset):
+                values = np.asarray(nd_dataset.values, dtype=np.float64).reshape(-1)
+                win_rate = float(np.mean(values > 0))
+                balance_series.x.append(distance)
+                balance_series.ys["Win Rate"].append(win_rate)
+                balance_series.ys["Majority Class Rate"].append(max(win_rate, 1.0 - win_rate))
+                balance_series.ys["N"].append(float(len(nd_dataset)))
             # Near-terminal buckets are heavily class-imbalanced — at distance 0
             # EVERY state is a win for the player to move, and the sign then
             # alternates by parity — so balance_gt_values (inside the nd path)
@@ -827,12 +839,14 @@ class DistanceBucketDatasetCollector(Collector):
                 f"{'  (nt empty: terminal states)' if not len(nt_dataset) else ''}"
             )
         # named by the distance CAP, not the surviving bucket count, so the nd
-        # and nt dicts share a filename stem even though nt loses distance 0
+        # and nt dicts share a filename stem even if a bucket drops out
         save_dataset_dict(datasets_nd, f"distance_{self._max_distance}_nd")
         save_dataset_dict(datasets_nt, f"distance_{self._max_distance}_nt")
+        save_series(balance_series, f"{config.eval_dir}/distance_class_balance.pkl")
         logger.info(
             f"DistanceBucketDatasetCollector: saved distance_{self._max_distance}_{{nd,nt}}.pkl "
-            f"({len(datasets_nd)} nd buckets, {len(datasets_nt)} nt buckets)."
+            f"({len(datasets_nd)} nd buckets, {len(datasets_nt)} nt buckets) "
+            f"+ distance_class_balance.pkl ({len(balance_series.x)} distances)."
         )
 
 class BoardFunctionProgressCollector(GameProgressCollector):

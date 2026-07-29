@@ -22,6 +22,7 @@ from a0.utils.misc import get_baseline_accuracy
 from a0.utils.plotting import DistributionSeries, save_distribution_series, Series, save_series
 from a0.utils.safe_load import safe_load_pickle
 from a0.utils.value_policy_entropy import build_child_inputs, child_value_entropies, mean_and_ci
+from a0.eval3.model_heatmap import run_model_heatmaps
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -282,6 +283,11 @@ def main():
         load_dataset_dict(f"{config.dataset_out_dir}/game_progress_10_nt.pkl", optional=True),
         "game_progress_10_nt_eval",
     )
+
+    # Model-accuracy heatmaps: every checkpoint x every bucket, on both the
+    # progress and distance-from-terminal axes. Loads checkpoints lazily, so it
+    # doesn't hold the `models` list above on the GPU alongside its own.
+    run_model_heatmaps()
 
     # Value-prediction distributions on random_nd
     collect_distributions_if_present(

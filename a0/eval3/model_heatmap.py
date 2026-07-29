@@ -172,6 +172,62 @@ def evaluate_checkpoints_over_buckets(
     save_series(series, f"{config.eval_dir}/{fn}.pkl")
     logger.info(f"{fn}: saved {fn}.pkl ({evaluated} checkpoints x {len(buckets)} buckets).")
 
+def run_model_heatmaps(batch_size: int = 256) -> None:
+    '''
+    All four model-accuracy heatmap series:
+      progress x value accuracy   (nd dicts, win/loss balanced -> 0.5 is chance)
+      progress x policy accuracy  (nt dicts)
+      distance x value accuracy   (nd dicts, NOT balanced -> chance is the
+                                   majority-class rate, reported separately in
+                                   distance_class_balance.pkl)
+      distance x policy accuracy  (nt dicts)
+
+    The distance dicts are deleted afterwards: they are large (they store full
+    policy targets, which scale as num_spots^2) and are consumed exactly once.
+    Deletion happens ONLY after the series is written, so a crashed eval never
+    leaves you with neither the datasets nor the results.
+    '''
+    value_metrics = ["Value Accuracy", "Value Loss"]
+    policy_metrics = ["Policy Accuracy", "Policy Entropy"]
+
+    # --- progress axis: dicts are shared with the existing 1D eval, keep them ---
+    for kind, metrics in (("nd", value_metrics), ("nt", policy_metrics)):
+        dataset_dict = load_dataset_dict(f"{config.dataset_out_dir}/game_progress_10_{kind}.pkl", optional=True)
+        if dataset_dict is None:
+            logger.warning(f"model heatmap: game_progress_10_{kind}.pkl not found; skipping that axis.")
+            continue
+        evaluate_checkpoints_over_buckets(
+            dataset_dict, "P", metrics, f"model_heatmap_progress_{kind}", batch_size,
+        )
+
+    # --- distance axis: built for this, consumed once, then deleted ---
+    max_distance = config.heatmap_max_distance
+    for kind, metrics in (("nd", value_metrics), ("nt", policy_metrics)):
+        path = f"{config.dataset_out_dir}/distance_{max_distance}_{kind}.pkl"
+        dataset_dict = load_dataset_dict(path, optional=True)
+        if dataset_dict is None:
+            logger.warning(
+                f"model heatmap: {path} not found; skipping the distance {kind} axis. "
+                f"These dicts are deleted after a successful eval — re-run "
+                f"a0.eval3.training_data to regenerate them."
+            )
+            continue
+        fn = f"model_heatmap_distance_{kind}"
+        evaluate_checkpoints_over_buckets(dataset_dict, "D", metrics, fn, batch_size)
+
+        # only now that the series is on disk
+        if os.path.exists(f"{config.eval_dir}/{fn}.pkl"):
+            del dataset_dict
+            gc.collect()
+            size_mb = os.path.getsize(path) / 1e6
+            os.remove(path)
+            logger.info(
+                f"model heatmap: deleted {path} ({size_mb:.1f} MB) — consumed by {fn}.pkl. "
+                f"Re-run a0.eval3.training_data to regenerate it."
+            )
+        else:
+            logger.warning(f"model heatmap: {fn}.pkl was not written; KEEPING {path}.")
+
 def _metric_key(metric: str) -> str:
     '''Series label -> evaluate_model_padded dict key.'''
     return {
