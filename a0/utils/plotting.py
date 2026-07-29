@@ -5,6 +5,7 @@ import pickle
 from typing import Literal, Optional, overload
 
 import matplotlib.pyplot as plt
+from matplotlib import colors
 import numpy as np
 from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter1d
@@ -689,4 +690,156 @@ def plot_bar_with_error(title: str, series: tuple[str, list[int], list[float], l
     plt.grid(True, axis='y', alpha=0.3)
     plt.tight_layout()
     plt.savefig(f"{config.plot_dir}/{fn}.png")
+    plt.close()
+
+# ---------- heatmaps ----------
+# Series produced by AccuracyHeatmapCollector are 2D flattened into one key per
+# (metric, bin): "<metric> D<distance>" / "<metric> P<progress bucket>", with x =
+# iteration. That layout is deliberate — it keeps save_series/merge_series and the
+# whole sweep-combine path working unchanged — so the pivot back to a matrix
+# happens here, at plot time. Cap, bin width and count masking are applied here
+# too, so re-cutting a heatmap never re-runs the GT-bound analysis pass.
+
+# "further from the terminal than D_MAX" row, matching accuracy_heatmap.OVERFLOW
+HEATMAP_OVERFLOW = "OVER"
+
+def _heatmap_bins(series: "Series", metric: str, label: str) -> list[int | str]:
+    '''The bins present for `metric`, numerically sorted, overflow last.'''
+    prefix = f"{metric} {label}"
+    suffixes = [key[len(prefix):] for key in series.ys if key.startswith(prefix)]
+    numeric = sorted(int(s) for s in suffixes if s.isdigit())
+    bins: list[int | str] = list(numeric)
+    if HEATMAP_OVERFLOW in suffixes:
+        bins.append(HEATMAP_OVERFLOW)
+    return bins
+
+def heatmap_matrix(
+    series: "Series",
+    metric: str,
+    label: str,
+    min_count: int | None = None,
+    count_metric: str | None = None,
+    drop_empty_rows: bool = True,
+) -> tuple[NDArray[np.float64], list[int | str]]:
+    '''
+    Pivots a flattened heatmap Series into (n_bins, n_iterations), y ascending.
+
+    Cells with fewer than `min_count` samples are set to NaN so they render as
+    missing rather than as a confident-looking value computed from a handful of
+    samples. `drop_empty_rows` then trims trailing rows that no iteration
+    populates — which is what implements the agreed cap: the last row kept is
+    the furthest distance meeting `min_count` in EVERY iteration, so no row is
+    ragged. Rows are never dropped from the middle.
+    '''
+    bins = _heatmap_bins(series, metric, label)
+    if not bins:
+        raise KeyError(f"no keys matching '{metric} {label}*' in series")
+
+    matrix = np.array([series.ys[f"{metric} {label}{b}"] for b in bins], dtype=np.float64)
+
+    if min_count is not None:
+        key = count_metric or ("Count ND" if metric.endswith("ND") else "Count")
+        counts = np.array([series.ys[f"{key} {label}{b}"] for b in bins], dtype=np.float64)
+        matrix = np.where(counts >= min_count, matrix, np.nan)
+
+    if drop_empty_rows:
+        populated = ~np.all(np.isnan(matrix), axis=1)
+        if populated.any():
+            # keep the overflow row only if it survived on its own merit
+            last = int(np.max(np.flatnonzero(populated)))
+            matrix = matrix[: last + 1]
+            bins = bins[: last + 1]
+    return matrix, bins
+
+def plot_heatmap(
+    title: str,
+    series: "Series",
+    metric: str,
+    label: str,
+    x_label: str,
+    y_label: str,
+    fn: str,
+    min_count: int | None = None,
+    diverging_center: float | None = None,
+    v_lim: tuple[float, float] | None = None,
+    cbar_label: str | None = None,
+) -> None:
+    '''
+    Renders one flattened heatmap Series as a matrix.
+
+    Colour follows the job the numbers do, not taste:
+      diverging_center set -> polarity. Two opposite hues with a neutral grey
+        midpoint pinned to the baseline (0.5 = chance for a binary win/loss sign
+        call), so "better than a coin flip" is a hue flip rather than a shade the
+        reader has to compare against a colourbar.
+      otherwise         -> magnitude. One hue, light to dark. Never a rainbow.
+    Masked (low-count) cells get their own light grey so "not enough data" never
+    reads as a real value.
+    '''
+    matrix, bins = heatmap_matrix(series, metric, label, min_count=min_count)
+    x = list(series.x)
+
+    if diverging_center is not None:
+        low, high = v_lim if v_lim is not None else (0.0, 1.0)
+        cmap = plt.get_cmap("coolwarm").copy()
+        # TwoSlopeNorm keeps the neutral midpoint pinned to the baseline even
+        # when the data is lopsided
+        norm = colors.TwoSlopeNorm(vmin=low, vcenter=diverging_center, vmax=high)
+    else:
+        cmap = plt.get_cmap("Blues").copy()
+        low, high = v_lim if v_lim is not None else (
+            0.0, float(np.nanmax(matrix)) if np.isfinite(matrix).any() else 1.0
+        )
+        norm = colors.Normalize(vmin=low, vmax=high)
+    # Masked cells are distinguished by TEXTURE, not another shade: a flat grey
+    # would sit right on top of the diverging ramp's neutral midpoint, making
+    # "no data" and "exactly chance" look identical. Transparent bad cells let a
+    # hatched axes background show through instead.
+    cmap.set_bad(alpha=0.0)
+
+    fig, ax = plt.subplots(figsize=(16, 9))
+    ax.set_facecolor("#fbfbfb")
+    ax.patch.set_hatch("///")
+    ax.patch.set_edgecolor("#cccccc")
+    image = ax.imshow(
+        np.ma.masked_invalid(matrix),
+        cmap=cmap, norm=norm, aspect="auto",
+        origin="lower", interpolation="nearest",
+        extent=(min(x) - 0.5, max(x) + 0.5, -0.5, len(bins) - 0.5),
+    )
+
+    # label a readable subset of rows rather than all of them
+    step = max(1, len(bins) // 20)
+    ticks = list(range(0, len(bins), step))
+    # always label the top row, but replace the previous tick rather than
+    # appending when they would collide
+    if ticks[-1] != len(bins) - 1:
+        if len(bins) - 1 - ticks[-1] < step:
+            ticks[-1] = len(bins) - 1
+        else:
+            ticks.append(len(bins) - 1)
+    ax.set_yticks(ticks)
+    ax.set_yticklabels([str(bins[t]) for t in ticks])
+
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    # recessive: the cells are the data, the frame should not compete
+    ax.grid(False)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.tick_params(length=0)
+
+    cbar = fig.colorbar(image, ax=ax, fraction=0.035, pad=0.02)
+    cbar.set_label(cbar_label or metric)
+    cbar.outline.set_visible(False)
+    if diverging_center is not None:
+        cbar.ax.axhline(diverging_center, color="#444444", linewidth=1)
+
+    if min_count is not None:
+        fig.text(0.01, 0.01, f"hatched = fewer than {min_count} samples",
+                 fontsize=8, color="#666666")
+
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}/{fn}.png", dpi=120)
     plt.close()

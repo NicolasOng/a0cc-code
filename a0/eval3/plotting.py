@@ -14,6 +14,7 @@ from a0.utils.plotting import (
     plot_percentile_bands,
     plot_value_proportions,
     plot_bar,
+    plot_heatmap,
 )
 
 from config import config
@@ -508,6 +509,47 @@ def plot_gp_baseline_accuracy() -> None:
     )
 
 
+def _plot_accuracy_heatmaps(name: str, label_name: str, merged: bool = False) -> None:
+    '''
+    The four heatmaps for one target type: ND accuracy (the one to read) and mean
+    |target - GT| on each of the two y-axes.
+
+    ND accuracy is a binary win/loss sign call, so 0.5 is chance — the colour is
+    diverging about it, and cells that beat a coin flip flip hue. MAE is a
+    magnitude, so it takes a single-hue ramp.
+    '''
+    prefix = "merged_" if merged else ""
+    title_suffix = " (merged)" if merged else ""
+    for axis, axis_label, y_label in (
+        ("distance", "D", "Distance from terminal (plies)"),
+        ("progress", "P", "Game progress (%)"),
+    ):
+        series = load_series(f"{config.eval_dir}/{prefix}{name}_iter_{axis}_acc.pkl")
+        plot_heatmap(
+            f"{label_name} value accuracy vs GT, no draws{title_suffix}",
+            series, "Value Accuracy ND", axis_label,
+            "Training iteration", y_label,
+            f"{prefix}heatmap_{name}_{axis}_value_accuracy_nd",
+            min_count=config.heatmap_min_cell_count,
+            diverging_center=0.5,
+            v_lim=(0.0, 1.0),
+            cbar_label="Value accuracy (0.5 = chance)",
+        )
+        plot_heatmap(
+            f"{label_name} mean |target - GT outcome|{title_suffix}",
+            series, "Target MAE", axis_label,
+            "Training iteration", y_label,
+            f"{prefix}heatmap_{name}_{axis}_target_mae",
+            min_count=config.heatmap_min_cell_count,
+            cbar_label="Mean absolute error",
+        )
+
+def plot_heatmap_alt_targets() -> None:
+    _plot_accuracy_heatmaps("alt_targets", "Training targets")
+
+def plot_heatmap_experienced() -> None:
+    _plot_accuracy_heatmaps("experienced", "Experienced (MC) outcomes")
+
 def plot_gp_branching_factor() -> None:
     s = load_series(f"{config.eval_dir}/gamedata_10_progress_branching_factor.pkl")
     plot_given(
@@ -783,6 +825,10 @@ def main():
     safeplot(plot_gp_alt_targets_accuracy)
     safeplot(plot_gp_baseline_accuracy)
     safeplot(plot_gp_branching_factor)
+
+    # accuracy heatmaps (iteration x progress / distance-from-terminal)
+    safeplot(plot_heatmap_alt_targets)
+    safeplot(plot_heatmap_experienced)
 
     # per-dataset model evaluation
     safeplot(plot_seen_nd_eval)
