@@ -86,7 +86,8 @@ def remove_duplicates(states: list[Board], state_info_list: Optional[list[StateI
             keep_indices.append(i)
     states = [states[i] for i in keep_indices]
     after_n = len(states)
-    logger.info(f"Removed {before_n - after_n} duplicate states, {after_n} unique states remain. That's {100 * (before_n - after_n) / before_n:.2f}% duplicates.")
+    percent = f"{100 * (before_n - after_n) / before_n:.2f}%" if before_n else "n/a"
+    logger.info(f"Removed {before_n - after_n} duplicate states, {after_n} unique states remain. That's {percent} duplicates.")
     if state_info_list is not None:
         state_info_list = [state_info_list[i] for i in keep_indices]
     return states, state_info_list
@@ -98,7 +99,12 @@ def sample_states(states: list[Board], n: int, state_info_list: Optional[list[St
     before_n = len(states)
     indices = random.sample(range(len(states)), min(n, len(states)))
     sampled_states = [states[i] for i in indices]
-    logger.info(f"sample_states: {before_n} -> {n} states ({100 * n / before_n:.2f}% kept)")
+    # an empty input is legitimate — e.g. the distance-0 bucket is all terminal
+    # states, which the non-trivial filter removes entirely — so don't divide by
+    # zero just to log a percentage
+    kept = len(sampled_states)
+    percent = f"{100 * kept / before_n:.2f}%" if before_n else "n/a"
+    logger.info(f"sample_states: {before_n} -> {kept} states ({percent} kept)")
     if state_info_list is not None:
         return sampled_states, [state_info_list[i] for i in indices]
     return sampled_states, None
@@ -153,8 +159,15 @@ def log_states_info(si: StatesInfo) -> None:
     Logs statistics about the given state list.
     '''
     n = si.num_states
-    logger.info(f"Total states: {n}, Unique states: {si.num_unique_states} ({si.num_unique_states / n:.2%})")
-    logger.info(f"Wins: {si.num_wins} ({si.num_wins / n:.2%}), Losses: {si.num_losses} ({si.num_losses / n:.2%}), Draws: {si.num_draw} ({si.num_draw / n:.2%}), Illegal: {si.num_illegal} ({si.num_illegal / n:.2%}), Trivial: {si.num_trivial} ({si.num_trivial / n:.2%}), Terminal: {si.num_terminal} ({si.num_terminal / n:.2%})")
+    if not n:
+        # legitimately empty: e.g. the distance-0 bucket is entirely terminal
+        # states, which the non-trivial filter removes
+        logger.info("Total states: 0 (empty state list)")
+        return
+    def pct(count: int) -> str:
+        return f"{count / n:.2%}"
+    logger.info(f"Total states: {n}, Unique states: {si.num_unique_states} ({pct(si.num_unique_states)})")
+    logger.info(f"Wins: {si.num_wins} ({pct(si.num_wins)}), Losses: {si.num_losses} ({pct(si.num_losses)}), Draws: {si.num_draw} ({pct(si.num_draw)}), Illegal: {si.num_illegal} ({pct(si.num_illegal)}), Trivial: {si.num_trivial} ({pct(si.num_trivial)}), Terminal: {si.num_terminal} ({pct(si.num_terminal)})")
 
 def filter_state_list(
         states: list[Board],
@@ -192,7 +205,8 @@ def filter_state_list(
         return [], []
     filtered_states, filtered_info = zip(*pairs)
     after_n = len(filtered_states)
-    logger.info(f"filter_state_list: {before_n} -> {after_n} states ({100 * (before_n - after_n) / before_n:.2f}% removed)")
+    percent = f"{100 * (before_n - after_n) / before_n:.2f}%" if before_n else "n/a"
+    logger.info(f"filter_state_list: {before_n} -> {after_n} states ({percent} removed)")
     return list(filtered_states), list(filtered_info)
 
 def balance_gt_values(states: list[Board], state_info_list: list[StateInfo]) -> tuple[list[Board], list[StateInfo]]:
@@ -239,6 +253,19 @@ def convert_experience_list_to_dataset(experience_list: list[ExperienceData], ba
     Converts a list of ExperienceData objects to a Dataset object.
     '''
     new_dataset = Dataset(batch_size)
+    if not experience_list:
+        # np.stack can't build a shape from nothing. An empty list is legitimate
+        # — a distance-0 bucket is all terminal states, which the non-trivial
+        # filter removes — so return a correctly-shaped empty Dataset and let
+        # the caller decide whether to keep it.
+        num_spots = config.num_spots
+        new_dataset.set(
+            np.zeros((0, config.board_size, config.board_size, 2), dtype=np.float32),
+            np.zeros((0, 1), dtype=np.float32),
+            np.zeros((0, num_spots * num_spots), dtype=np.float32),
+            np.zeros((0, num_spots * num_spots), dtype=np.float32),
+        )
+        return new_dataset
     new_dataset.set(
         np.stack([d.board[0] for d in experience_list]), # (1, board_size, board_size, 2) -> (N, board_size, board_size, 2)
         np.array([d.value for d in experience_list]) [:, None], # Add [:, None] to make its shape (N, 1)
