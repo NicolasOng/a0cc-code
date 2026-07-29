@@ -28,6 +28,9 @@ default/
 output/
 sweep-output/
 input/
+# `input/` only matches a directory; worktrees and extra checkouts symlink
+# `input` at the repo root, so ignore the bare name as well.
+/input
 
 memory/
 .vscode/
