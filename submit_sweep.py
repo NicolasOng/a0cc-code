@@ -459,9 +459,9 @@ def main():
 
     print(f"\nDone. Sweep directory: {sweep_dir}")
     print("Manual follow-ups (submit when ready):")
-    print(f"  player-curve eval:  sbatch --array=1-{n_tasks} slurm/player_eval.sh {tasks_file}")
-    print(f"  plateau MCTS sweep: sbatch --array=1-{n_tasks} slurm/player_sweep.sh {tasks_file}")
-    print(f"  combine/merge:      sbatch --array=1-{n_hps} slurm/combine_a0.sh {hp_list_file}")
+    print(f"  player-curve eval:  sbatch --array=1-{n_tasks} --output={slurm_logs}/player_eval_%A_%a.out slurm/player_eval.sh {tasks_file}")
+    print(f"  plateau MCTS sweep: sbatch --array=1-{n_tasks} --output={slurm_logs}/player_sweep_%A_%a.out slurm/player_sweep.sh {tasks_file}")
+    print(f"  combine/merge:      sbatch --array=1-{n_hps} --output={slurm_logs}/combine_%A_%a.out slurm/combine_a0.sh {hp_list_file}")
 
 
 if __name__ == "__main__":
