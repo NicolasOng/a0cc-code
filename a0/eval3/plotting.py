@@ -514,9 +514,18 @@ def _plot_accuracy_heatmaps(name: str, label_name: str, merged: bool = False) ->
     The four heatmaps for one target type: ND accuracy (the one to read) and mean
     |target - GT| on each of the two y-axes.
 
-    ND accuracy is a binary win/loss sign call, so 0.5 is chance — the colour is
-    diverging about it, and cells that beat a coin flip flip hue. MAE is a
-    magnitude, so it takes a single-hue ramp.
+    Both take a single-hue sequential ramp, ND accuracy included. It is tempting
+    to diverge ND accuracy about 0.5 — it's a binary win/loss sign call, so a
+    coin flip scores 0.5 — but these bins are NOT class-balanced: they hold every
+    training target, binned by distance or progress, with no resampling. Measured
+    on 25-6, chance (the majority-class rate) runs ~0.98 at distance 0 and ~0.68
+    in the tail, so a cell reading 0.98 near the terminal is exactly chance while
+    a cell reading 0.50 far out is well below it. Diverging about 0.5 would put
+    the neutral midpoint at a value that means nothing here and paint at-chance
+    cells as strongly positive. There is no single centre to diverge about, so:
+    sequential, and read the row against distance_class_balance.pkl.
+    (Contrast a0.eval3.model_heatmap's PROGRESS buckets, which are balanced by
+    generate_datasets and so do legitimately diverge about 0.5.)
     '''
     prefix = "merged_" if merged else ""
     title_suffix = " (merged)" if merged else ""
@@ -526,14 +535,14 @@ def _plot_accuracy_heatmaps(name: str, label_name: str, merged: bool = False) ->
     ):
         series = load_series(f"{config.eval_dir}/{prefix}{name}_iter_{axis}_acc.pkl")
         plot_heatmap(
-            f"{label_name} value accuracy vs GT, no draws{title_suffix}",
+            f"{label_name} value accuracy vs GT, no draws{title_suffix} "
+            f"(UNBALANCED - see class-balance plot)",
             series, "Value Accuracy ND", axis_label,
             "Training iteration", y_label,
             f"{prefix}heatmap_{name}_{axis}_value_accuracy_nd",
             min_count=config.heatmap_min_cell_count,
-            diverging_center=0.5,
             v_lim=(0.0, 1.0),
-            cbar_label="Value accuracy (0.5 = chance)",
+            cbar_label="Value accuracy (chance varies by row)",
         )
         plot_heatmap(
             f"{label_name} mean |target - GT outcome|{title_suffix}",
