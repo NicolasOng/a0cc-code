@@ -15,6 +15,8 @@ from a0.utils.plotting import (
     plot_value_proportions,
     plot_bar,
     plot_heatmap,
+    plot_heatmap_as_lines,
+    pool_heatmap_over_x,
 )
 
 from config import config
@@ -632,6 +634,163 @@ def plot_heatmap_alt_targets() -> None:
 def plot_heatmap_experienced() -> None:
     _plot_accuracy_heatmaps("experienced", "Experienced (MC) outcomes")
 
+
+# --- line-chart readings of the same heatmap series --------------------------
+# The heatmaps encode accuracy as lightness, which is the weakest channel for a
+# trend and gives a 20-sample cell the same visual weight as a 2000-sample one.
+# These read the same data as lines. No chance / win-rate reference is drawn on
+# them by request: the class balance is its own plot (plot_gt_win_rate_parity),
+# and overlaying it here would put two different populations on one pair of axes.
+
+AXES = (
+    ("distance", "D", "Distance from terminal (plies)"),
+    ("progress", "P", "Game progress (%)"),
+)
+
+def _plot_target_accuracy_pooled(merged: bool = False) -> None:
+    '''
+    (1) Both target types on one axis, pooled over every training iteration.
+
+    Experienced (MC outcome) is the control and alt targets are the thing that
+    matters, so they belong on the same axes — the gap between them IS the
+    result, and reading it off two separate figures is strictly worse.
+    '''
+    prefix = "merged_" if merged else ""
+    suffix = " (merged)" if merged else ""
+    for axis, label, x_label in AXES:
+        lines = []
+        for name, disp in (("alt_targets", "Training targets"),
+                           ("experienced", "Experienced (MC) outcomes")):
+            s = load_series(f"{config.eval_dir}/{prefix}{name}_iter_{axis}_acc.pkl")
+            bins, pooled, _ = pool_heatmap_over_x(
+                s, "Value Accuracy ND", label,
+                min_count=config.heatmap_min_cell_count)
+            lines.append((disp, bins, list(pooled)))
+        plot_given(
+            f"Training-target value accuracy vs GT, no draws{suffix} "
+            f"- pooled over all iterations",
+            lines, x_label, "Value accuracy (no draws)",
+            f"{prefix}target_accuracy_pooled_{axis}",
+            y_lim=(0.0, 1.0),
+        )
+
+def _plot_target_accuracy_lines(name: str, disp: str, merged: bool = False) -> None:
+    '''(2) One target type, one line per training iteration.'''
+    prefix = "merged_" if merged else ""
+    suffix = " (merged)" if merged else ""
+    for axis, label, x_label in AXES:
+        s = load_series(f"{config.eval_dir}/{prefix}{name}_iter_{axis}_acc.pkl")
+        plot_heatmap_as_lines(
+            f"{disp} value accuracy vs GT, no draws{suffix}",
+            s, "Value Accuracy ND", label,
+            x_label, "Value accuracy (no draws)",
+            f"{prefix}target_accuracy_lines_{name}_{axis}",
+            min_count=config.heatmap_min_cell_count,
+            y_lim=(0.0, 1.0),
+        )
+
+# The model's two dataset variants are NOT combined the way the two target types
+# are: nd carries value accuracy and nt carries policy accuracy, so they are
+# different measures on different y-scales and each gets its own figure.
+MODEL_SPECS = (
+    ("distance_nd", "D", "Distance from terminal (plies)", "Value Accuracy",
+     "Model value accuracy vs GT, no draws"),
+    ("distance_nt", "D", "Distance from terminal (plies)", "Policy Accuracy",
+     "Model policy accuracy vs GT, non-trivial"),
+    ("progress_nd", "P", "Game progress (%)", "Value Accuracy",
+     "Model value accuracy vs GT, no draws"),
+    ("progress_nt", "P", "Game progress (%)", "Policy Accuracy",
+     "Model policy accuracy vs GT, non-trivial"),
+)
+
+def _plot_model_accuracy_pooled(merged: bool = False) -> None:
+    '''
+    (3) Model accuracy pooled over every checkpoint.
+
+    Note this pools a random-init checkpoint 0 with a fully trained one, so it
+    describes the run as a whole rather than the final model. The per-checkpoint
+    line version is the one to read for "how good did it get".
+    '''
+    prefix = "merged_" if merged else ""
+    suffix = " (merged)" if merged else ""
+    for name, label, x_label, metric, disp in MODEL_SPECS:
+        s = load_series(f"{config.eval_dir}/{prefix}model_heatmap_{name}.pkl")
+        bins, pooled, _ = pool_heatmap_over_x(
+            s, metric, label, count_metric="Count",
+            min_count=config.heatmap_min_cell_count)
+        plot_given(
+            f"{disp}{suffix} - pooled over all checkpoints",
+            [(metric, bins, list(pooled))],
+            x_label, metric,
+            f"{prefix}model_accuracy_pooled_{name}",
+            y_lim=(0.0, 1.0),
+        )
+
+def _plot_model_accuracy_lines(merged: bool = False) -> None:
+    '''(3) Model accuracy, one line per checkpoint.'''
+    prefix = "merged_" if merged else ""
+    suffix = " (merged)" if merged else ""
+    for name, label, x_label, metric, disp in MODEL_SPECS:
+        s = load_series(f"{config.eval_dir}/{prefix}model_heatmap_{name}.pkl")
+        plot_heatmap_as_lines(
+            f"{disp}{suffix}",
+            s, metric, label, x_label, metric,
+            f"{prefix}model_accuracy_lines_{name}",
+            min_count=config.heatmap_min_cell_count,
+            y_lim=(0.0, 1.0),
+            cbar_label="Model checkpoint",
+        )
+
+def plot_target_accuracy_pooled() -> None:
+    _plot_target_accuracy_pooled()
+
+def plot_target_accuracy_lines_alt_targets() -> None:
+    _plot_target_accuracy_lines("alt_targets", "Training targets")
+
+def plot_target_accuracy_lines_experienced() -> None:
+    _plot_target_accuracy_lines("experienced", "Experienced (MC) outcomes")
+
+def plot_model_accuracy_pooled() -> None:
+    _plot_model_accuracy_pooled()
+
+def plot_model_accuracy_lines() -> None:
+    _plot_model_accuracy_lines()
+
+def _plot_gt_win_rate_parity(merged: bool = False) -> None:
+    '''
+    (4) GT win rate per distance bucket, split by parity.
+
+    Values are from the player-to-move's perspective and that perspective flips
+    every ply, so the eventual winner is on move at even distances and the loser
+    at odd ones. Plotted as one sawtooth the curve is unreadable; split by parity
+    it is two smooth converging lines, and it is the direct explanation for the
+    sawtooth in every accuracy plot on this axis.
+
+    This is the win rate, NOT the majority-class rate: chance is
+    max(win_rate, 1 - win_rate), which folds the curve about 0.5 and discards
+    the sign — the one thing that makes the oscillation legible.
+    '''
+    prefix = "merged_" if merged else ""
+    suffix = " (merged)" if merged else ""
+    s = load_series(f"{config.eval_dir}/{prefix}distance_class_balance.pkl")
+    x = list(s.x)
+    wr = s.ys["Win Rate"]
+    even = [(d, v) for d, v in zip(x, wr) if d % 2 == 0]
+    odd = [(d, v) for d, v in zip(x, wr) if d % 2 == 1]
+    plot_given(
+        f"GT win rate of the player to move, by distance from terminal{suffix}",
+        [
+            ("win rate, even D", [d for d, _ in even], [v for _, v in even]),
+            ("win rate, odd D", [d for d, _ in odd], [v for _, v in odd]),
+        ],
+        "Distance from terminal (plies)", "GT win rate (player to move)",
+        f"{prefix}gt_win_rate_by_distance_parity",
+        y_lim=(0.0, 1.0),
+    )
+
+def plot_gt_win_rate_parity() -> None:
+    _plot_gt_win_rate_parity()
+
 def plot_gp_branching_factor() -> None:
     s = load_series(f"{config.eval_dir}/gamedata_10_progress_branching_factor.pkl")
     plot_given(
@@ -911,6 +1070,14 @@ def main():
     # accuracy heatmaps (iteration x progress / distance-from-terminal)
     safeplot(plot_heatmap_alt_targets)
     safeplot(plot_heatmap_experienced)
+
+    # line-chart readings of the same series
+    safeplot(plot_target_accuracy_pooled)
+    safeplot(plot_target_accuracy_lines_alt_targets)
+    safeplot(plot_target_accuracy_lines_experienced)
+    safeplot(plot_model_accuracy_pooled)
+    safeplot(plot_model_accuracy_lines)
+    safeplot(plot_gt_win_rate_parity)
 
     # model-accuracy heatmaps (checkpoint x progress / distance)
     safeplot(plot_model_heatmaps)

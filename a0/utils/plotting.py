@@ -6,7 +6,7 @@ import warnings
 from typing import Literal, Optional, overload
 
 import matplotlib.pyplot as plt
-from matplotlib import colors
+from matplotlib import cm, colors
 import numpy as np
 from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter1d
@@ -858,6 +858,108 @@ def plot_heatmap(
 
     if min_count is not None:
         fig.text(0.01, 0.01, f"hatched = fewer than {min_count} samples",
+                 fontsize=8, color="#666666")
+
+    plt.tight_layout()
+    plt.savefig(f"{config.plot_dir}/{fn}.png", dpi=120)
+    plt.close()
+
+def pool_heatmap_over_x(
+    series: "Series",
+    metric: str,
+    label: str,
+    count_metric: str | None = None,
+    min_count: int | None = None,
+    key_suffix: str = "",
+) -> tuple[list[int], NDArray[np.float64], NDArray[np.float64]]:
+    '''
+    Collapses a flattened heatmap Series along x (iteration/checkpoint), giving
+    one value per bin. Returns (numeric bins, pooled values, total counts).
+
+    Pooling is COUNT-WEIGHTED — sum(value * n) / sum(n), i.e. the accuracy the
+    whole pooled sample would have had — not the unweighted mean of per-iteration
+    accuracies. The far bins hold far fewer samples early on, and an unweighted
+    mean would give a cell computed from 20 states the same say as one computed
+    from 2000.
+
+    The overflow bin is dropped: it has no numeric x position, so it cannot sit
+    on a line chart's axis the way it can sit in a heatmap row.
+    '''
+    values, bins = heatmap_matrix(series, metric, label, min_count=min_count,
+                                  key_suffix=key_suffix)
+    ckey = count_metric or ("Count ND" if metric.endswith("ND") else "Count")
+    counts = np.array([series.ys[f"{ckey} {label}{b}"] for b in bins], dtype=np.float64)
+
+    numeric = [i for i, b in enumerate(bins) if b != HEATMAP_OVERFLOW]
+    values, counts = values[numeric], counts[numeric]
+    out_bins = [int(bins[i]) for i in numeric]
+
+    ok = np.isfinite(values) & np.isfinite(counts)
+    num = np.where(ok, values * counts, 0.0).sum(axis=1)
+    den = np.where(ok, counts, 0.0).sum(axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        pooled = np.where(den > 0, num / den, np.nan)
+    return out_bins, pooled, den
+
+def plot_heatmap_as_lines(
+    title: str,
+    series: "Series",
+    metric: str,
+    label: str,
+    x_label: str,
+    y_label: str,
+    fn: str,
+    min_count: int | None = None,
+    y_lim: tuple[float, float] | None = None,
+    cbar_label: str = "Training iteration",
+    key_suffix: str = "",
+) -> None:
+    '''
+    The same flattened Series a heatmap would render, drawn as one LINE PER
+    COLUMN (iteration/checkpoint) over the bins.
+
+    Why this exists alongside plot_heatmap: a heatmap encodes the value as
+    lightness, which is the weakest channel for reading a trend, and it gives
+    every cell equal visual weight whether it holds 20 samples or 2000. As lines,
+    the y position is read directly, the convergence of late iterations is
+    visible as a tightening band, and a reader can follow one iteration across
+    the whole axis. Measured on 25-6 this is the difference between seeing the
+    training curve and not.
+
+    Colour encodes iteration, an ordered magnitude, so it takes a sequential
+    ramp with a scale legend. `viridis` rather than a single-hue ramp: with ~200
+    overlapping lines the light end of a one-hue ramp disappears into the
+    surface, and viridis is the perceptually-uniform, CVD-safe exception.
+    '''
+    values, bins = heatmap_matrix(series, metric, label, min_count=min_count,
+                                  key_suffix=key_suffix)
+    numeric = [i for i, b in enumerate(bins) if b != HEATMAP_OVERFLOW]
+    values = values[numeric]
+    x_bins = [int(bins[i]) for i in numeric]
+    iters = np.array(series.x, dtype=np.float64)
+
+    fig, ax = plt.subplots(figsize=(16, 9))
+    cmap = plt.get_cmap("viridis")
+    norm = colors.Normalize(vmin=float(iters.min()), vmax=float(iters.max()))
+    for j, it in enumerate(iters):
+        ax.plot(x_bins, values[:, j], color=cmap(norm(it)), linewidth=1.0, alpha=0.85)
+
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    if y_lim is not None:
+        ax.set_ylim(y_lim)
+    ax.minorticks_on()
+    ax.grid(True, which="major", linewidth=0.8, alpha=0.4)
+    ax.grid(True, which="minor", linewidth=0.3, alpha=0.25)
+
+    cbar = fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), ax=ax,
+                        fraction=0.035, pad=0.02)
+    cbar.set_label(cbar_label)
+    cbar.outline.set_visible(False)
+
+    if min_count is not None:
+        fig.text(0.01, 0.01, f"cells with fewer than {min_count} samples omitted",
                  fontsize=8, color="#666666")
 
     plt.tight_layout()

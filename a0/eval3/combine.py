@@ -29,8 +29,10 @@ from a0.utils.plotting import (
     plot_value_proportions,
     plot_heatmap,
 )
+from a0.utils.plotting import pool_heatmap_over_x
 from a0.eval3.plotting import (
     safeplot, _reference_names, _plot_accuracy_heatmaps, _plot_model_heatmaps,
+    _plot_target_accuracy_lines, _plot_model_accuracy_lines, AXES, MODEL_SPECS,
 )
 
 from config import config
@@ -746,6 +748,122 @@ def plot_merged_distance_class_balance() -> None:
     )
 
 
+def _pool_across_trials(
+    series_fn: str, metric: str, label: str,
+    count_metric: str | None = None, min_count: int | None = None,
+) -> tuple[list[int], list[float], list[float]]:
+    '''
+    Pool each trial along x, then take mean ± 95% CI ACROSS trials per bin.
+
+    Deliberately not computed from the merged series: pooling that would average
+    already-averaged numbers and there would be no spread left to put a band on.
+    Pooling per trial first keeps one independent value per seed per bin, which
+    is what a cross-seed CI has to be built from. Same t-based formula as
+    merge_series, so the bands mean the same thing as everywhere else.
+
+    Bins are matched by VALUE, not position — heatmap_matrix trims trailing empty
+    rows, so a short-game seed yields fewer rows than a long-game one.
+    '''
+    per_bin: dict[int, list[float]] = {}
+    for d in _get_trial_dirs():
+        s = load_series(f"{d}{series_fn}", optional=True)
+        if s is None:
+            continue
+        try:
+            bins, pooled, _ = pool_heatmap_over_x(
+                s, metric, label, count_metric=count_metric, min_count=min_count)
+        except KeyError:
+            continue
+        for b, v in zip(bins, pooled):
+            if np.isfinite(v):
+                per_bin.setdefault(b, []).append(float(v))
+    if not per_bin:
+        raise FileNotFoundError(f"no trial produced {series_fn} [{metric} {label}]")
+
+    xs = sorted(per_bin)
+    means, cis = [], []
+    for b in xs:
+        vals = np.array(per_bin[b], dtype=np.float64)
+        n = vals.size
+        means.append(float(vals.mean()))
+        if n >= 2:
+            t = stats.t.ppf(0.975, df=n - 1)
+            cis.append(float(t * vals.std(ddof=0) / math.sqrt(n)))
+        else:
+            cis.append(float("nan"))
+    return xs, means, cis
+
+
+def plot_merged_target_accuracy_pooled() -> None:
+    '''(1, merged) Both target types, pooled over iterations, ±95% CI across seeds.'''
+    for axis, label, x_label in AXES:
+        lines = []
+        for name, disp in (("alt_targets", "Training targets"),
+                           ("experienced", "Experienced (MC) outcomes")):
+            xs, means, cis = _pool_across_trials(
+                f"{name}_iter_{axis}_acc.pkl", "Value Accuracy ND", label,
+                min_count=config.heatmap_min_cell_count)
+            lines.append((disp, "±95% CI", xs, means, cis))
+        plot_shaded_error(
+            "Training-target value accuracy vs GT, no draws (merged) "
+            "- pooled over all iterations",
+            lines, x_label, "Value accuracy (no draws)",
+            f"merged_target_accuracy_pooled_{axis}",
+            y_lim=(0.0, 1.0),
+        )
+
+
+def plot_merged_model_accuracy_pooled() -> None:
+    '''(3, merged) Model accuracy pooled over checkpoints, ±95% CI across seeds.'''
+    for name, label, x_label, metric, disp in MODEL_SPECS:
+        xs, means, cis = _pool_across_trials(
+            f"model_heatmap_{name}.pkl", metric, label, count_metric="Count",
+            min_count=config.heatmap_min_cell_count)
+        plot_shaded_error(
+            f"{disp} (merged) - pooled over all checkpoints",
+            [(metric, "±95% CI", xs, means, cis)],
+            x_label, metric,
+            f"merged_model_accuracy_pooled_{name}",
+            y_lim=(0.0, 1.0),
+        )
+
+
+def plot_merged_target_accuracy_lines() -> None:
+    '''
+    (2, merged) One line per iteration, each line the cross-seed mean.
+
+    No CI band here, unlike the pooled plots: this figure already carries ~200
+    lines, and 200 shaded bands would be an unreadable wash. The per-cell
+    cross-seed CI is exactly what plot_merged_heatmap_seed_agreement shows, and
+    the pooled figures carry bands where they can actually be read.
+    '''
+    _plot_target_accuracy_lines("alt_targets", "Training targets", merged=True)
+    _plot_target_accuracy_lines("experienced", "Experienced (MC) outcomes", merged=True)
+
+
+def plot_merged_model_accuracy_lines() -> None:
+    '''(3, merged) One line per checkpoint, each line the cross-seed mean.'''
+    _plot_model_accuracy_lines(merged=True)
+
+
+def plot_merged_gt_win_rate_parity() -> None:
+    '''(4, merged) GT win rate by parity, ±95% CI across seeds.'''
+    s = load_series(f"{config.eval_dir}/merged_distance_class_balance.pkl")
+    mean, ci = _ci_keys(s, "Win Rate")
+    groups = []
+    for parity, disp in ((0, "win rate, even D"), (1, "win rate, odd D")):
+        sel = [(d, m, c) for d, m, c in zip(s.x, mean, ci) if d % 2 == parity]
+        groups.append((disp, "±95% CI", [d for d, _, _ in sel],
+                       [m for _, m, _ in sel], [c for _, _, c in sel]))
+    plot_shaded_error(
+        "GT win rate of the player to move, by distance from terminal (merged)",
+        groups,
+        "Distance from terminal (plies)", "GT win rate (player to move)",
+        "merged_gt_win_rate_by_distance_parity",
+        y_lim=(0.0, 1.0),
+    )
+
+
 def plot_merged_heatmap_seed_agreement() -> None:
     '''
     Across-seed 95% CI half-width per cell. merge_series emits a "<key>_ci"
@@ -1059,6 +1177,13 @@ def main():
     # model-accuracy heatmaps
     safeplot(plot_merged_model_heatmaps)
     safeplot(plot_merged_distance_class_balance)
+
+    # line-chart readings of the same series
+    safeplot(plot_merged_target_accuracy_pooled)
+    safeplot(plot_merged_target_accuracy_lines)
+    safeplot(plot_merged_model_accuracy_pooled)
+    safeplot(plot_merged_model_accuracy_lines)
+    safeplot(plot_merged_gt_win_rate_parity)
 
     # per-dataset model evaluation
     safeplot(plot_merged_seen_nd_eval)
