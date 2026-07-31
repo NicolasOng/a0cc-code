@@ -13,7 +13,7 @@ from a0.mcts.nn import MCTS_NN
 from a0.mcts.gt import MCTS_GT
 
 class A0Player:
-    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_illegal_moves: bool = True, no_side_moves: bool = False, rollout_type: str = "none", rollout_depth: int = -1, policy_type: str = "policy", epsilon: float = 0.1, dirichlet_epsilon: float = 0.25, value_mode: str = "raw", value_sign_threshold: float = 0.05) -> None:
+    def __init__(self, board_size: int, num_pieces: int, model: AlphaZeroModel, exploit: bool = False, mcts_samples: int = 64, no_reverse_moves: bool = True, no_illegal_moves: bool = True, no_side_moves: bool = False, rollout_type: str = "none", rollout_depth: int = -1, policy_type: str = "policy", epsilon: float = 0.1, dirichlet_epsilon: float = 0.25, value_mode: str = "raw", value_sign_threshold: float = 0.05, rollout_policy_epsilon: float = 0.0) -> None:
         self.model = model
         self.game = Game(
             board_size=board_size,
@@ -33,6 +33,8 @@ class A0Player:
         self.dirichlet_epsilon = dirichlet_epsilon
         self.value_mode = value_mode
         self.value_sign_threshold = value_sign_threshold
+        # epsilon for the BEST/BACK playout policies when rollout_type names one
+        self.rollout_policy_epsilon = rollout_policy_epsilon
 
     def select_move(self, state: Board, moves: list[Move]) -> tuple[Move, Any]:
         '''
@@ -51,7 +53,8 @@ class A0Player:
                 rollout_type=self.rollout_type,
                 rollout_depth=self.rollout_depth,
                 value_mode=self.value_mode,
-                value_sign_threshold=self.value_sign_threshold
+                value_sign_threshold=self.value_sign_threshold,
+                rollout_policy_epsilon=self.rollout_policy_epsilon
             ),
             selection_policy="puct"
         )
@@ -115,7 +118,7 @@ class A0Player:
         # perform mcts and get the root's children
         mcts_problem_object = None
         if mcts_type == "NN":
-            mcts_problem_object = MCTS_NN(state, self.game, self.model, initial_moves=legal_moves, rollout_type=self.rollout_type, rollout_depth=self.rollout_depth, policy_type=self.policy_type, value_mode=self.value_mode, value_sign_threshold=self.value_sign_threshold)
+            mcts_problem_object = MCTS_NN(state, self.game, self.model, initial_moves=legal_moves, rollout_type=self.rollout_type, rollout_depth=self.rollout_depth, policy_type=self.policy_type, value_mode=self.value_mode, value_sign_threshold=self.value_sign_threshold, rollout_policy_epsilon=self.rollout_policy_epsilon)
         elif mcts_type == "GT":
             mcts_problem_object = MCTS_GT(state, self.game, error_rate=error_rate, initial_moves=legal_moves)
         
