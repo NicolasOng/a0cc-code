@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=aip-nathanst
 #SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=2G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
 #SBATCH --gpus-per-node=1
 
 # Manual player-eval WIN-RATE CURVE (a0.eval.player): win rate vs the baseline

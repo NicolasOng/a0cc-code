@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --account=aip-nathanst
 #SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=2G
+#SBATCH --cpus-per-task=16
+#SBATCH --mem=64G
 #SBATCH --gpus-per-node=1
 
 # CC module system isn't inherited by non-login `ssh host 'sbatch ...'`; source it.
