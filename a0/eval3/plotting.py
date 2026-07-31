@@ -791,6 +791,51 @@ def _plot_gt_win_rate_parity(merged: bool = False) -> None:
 def plot_gt_win_rate_parity() -> None:
     _plot_gt_win_rate_parity()
 
+def _plot_target_gt_win_rate(merged: bool = False) -> None:
+    '''
+    (4b) GT win rate of the states behind the training-target bins, pooled over
+    all iterations.
+
+    Distinct from plot_gt_win_rate_parity, which measures the model heatmap's
+    fixed eval buckets. This one measures the population the accuracy plots are
+    actually computed over, so it is the baseline that can be read directly
+    against them — and unlike the eval buckets it exists on the progress axis,
+    whose buckets generate_datasets class-balances to ~0.50 by construction.
+
+    Read off alt_targets only. The win rate is a property of the STATES, and the
+    two target types see the same ones; they diverge only through their own ND
+    filters (a target with no sign leaves the population). Plotting both would
+    double the lines to show a difference that is nil in practice.
+
+    Parity split on distance only — progress buckets are a percentage of game
+    length, not a ply count, so there is no parity to split on.
+    '''
+    prefix = "merged_" if merged else ""
+    suffix = " (merged)" if merged else ""
+    for axis, label, x_label in AXES:
+        s = load_series(f"{config.eval_dir}/{prefix}alt_targets_iter_{axis}_acc.pkl")
+        bins, pooled, _ = pool_heatmap_over_x(
+            s, "GT Win Rate ND", label, count_metric="Count ND",
+            min_count=config.heatmap_min_cell_count)
+        if axis == "distance":
+            lines = []
+            for parity, tag in ((0, "even D"), (1, "odd D")):
+                sel = [(b, v) for b, v in zip(bins, pooled) if b % 2 == parity]
+                lines.append((f"win rate, {tag}",
+                              [b for b, _ in sel], [v for _, v in sel]))
+        else:
+            lines = [("win rate", bins, list(pooled))]
+        plot_given(
+            f"GT win rate of the player to move, training-target states{suffix} "
+            f"- pooled over all iterations",
+            lines, x_label, "GT win rate (player to move)",
+            f"{prefix}target_gt_win_rate_{axis}",
+            y_lim=(0.0, 1.0),
+        )
+
+def plot_target_gt_win_rate() -> None:
+    _plot_target_gt_win_rate()
+
 def plot_gp_branching_factor() -> None:
     s = load_series(f"{config.eval_dir}/gamedata_10_progress_branching_factor.pkl")
     plot_given(
@@ -1078,6 +1123,7 @@ def main():
     safeplot(plot_model_accuracy_pooled)
     safeplot(plot_model_accuracy_lines)
     safeplot(plot_gt_win_rate_parity)
+    safeplot(plot_target_gt_win_rate)
 
     # model-accuracy heatmaps (checkpoint x progress / distance)
     safeplot(plot_model_heatmaps)

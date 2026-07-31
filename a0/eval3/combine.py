@@ -864,6 +864,32 @@ def plot_merged_gt_win_rate_parity() -> None:
     )
 
 
+def plot_merged_target_gt_win_rate() -> None:
+    '''(4b, merged) Training-target GT win rate, ±95% CI across seeds.'''
+    for axis, label, x_label in AXES:
+        # alt_targets only, and parity-split on distance only — see the reasoning
+        # on a0.eval3.plotting._plot_target_gt_win_rate
+        xs, means, cis = _pool_across_trials(
+            f"alt_targets_iter_{axis}_acc.pkl", "GT Win Rate ND", label,
+            count_metric="Count ND", min_count=config.heatmap_min_cell_count)
+        if axis == "distance":
+            groups = []
+            for parity, tag in ((0, "even D"), (1, "odd D")):
+                sel = [(x, m, c) for x, m, c in zip(xs, means, cis) if x % 2 == parity]
+                groups.append((f"win rate, {tag}", "±95% CI",
+                               [x for x, _, _ in sel], [m for _, m, _ in sel],
+                               [c for _, _, c in sel]))
+        else:
+            groups = [("win rate", "±95% CI", xs, means, cis)]
+        plot_shaded_error(
+            "GT win rate of the player to move, training-target states (merged) "
+            "- pooled over all iterations",
+            groups, x_label, "GT win rate (player to move)",
+            f"merged_target_gt_win_rate_{axis}",
+            y_lim=(0.0, 1.0),
+        )
+
+
 def plot_merged_heatmap_seed_agreement() -> None:
     '''
     Across-seed 95% CI half-width per cell. merge_series emits a "<key>_ci"
@@ -1184,6 +1210,7 @@ def main():
     safeplot(plot_merged_model_accuracy_pooled)
     safeplot(plot_merged_model_accuracy_lines)
     safeplot(plot_merged_gt_win_rate_parity)
+    safeplot(plot_merged_target_gt_win_rate)
 
     # per-dataset model evaluation
     safeplot(plot_merged_seen_nd_eval)

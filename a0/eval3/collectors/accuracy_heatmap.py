@@ -32,6 +32,14 @@ Unfinished games (turn-limit timeouts) have no terminal state, so they are
 excluded from the distance axis. They ARE included on the progress axis, which
 keeps that axis's marginal identical to the existing 1D progress accuracy graph.
 
+Each cell also carries "GT Win Rate ND" — the fraction of the states behind it
+whose GT outcome is a win for the player to move. That is what a constant
+guesser scores, so it is the chance baseline for "Value Accuracy ND", measured
+on the same population with the same weighting. It is also the whole explanation
+of the parity sawtooth on the distance axis: value is from the player-to-move's
+perspective and that perspective flips every ply, so the eventual winner is on
+move at even distances and the loser at odd ones.
+
 Outputs (eval_dir):
   {name}_iter_distance_acc.pkl   x = iteration, keys "<metric> D{d}" / "<metric> DOVER"
   {name}_iter_progress_acc.pkl   x = iteration, keys "<metric> P{bucket}"
@@ -54,7 +62,7 @@ logger = get_logger(__name__)
 OVERFLOW = "OVER"
 
 # per-cell accumulator layout
-_TOTAL, _CORRECT, _TOTAL_ND, _CORRECT_ND, _ABS_ERROR = range(5)
+_TOTAL, _CORRECT, _TOTAL_ND, _CORRECT_ND, _ABS_ERROR, _GT_WIN_ND = range(6)
 
 # (metric key prefix, whether it is normalised by the ND total rather than the
 # plain total, index into the accumulator) — drives both emission and naming
@@ -62,6 +70,18 @@ _METRICS: list[tuple[str, bool, int]] = [
     ("Value Accuracy", False, _CORRECT),
     ("Value Accuracy ND", True, _CORRECT_ND),
     ("Target MAE", False, _ABS_ERROR),
+    # The GT win rate of the states behind each cell — what a constant guesser
+    # would score, and the thing that generates the parity sawtooth on the
+    # distance axis. Accumulated over the SAME population and with the same
+    # weighting as "Value Accuracy ND" (per target, ND-filtered), so it is the
+    # baseline for that number and not merely a nearby one.
+    #
+    # distance_class_balance.pkl is NOT that: it is measured on the model
+    # heatmap's fixed eval buckets — <=1000 reservoir-sampled boards per
+    # distance, finished games only, pooled over iterations — which is a
+    # different sample from a different population. Both are useful; only this
+    # one can be subtracted from the accuracy in the same series.
+    ("GT Win Rate ND", True, _GT_WIN_ND),
 ]
 
 def experienced_targets(ti: TurnInfo) -> list[tuple[int, float]]:
@@ -115,7 +135,7 @@ class AccuracyHeatmapCollector(Collector):
 
     @staticmethod
     def _cell() -> list[float]:
-        return [0.0] * 5
+        return [0.0] * 6
 
     def _accumulate(
         self,
@@ -137,6 +157,10 @@ class AccuracyHeatmapCollector(Collector):
             cell[_TOTAL_ND] += 1
             if correct:
                 cell[_CORRECT_ND] += 1
+            # counted inside the ND branch on purpose: the win rate has to share
+            # the denominator of the accuracy it is the baseline for
+            if gt_outcome > 0.0:
+                cell[_GT_WIN_ND] += 1
         cell[_ABS_ERROR] += abs(target - gt_outcome)
 
     def _distance_bin(self, distance: int) -> int | str:
