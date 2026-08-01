@@ -27,8 +27,13 @@ from a0.utils.plotting import (
     plot_stacked,
     plot_stacked_proportional,
     plot_value_proportions,
+    plot_heatmap,
 )
-from a0.eval3.plotting import safeplot, _reference_names
+from a0.utils.plotting import pool_heatmap_over_x
+from a0.eval3.plotting import (
+    safeplot, _reference_names, _plot_accuracy_heatmaps, _plot_model_heatmaps,
+    _plot_target_accuracy_lines, _plot_model_accuracy_lines, AXES, MODEL_SPECS,
+)
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -64,6 +69,20 @@ SERIES_FILES = [
     "alt_targets_10_progress_acc",
     "gamedata_10_progress_baseline_accuracy",
     "gamedata_10_progress_branching_factor",
+    # accuracy heatmaps (iteration x progress / distance-from-terminal).
+    # Mergeable because the collector always emits the full D0..D_MAX key set,
+    # so runs whose games differ in length still share a key set.
+    "experienced_iter_distance_acc",
+    "experienced_iter_progress_acc",
+    "alt_targets_iter_distance_acc",
+    "alt_targets_iter_progress_acc",
+    # model-accuracy heatmaps (checkpoint x progress / distance) + the class
+    # balance of the unbalanced distance buckets
+    "model_heatmap_progress_nd",
+    "model_heatmap_progress_nt",
+    "model_heatmap_distance_nd",
+    "model_heatmap_distance_nt",
+    "distance_class_balance",
     # per-dataset model eval
     "seen_nd_eval",
     "random_nd_eval",
@@ -703,6 +722,198 @@ def plot_merged_gp_branching_factor() -> None:
     )
 
 
+def plot_merged_heatmap_alt_targets() -> None:
+    _plot_accuracy_heatmaps("alt_targets", "Training targets", merged=True)
+
+
+def plot_merged_heatmap_experienced() -> None:
+    _plot_accuracy_heatmaps("experienced", "Experienced (MC) outcomes", merged=True)
+
+
+def plot_merged_model_heatmaps() -> None:
+    _plot_model_heatmaps(merged=True)
+
+
+def plot_merged_distance_class_balance() -> None:
+    s = load_series(f"{config.eval_dir}/merged_distance_class_balance.pkl")
+    plot_shaded_error(
+        "Class balance of the distance-from-terminal eval buckets (merged)",
+        [
+            ("Majority class rate (= chance)", "±95% CI", s.x, *_ci_keys(s, "Majority Class Rate")),
+            ("Win rate", "±95% CI", s.x, *_ci_keys(s, "Win Rate")),
+        ],
+        "Distance from terminal (plies)", "Fraction of bucket",
+        "merged_model_distance_class_balance",
+        y_lim=(0.0, 1.0),
+    )
+
+
+def _pool_across_trials(
+    series_fn: str, metric: str, label: str,
+    count_metric: str | None = None, min_count: int | None = None,
+) -> tuple[list[int], list[float], list[float]]:
+    '''
+    Pool each trial along x, then take mean ± 95% CI ACROSS trials per bin.
+
+    Deliberately not computed from the merged series: pooling that would average
+    already-averaged numbers and there would be no spread left to put a band on.
+    Pooling per trial first keeps one independent value per seed per bin, which
+    is what a cross-seed CI has to be built from. Same t-based formula as
+    merge_series, so the bands mean the same thing as everywhere else.
+
+    Bins are matched by VALUE, not position — heatmap_matrix trims trailing empty
+    rows, so a short-game seed yields fewer rows than a long-game one.
+    '''
+    per_bin: dict[int, list[float]] = {}
+    for d in _get_trial_dirs():
+        s = load_series(f"{d}{series_fn}", optional=True)
+        if s is None:
+            continue
+        try:
+            bins, pooled, _ = pool_heatmap_over_x(
+                s, metric, label, count_metric=count_metric, min_count=min_count)
+        except KeyError:
+            continue
+        for b, v in zip(bins, pooled):
+            if np.isfinite(v):
+                per_bin.setdefault(b, []).append(float(v))
+    if not per_bin:
+        raise FileNotFoundError(f"no trial produced {series_fn} [{metric} {label}]")
+
+    xs = sorted(per_bin)
+    means, cis = [], []
+    for b in xs:
+        vals = np.array(per_bin[b], dtype=np.float64)
+        n = vals.size
+        means.append(float(vals.mean()))
+        if n >= 2:
+            t = stats.t.ppf(0.975, df=n - 1)
+            cis.append(float(t * vals.std(ddof=0) / math.sqrt(n)))
+        else:
+            cis.append(float("nan"))
+    return xs, means, cis
+
+
+def plot_merged_target_accuracy_pooled() -> None:
+    '''(1, merged) Both target types, pooled over iterations, ±95% CI across seeds.'''
+    for axis, label, x_label in AXES:
+        lines = []
+        for name, disp in (("alt_targets", "Training targets"),
+                           ("experienced", "Experienced (MC) outcomes")):
+            xs, means, cis = _pool_across_trials(
+                f"{name}_iter_{axis}_acc.pkl", "Value Accuracy ND", label,
+                min_count=config.heatmap_min_cell_count)
+            lines.append((disp, "±95% CI", xs, means, cis))
+        plot_shaded_error(
+            "Training-target value accuracy vs GT, no draws (merged) "
+            "- pooled over all iterations",
+            lines, x_label, "Value accuracy (no draws)",
+            f"merged_target_accuracy_pooled_{axis}",
+            y_lim=(0.0, 1.0),
+        )
+
+
+def plot_merged_model_accuracy_pooled() -> None:
+    '''(3, merged) Model accuracy pooled over checkpoints, ±95% CI across seeds.'''
+    for name, label, x_label, metric, disp in MODEL_SPECS:
+        xs, means, cis = _pool_across_trials(
+            f"model_heatmap_{name}.pkl", metric, label, count_metric="Count",
+            min_count=config.heatmap_min_cell_count)
+        plot_shaded_error(
+            f"{disp} (merged) - pooled over all checkpoints",
+            [(metric, "±95% CI", xs, means, cis)],
+            x_label, metric,
+            f"merged_model_accuracy_pooled_{name}",
+            y_lim=(0.0, 1.0),
+        )
+
+
+def plot_merged_target_accuracy_lines() -> None:
+    '''
+    (2, merged) One line per iteration, each line the cross-seed mean.
+
+    No CI band here, unlike the pooled plots: this figure already carries ~200
+    lines, and 200 shaded bands would be an unreadable wash. The per-cell
+    cross-seed CI is exactly what plot_merged_heatmap_seed_agreement shows, and
+    the pooled figures carry bands where they can actually be read.
+    '''
+    _plot_target_accuracy_lines("alt_targets", "Training targets", merged=True)
+    _plot_target_accuracy_lines("experienced", "Experienced (MC) outcomes", merged=True)
+
+
+def plot_merged_model_accuracy_lines() -> None:
+    '''(3, merged) One line per checkpoint, each line the cross-seed mean.'''
+    _plot_model_accuracy_lines(merged=True)
+
+
+def plot_merged_gt_win_rate_parity() -> None:
+    '''(4, merged) GT win rate by parity, ±95% CI across seeds.'''
+    s = load_series(f"{config.eval_dir}/merged_distance_class_balance.pkl")
+    mean, ci = _ci_keys(s, "Win Rate")
+    groups = []
+    for parity, disp in ((0, "win rate, even D"), (1, "win rate, odd D")):
+        sel = [(d, m, c) for d, m, c in zip(s.x, mean, ci) if d % 2 == parity]
+        groups.append((disp, "±95% CI", [d for d, _, _ in sel],
+                       [m for _, m, _ in sel], [c for _, _, c in sel]))
+    plot_shaded_error(
+        "GT win rate of the player to move, by distance from terminal (merged)",
+        groups,
+        "Distance from terminal (plies)", "GT win rate (player to move)",
+        "merged_gt_win_rate_by_distance_parity",
+        y_lim=(0.0, 1.0),
+    )
+
+
+def plot_merged_target_gt_win_rate() -> None:
+    '''(4b, merged) Training-target GT win rate, ±95% CI across seeds.'''
+    for axis, label, x_label in AXES:
+        # alt_targets only, and parity-split on distance only — see the reasoning
+        # on a0.eval3.plotting._plot_target_gt_win_rate
+        xs, means, cis = _pool_across_trials(
+            f"alt_targets_iter_{axis}_acc.pkl", "GT Win Rate ND", label,
+            count_metric="Count ND", min_count=config.heatmap_min_cell_count)
+        if axis == "distance":
+            groups = []
+            for parity, tag in ((0, "even D"), (1, "odd D")):
+                sel = [(x, m, c) for x, m, c in zip(xs, means, cis) if x % 2 == parity]
+                groups.append((f"win rate, {tag}", "±95% CI",
+                               [x for x, _, _ in sel], [m for _, m, _ in sel],
+                               [c for _, _, c in sel]))
+        else:
+            groups = [("win rate", "±95% CI", xs, means, cis)]
+        plot_shaded_error(
+            "GT win rate of the player to move, training-target states (merged) "
+            "- pooled over all iterations",
+            groups, x_label, "GT win rate (player to move)",
+            f"merged_target_gt_win_rate_{axis}",
+            y_lim=(0.0, 1.0),
+        )
+
+
+def plot_merged_heatmap_seed_agreement() -> None:
+    '''
+    Across-seed 95% CI half-width per cell. merge_series emits a "<key>_ci"
+    alongside every merged key, so this is free — and on a heatmap it answers the
+    question the mean cannot: which parts of the picture actually reproduce
+    across seeds, and which are one seed's noise.
+    '''
+    for name, label_name in (("alt_targets", "Training targets"),
+                             ("experienced", "Experienced (MC) outcomes")):
+        for axis, axis_label, y_label in (
+            ("distance", "D", "Distance from terminal (plies)"),
+            ("progress", "P", "Game progress (%)"),
+        ):
+            s = load_series(f"{config.eval_dir}/merged_{name}_iter_{axis}_acc.pkl")
+            plot_heatmap(
+                f"{label_name} value accuracy: across-seed 95% CI half-width",
+                s, "Value Accuracy ND", axis_label,
+                "Training iteration", y_label,
+                f"merged_heatmap_{name}_{axis}_value_accuracy_nd_ci",
+                cbar_label="CI half-width (lower = more reproducible)",
+                key_suffix="_ci",
+            )
+
+
 def plot_merged_gp_state_count() -> None:
     s = load_series(f"{config.eval_dir}/merged_gamedata_10_progress_count.pkl")
     plot_bar_with_error(
@@ -983,6 +1194,23 @@ def main():
     safeplot(plot_merged_gp_alt_targets_accuracy)
     safeplot(plot_merged_gp_baseline_accuracy)
     safeplot(plot_merged_gp_branching_factor)
+
+    # accuracy heatmaps (iteration x progress / distance-from-terminal)
+    safeplot(plot_merged_heatmap_alt_targets)
+    safeplot(plot_merged_heatmap_experienced)
+    safeplot(plot_merged_heatmap_seed_agreement)
+
+    # model-accuracy heatmaps
+    safeplot(plot_merged_model_heatmaps)
+    safeplot(plot_merged_distance_class_balance)
+
+    # line-chart readings of the same series
+    safeplot(plot_merged_target_accuracy_pooled)
+    safeplot(plot_merged_target_accuracy_lines)
+    safeplot(plot_merged_model_accuracy_pooled)
+    safeplot(plot_merged_model_accuracy_lines)
+    safeplot(plot_merged_gt_win_rate_parity)
+    safeplot(plot_merged_target_gt_win_rate)
 
     # per-dataset model evaluation
     safeplot(plot_merged_seen_nd_eval)

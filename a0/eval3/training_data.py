@@ -24,8 +24,14 @@ from a0.eval.generate_datasets import save_dataset
 from a0.utils.misc import get_baseline_accuracy, get_branching_factor
 from a0.utils.value_policy_entropy import normalized_policy_entropy
 from a0.eval3.generate_datasets import get_nd_and_nt_datasets_from_state_list
-from a0.eval3.collectors.base import Collector, GameInfo, TurnInfo, GameProgressCollector
+from a0.eval3.collectors.base import (
+    Collector, GameInfo, TurnInfo, GameProgressCollector,
+    progress_bucket_upper_bounds, progress_bucket_for,
+)
 from a0.eval3.collectors.bpp_and_bppma import BPPCollector
+from a0.eval3.collectors.accuracy_heatmap import (
+    AccuracyHeatmapCollector, alt_targets, experienced_targets,
+)
 from a0.eval3.refresh_targets import RefreshTargetAccuracyCollector, run_refresh_target_analyses
 
 from config import config
@@ -198,7 +204,7 @@ def traverse_game_data_with_collectors(collectors: list[Collector], gt: GroundTr
     total_turns = 0
     for i, game_data_list in tqdm(gd_gen, desc="Iterations"):
         total_iterations += 1
-        for game_data in game_data_list:
+        for game_index, game_data in enumerate(game_data_list):
             total_games += 1
             game_length = len(game_data.turn_data)
             winner = game_data.winner
@@ -244,6 +250,8 @@ def traverse_game_data_with_collectors(collectors: list[Collector], gt: GroundTr
                     alternative_policy_target=turn.alternative_policy_target,
                     # getattr: absent on pickles predating the target-refresh path
                     refresh_value_targets=getattr(turn, "refresh_value_targets", None),
+                    ended=game_data.ended,
+                    game_index=game_index,
                 )
                 for c in collectors:
                     c.on_turn(turn_info)
@@ -595,14 +603,12 @@ class GameProgressMetaCollector(Collector):
         for c in self._collectors:
             c.init_buckets(bounds)
 
-    @staticmethod
-    def bucket_upper_bounds(n_buckets: int) -> list[int]:
-        size = 100 / n_buckets
-        return [int((b + 1) * size) for b in range(n_buckets)]
+    # shared with AccuracyHeatmapCollector, which needs the same bucketing
+    # without being a GameProgressCollector — see collectors/base.py
+    bucket_upper_bounds = staticmethod(progress_bucket_upper_bounds)
 
     def _get_bucket_upper(self, progress: int) -> int:
-        bucket_idx = min(int(progress / self._bucket_size), self._n_buckets - 1)
-        return int((bucket_idx + 1) * self._bucket_size)
+        return progress_bucket_for(progress, self._n_buckets)
 
     def on_game(self, gi: GameInfo) -> None:
         pass
@@ -740,6 +746,109 @@ class AccuracyProgressCollector(GameProgressCollector):
             f"(n per bucket: {[self._stats[b]['total'] for b in self._buckets]})"
         )
 
+class DistanceBucketDatasetCollector(Collector):
+    '''
+    Collects boards bucketed by distance-from-terminal and saves them as nd/nt
+    Dataset dicts, so the model-accuracy heatmap can use the same y-axis as the
+    training-data one.
+
+    A top-level Collector rather than a GameProgressCollector because distance
+    is a property of the TRAJECTORY, not of the board — a board's distance is
+    only defined relative to the game it appeared in, so it can't be recovered
+    later from a pooled board list the way progress buckets can.
+
+    Unfinished games are excluded: no terminal state means no distance. Boards
+    are pooled across all iterations (like the progress buckets), so the
+    resulting eval set is fixed and variation across checkpoints is purely
+    model-driven.
+    → {dataset_out_dir}/distance_{n_buckets}_{nd,nt}.pkl
+    '''
+
+    def __init__(self, max_distance: int | None = None, n: int = 1000, batch_size: int = 256,
+                 n_per_bucket_cap: int = 4000):
+        self._max_distance = max_distance if max_distance is not None else config.heatmap_max_distance
+        self._n = n
+        self._batch_size = batch_size
+        # bound the boards held in memory per bucket before sampling; the whole
+        # point is to avoid retaining every board of every game
+        self._cap = n_per_bucket_cap
+        self._boards: dict[int, list[Board]] = {}
+        self._seen: dict[int, int] = {}
+
+    def on_game(self, gi: GameInfo) -> None:
+        pass
+
+    def on_turn(self, ti: TurnInfo) -> None:
+        if not ti.ended:
+            return
+        distance = ti.game_length - 1 - ti.turn_index
+        if distance > self._max_distance:
+            return
+        seen = self._seen.get(distance, 0) + 1
+        self._seen[distance] = seen
+        bucket = self._boards.setdefault(distance, [])
+        if len(bucket) < self._cap:
+            bucket.append(ti.board)
+        else:
+            # reservoir sampling: keeps a uniform sample of the bucket without
+            # holding every board, so early iterations aren't over-represented
+            j = random.randrange(seen)
+            if j < self._cap:
+                bucket[j] = ti.board
+
+    def on_iteration_end(self, iteration: int) -> None:
+        pass
+
+    def finalize(self) -> None:
+        if not self._boards:
+            logger.info("DistanceBucketDatasetCollector: no finished games; skipping.")
+            return
+        gt = GroundTruth()
+        datasets_nd: dict[int, Dataset] = {}
+        datasets_nt: dict[int, Dataset] = {}
+        # class balance per distance: with balancing off, THIS is what "chance"
+        # means in each row, so it has to be reported next to the accuracy.
+        # It's a 1D curve, not a heatmap, because the eval board set is fixed
+        # across checkpoints.
+        balance_series = Series(["Majority Class Rate", "Win Rate", "N"])
+        for distance in sorted(self._boards):
+            boards = self._boards[distance]
+            nd_dataset, nt_dataset = get_nd_and_nt_datasets_from_state_list(
+                boards, gt, self._n, self._batch_size, balance=False
+            )
+            if len(nd_dataset):
+                values = np.asarray(nd_dataset.values, dtype=np.float64).reshape(-1)
+                win_rate = float(np.mean(values > 0))
+                balance_series.x.append(distance)
+                balance_series.ys["Win Rate"].append(win_rate)
+                balance_series.ys["Majority Class Rate"].append(max(win_rate, 1.0 - win_rate))
+                balance_series.ys["N"].append(float(len(nd_dataset)))
+            # Near-terminal buckets are heavily class-imbalanced — at distance 0
+            # EVERY state is a win for the player to move, and the sign then
+            # alternates by parity — so balance_gt_values (inside the nd path)
+            # can decimate or empty them. Empty buckets are omitted rather than
+            # stored: a zero-length Dataset can't be evaluated, and a missing
+            # key reads as an honest gap.
+            if len(nd_dataset):
+                datasets_nd[distance] = nd_dataset
+            if len(nt_dataset):
+                datasets_nt[distance] = nt_dataset
+            logger.info(
+                f"  distance {distance}: {len(boards)} boards (of {self._seen[distance]} seen) "
+                f"-> nd={len(nd_dataset)}, nt={len(nt_dataset)}"
+                f"{'  (nt empty: terminal states)' if not len(nt_dataset) else ''}"
+            )
+        # named by the distance CAP, not the surviving bucket count, so the nd
+        # and nt dicts share a filename stem even if a bucket drops out
+        save_dataset_dict(datasets_nd, f"distance_{self._max_distance}_nd")
+        save_dataset_dict(datasets_nt, f"distance_{self._max_distance}_nt")
+        save_series(balance_series, f"{config.eval_dir}/distance_class_balance.pkl")
+        logger.info(
+            f"DistanceBucketDatasetCollector: saved distance_{self._max_distance}_{{nd,nt}}.pkl "
+            f"({len(datasets_nd)} nd buckets, {len(datasets_nt)} nt buckets) "
+            f"+ distance_class_balance.pkl ({len(balance_series.x)} distances)."
+        )
+
 class BoardFunctionProgressCollector(GameProgressCollector):
     '''
     Collects boards per game progress bucket, then applies functions
@@ -868,6 +977,7 @@ def run_collectors(ranker: RankUnrank, gt: GroundTruth | None) -> None:
     - accuracy files (experienced + alt-target, x4)
     - BPP / BPPMA files (experienced + alt-target, x8)
     - {experienced,alt_targets}_{n_buckets}_progress_acc.pkl
+    - {experienced,alt_targets}_iter_{distance,progress}_acc.pkl (heatmaps)
     - gamedata_{n_buckets}_progress_baseline_accuracy.pkl
     - game_progress_{n_buckets}_nd.pkl (and nt)
     '''
@@ -914,6 +1024,13 @@ def run_collectors(ranker: RankUnrank, gt: GroundTruth | None) -> None:
             ),
             # per-refresh target accuracy (target-refresh runs; no-op otherwise)
             RefreshTargetAccuracyCollector(),
+            # iteration x progress/distance accuracy heatmaps. The alt one is
+            # the point (those are the targets the value head trains on); the
+            # experienced one is the control, and costs ~nothing since GT is
+            # already computed once per turn for the whole traversal.
+            AccuracyHeatmapCollector(name="alt_targets", get_targets=alt_targets,
+                                     fold_refresh_sidecars=True),
+            AccuracyHeatmapCollector(name="experienced", get_targets=experienced_targets),
             BPPCollector(gt=gt),
             BPPCollector(
                 gt=gt,
@@ -921,6 +1038,10 @@ def run_collectors(ranker: RankUnrank, gt: GroundTruth | None) -> None:
                 get_outcome=alt_outcome,
                 get_policy=alt_policy
             ),
+            # eval sets for the model-accuracy heatmap's distance axis. Must be
+            # built here, during the traversal: distance is a trajectory
+            # property and cannot be recovered from a pooled board list later.
+            DistanceBucketDatasetCollector(),
         ]
 
     # Per-bucket (game-progress) collectors.

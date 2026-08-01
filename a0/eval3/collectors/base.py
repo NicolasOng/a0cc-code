@@ -24,6 +24,13 @@ class TurnInfo:
     # target-refresh path: (iteration, refresh, target) tuples from the
     # generation iteration; None on classic runs and old pickles
     refresh_value_targets: list[tuple[int, int, float]] | None = None
+    # game-level facts needed by trajectory-keyed collectors. `ended` separates
+    # real terminal states from turn-limit timeouts (an unfinished game has no
+    # terminal state, so distance-from-terminal is meaningless for it).
+    # `game_index` is this game's position in its iteration's gamedata list —
+    # the key the refresh sidecar rows join on.
+    ended: bool = True
+    game_index: int = -1
 
 @dataclass
 class GameInfo:
@@ -32,6 +39,17 @@ class GameInfo:
     ended: bool
     game_length: int
     game_time: float
+
+def progress_bucket_upper_bounds(n_buckets: int) -> list[int]:
+    '''Upper bounds of n equal game-progress buckets over 0-99, e.g. [10, 20, ... 100].'''
+    size = 100 / n_buckets
+    return [int((b + 1) * size) for b in range(n_buckets)]
+
+def progress_bucket_for(progress: int, n_buckets: int) -> int:
+    '''The bucket upper bound that `progress` (0-99) falls into.'''
+    size = 100 / n_buckets
+    idx = min(int(progress / size), n_buckets - 1)
+    return int((idx + 1) * size)
 
 class Collector(Protocol):
     def on_game(self, gi: GameInfo) -> None: ...

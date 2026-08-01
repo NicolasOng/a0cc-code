@@ -109,6 +109,13 @@ class Config:
     refresh_policy_loss_weight: float  # policy-loss weight during refresh training passes
     refresh_inference_batch_size: int  # chunk size for batched value inference during refreshes
 
+    # Training-data accuracy heatmaps (a0.eval3.collectors.accuracy_heatmap):
+    # iteration x game-progress / distance-from-terminal. Binning is done at full
+    # resolution here and CUT at plot time, so re-cutting a heatmap never requires
+    # re-running the (GT-bound) analysis pass.
+    heatmap_max_distance: int  # rows D0..D_MAX are always emitted (NaN where empty) so seeds share a key set for merge_series; anything beyond lands in one overflow row. Bound by turn_limit-1, but game length is what matters: 64 covers 30-40 turn games with room to spare and keeps merged pkls ~1.8MB instead of ~5.5MB.
+    heatmap_min_cell_count: int  # plot-time: cells with fewer samples render blank rather than coloured, and the distance cap is the last row meeting this in EVERY iteration
+
     def __init__(self, config_fn: str, default_config_fn: str = "config/config.json", trial_num: str = ""):
         '''
         Initialize the configuration from a JSON file.
