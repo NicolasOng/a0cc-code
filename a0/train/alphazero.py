@@ -343,7 +343,8 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
             rollout_depth=config.rollout_depth,
             policy_type=config.policy_type,
             epsilon=config.epsilon,
-            dirichlet_epsilon=config.dirichlet_epsilon
+            dirichlet_epsilon=config.dirichlet_epsilon,
+            c_puct=config.c_puct
         )
 
         # generate training data with self-play

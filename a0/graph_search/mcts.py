@@ -72,16 +72,20 @@ class MCTS:
     Monte Carlo Tree Search (MCTS) implementation for a generic graph problem.
     Based on https://int8.io/monte-carlo-tree-search-beginners-guide/#Policy_network_training_in_Alpha_Go_and_Alpha_Zero
     '''
-    def __init__(self, problem: MCTSProblem, selection_policy: str = 'uct', c: float = math.sqrt(2)):
+    def __init__(self, problem: MCTSProblem, selection_policy: str = 'uct', c: float = math.sqrt(2), c_puct: float | None = None):
         self.problem = problem
         self.root = MCTSNode(problem.initial_state(), 1.0)
         self.c = c
+        # PUCT exploration constant. Passed in by the caller so training and
+        # evaluation can search with different c_puct; None falls back to the
+        # training value in the config.
+        self.c_puct = config.c_puct if c_puct is None else c_puct
 
         # set the selection policy
         if selection_policy == 'uct':
             self.key = lambda n: MCTS.uct(n, self.c)
         elif selection_policy == 'puct':
-            self.key = self.puct
+            self.key = lambda n: MCTS.puct(n, self.c_puct)
         else:
             raise ValueError(f"Invalid selection policy: {selection_policy}. Choose 'uct' or 'puct'.")
 
@@ -147,7 +151,7 @@ class MCTS:
         return exploit + explore
     
     @staticmethod
-    def puct(node: MCTSNode) -> float:
+    def puct(node: MCTSNode, c_puct: float | None = None) -> float:
         assert node.parent is not None, "PUCT called on root node"
         # prioritize unvisited nodes
         if node.visits == 0:
@@ -157,7 +161,8 @@ class MCTS:
         if not node.is_maximizing:
             exploit = -exploit
         # exploration/prior factor (c_puct * P * (sqrt(N) / (1 + n)))
-        explore = config.c_puct * node.prior * (math.sqrt(node.parent.visits) / (1 + node.visits))
+        c = config.c_puct if c_puct is None else c_puct
+        explore = c * node.prior * (math.sqrt(node.parent.visits) / (1 + node.visits))
         return exploit + explore
 
     def get_best_root_child(self) -> Optional[MCTSNode]:

@@ -234,7 +234,12 @@ def iters_to_evaluate(available: list[int], already_done: set[int]) -> list[int]
 def build_a0_player(model, mcts_samples: int) -> A0Player:
     '''Wrap a loaded model in an A0Player using the shared eval settings, at the
     given MCTS search budget. Shared by the win-rate curve (a0.eval.player) and
-    the plateau sweep (a0.eval.player_sweep) so both build identical players.'''
+    the plateau sweep (a0.eval.player_sweep) so both build identical players.
+
+    Rollouts and c_puct come from the player_eval_* config keys, NOT the
+    training ones: the evals deliberately search differently from self-play
+    (e.g. no rollouts + a low c_puct, so the trained value head drives the
+    search instead of random playouts).'''
     return A0Player(
         config.board_size,
         config.num_pieces,
@@ -244,11 +249,12 @@ def build_a0_player(model, mcts_samples: int) -> A0Player:
         no_reverse_moves=not config.backwards_moves,
         no_illegal_moves=not config.illegal_moves,
         no_side_moves=not config.sideways_moves,
-        rollout_type=config.rollout_type,
-        rollout_depth=config.rollout_depth,
+        rollout_type=config.player_eval_rollout_type,
+        rollout_depth=config.player_eval_rollout_depth,
         policy_type=config.policy_type,
         epsilon=config.epsilon,
         dirichlet_epsilon=config.dirichlet_epsilon,
+        c_puct=config.player_eval_c_puct,
     )
 
 

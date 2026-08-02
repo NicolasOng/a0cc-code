@@ -37,6 +37,9 @@ class Config:
     repeats_for_draw: int
 
     root_game_has_all_moves: bool
+    # Self-play/training search settings. The player evals use their own
+    # player_eval_* counterparts below; everything else (scripts, dataset
+    # generation, one-off analyses) uses these.
     rollout_type: str
     rollout_depth: int
     policy_type: str
@@ -87,13 +90,22 @@ class Config:
     log_system_metrics: bool
     system_metrics_interval_seconds: float
 
-    c_puct: float
+    c_puct: float  # PUCT exploration constant during self-play/training (see player_eval_c_puct for the evals)
 
     do_player_eval: bool  # gates a0.eval.player
     do_gt_evals: bool     # gates eval3 analyses that need the solve-data file
     player_eval_stride: int  # eval every Nth checkpoint (1 = all); iter 0 and the latest are always included
     player_eval_mcts_samples: int  # MCTS sims/move for the win-rate CURVE eval; separate from training mcts_samples. Lower → value quality is less masked by search, so lambda banding is more visible.
     player_eval_num_games: int  # games per side, per checkpoint, in the win-rate curve (replaces the old hard-coded NUM_GAMES=64)
+
+    # Search settings for the A0 players built by a0.eval.player.build_a0_player
+    # (the win-rate curve AND the plateau sweep), kept separate from the
+    # training ones above so the evals can measure the trained value head
+    # directly: e.g. train with random rollouts + c_puct 1.0, but evaluate with
+    # no rollouts (pure value head) + c_puct 0.25.
+    player_eval_rollout_type: str    # "none" | "random" | "policy"
+    player_eval_rollout_depth: int   # ignored when player_eval_rollout_type is "none"
+    player_eval_c_puct: float
 
     # Plateau MCTS-sweep eval (a0.eval.player_sweep): winrate of the last few
     # converged checkpoints vs the baseline at several search budgets, averaged
