@@ -11,6 +11,7 @@ sweeps (e.g. when some trials were preempted) still combine cleanly.
 import glob
 
 from a0.utils.plotting import load_and_merge_series
+from a0.eval.trial_selection import select_trial_paths
 
 from config import config
 from utils.log import get_logger, setup_logging
@@ -20,7 +21,7 @@ logger = get_logger(__name__)
 def find_trial_eval_dirs() -> list[str]:
     """Glob for per-trial eval directories under the current HP's output dir."""
     pattern = f"{config.output_dir}trial_*/eval/"
-    dirs = sorted(glob.glob(pattern))
+    dirs = select_trial_paths(sorted(glob.glob(pattern)))
     return dirs
 
 

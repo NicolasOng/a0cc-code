@@ -37,6 +37,7 @@ from a0.eval3.plotting import (
 
 from config import config
 from utils.log import get_logger, setup_logging
+from a0.eval.trial_selection import select_trial_paths
 logger = get_logger(__name__)
 
 
@@ -132,7 +133,7 @@ def _per_refresh_distribution_files() -> list[str]:
 def _get_trial_dirs() -> list[str]:
     '''Glob for per-trial eval directories under config.output_dir.'''
     pattern = f"{config.output_dir}trial_*/eval/"
-    return sorted(glob.glob(pattern))
+    return select_trial_paths(sorted(glob.glob(pattern)))
 
 
 def merge_all_series() -> None:

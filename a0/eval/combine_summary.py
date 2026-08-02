@@ -19,6 +19,7 @@ from scipy import stats
 
 from config import config
 from utils.log import get_logger, setup_logging
+from a0.eval.trial_selection import select_trial_paths
 logger = get_logger(__name__)
 
 
@@ -48,7 +49,7 @@ def main():
     )
 
     pattern = f"{config.output_dir}trial_*/summary.json"
-    trial_summary_paths = sorted(glob.glob(pattern))
+    trial_summary_paths = select_trial_paths(sorted(glob.glob(pattern)))
     if not trial_summary_paths:
         logger.error(f"No per-trial summaries found matching {pattern}")
         return
