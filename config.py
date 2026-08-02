@@ -120,6 +120,7 @@ class Config:
     refresh_k_decay_iterations: int | None  # decay K→1 linearly over this many iterations; None → constant num_target_refreshes
     refresh_policy_loss_weight: float  # policy-loss weight during refresh training passes
     refresh_inference_batch_size: int  # chunk size for batched value inference during refreshes
+    refresh_recompute_targets: bool  # False = compute targets once/iteration and reuse across the K passes (control: extra epochs, no refresh); True = classic per-pass refresh
 
     # Training-data accuracy heatmaps (a0.eval3.collectors.accuracy_heatmap):
     # iteration x game-progress / distance-from-terminal. Binning is done at full

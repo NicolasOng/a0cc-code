@@ -1,0 +1,17 @@
+{
+    "name": "td_interp25-6",
+    "base_config": "config/config.json",
+    "num_trials": 4,
+    "auto_resubmit": true,
+    "grid": {
+        "config": [
+            {
+                "alternative_target": "interpolated_td_lambda",
+                "value_head_zero_init": true,
+                "dataset_balance_method": "none",
+                "training_iterations": 200,
+                "interpolated_td_lambda_iterations": 25
+            }
+        ]
+    }
+}

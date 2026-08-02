@@ -1,0 +1,5 @@
+{
+    "board_size": 7,
+    "num_pieces": 4,
+    "solve_data": "input/solvedata/CC-SOLVE-BASELINE-49-4.dat"
+}

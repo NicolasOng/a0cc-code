@@ -1,0 +1,28 @@
+{
+    "name": "refresh36-6",
+    "base_config": "config/config-36-6.json",
+    "num_trials": 4,
+    "auto_resubmit": true,
+    "grid": {
+        "config": [
+            {
+                "alternative_target": "td_lambda",
+                "value_head_zero_init": true,
+                "dataset_balance_method": "none",
+                "use_target_refresh": true,
+                "training_iterations": 100,
+                "refresh_k_decay_iterations": null,
+                "refresh_recompute_targets": true
+            }
+        ],
+        "td_lambda": [
+            0.0,
+            1.0
+        ],
+        "num_target_refreshes": [
+            2,
+            4,
+            8
+        ]
+    }
+}

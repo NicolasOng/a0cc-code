@@ -188,15 +188,24 @@ def hp_id_for(overrides: dict) -> str:
     return hashlib.sha1(canonical.encode()).hexdigest()[:10]
 
 
-def write_per_hp_config(base_config_path: str, overrides: dict, sweep_dir: str, hp_id: str) -> str:
+def write_per_hp_config(base_config_path: str, overrides: dict, sweep_dir: str, hp_id: str,
+                        default_config_path: str = "config/config.json") -> str:
     """Materialize a per-HP config.json that the existing config loader can consume.
 
     The output_dir is set to the per-HP directory, so the existing
     `config.output_dir.rstrip("/") + "/trial_" + str(trial_num) + "/"` logic
     will resolve trials to <sweep_dir>/<hp_id>/trial_<N>/.
+
+    Keys are merged in the same order the runtime loader uses (default ->
+    base_config -> sweep overrides), so the materialized config is fully
+    self-contained and won't drift if config/config.json defaults change later.
     """
-    with open(base_config_path) as f:
-        cfg = json.load(f)
+    cfg: dict = {}
+    with open(default_config_path) as f:
+        cfg.update(json.load(f))
+    if os.path.abspath(base_config_path) != os.path.abspath(default_config_path):
+        with open(base_config_path) as f:
+            cfg.update(json.load(f))
     cfg.update(overrides)
     hp_dir = os.path.join(sweep_dir, hp_id)
     os.makedirs(hp_dir, exist_ok=True)

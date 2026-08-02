@@ -377,16 +377,27 @@ def train_alphazero(seed: int = 0, force_fresh: bool = False, attempt: int = 1) 
             diag_refresh_post: list[np.ndarray] = []
 
             train_data = DatasetData()
+            # Control knob: when False, targets are computed once (refresh 0) and
+            # the same dataset is reused for the remaining K-1 passes — isolating
+            # "extra training epochs" from the target-refresh itself (does the
+            # refresh help, or is it just more training on the trajectory buffer?).
+            # Default True = classic per-pass refresh.
+            recompute_targets = getattr(config, "refresh_recompute_targets", True)
+            eb_dataset = None
             for refresh in range(num_refreshes):
-                eb_dataset, delta_stats = trajectory_buffer.refresh_and_build_dataset(
-                    model, lam, i, refresh, config.training_batch_size
-                )
-                if delta_stats["mean"] is not None:
-                    logger.log(25, f"Refresh {refresh + 1}/{num_refreshes} (lam={lam:.4f}): "
-                                   f"target delta mean={delta_stats['mean']:.6f}, "
-                                   f"max={delta_stats['max']:.6f}, n={delta_stats['n']}")
+                if refresh == 0 or recompute_targets:
+                    eb_dataset, delta_stats = trajectory_buffer.refresh_and_build_dataset(
+                        model, lam, i, refresh, config.training_batch_size
+                    )
+                    if delta_stats["mean"] is not None:
+                        logger.log(25, f"Refresh {refresh + 1}/{num_refreshes} (lam={lam:.4f}): "
+                                       f"target delta mean={delta_stats['mean']:.6f}, "
+                                       f"max={delta_stats['max']:.6f}, n={delta_stats['n']}")
+                    else:
+                        logger.log(25, f"Refresh {refresh + 1}/{num_refreshes} (lam={lam:.4f}): no previous targets for delta")
                 else:
-                    logger.log(25, f"Refresh {refresh + 1}/{num_refreshes} (lam={lam:.4f}): no previous targets for delta")
+                    logger.log(25, f"Refresh {refresh + 1}/{num_refreshes} (lam={lam:.4f}): "
+                                   f"reusing refresh-0 targets (refresh_recompute_targets=False)")
 
                 pre_values, post_values, post_weights = balance_dataset(eb_dataset)
 

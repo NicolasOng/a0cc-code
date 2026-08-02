@@ -70,6 +70,7 @@
     "refresh_k_decay_iterations": 25,
     "refresh_policy_loss_weight": 0.0,
     "refresh_inference_batch_size": 256,
+    "refresh_recompute_targets": true,
     "heatmap_max_distance": 64,
     "heatmap_min_cell_count": 15
 }
