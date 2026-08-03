@@ -36,8 +36,39 @@ else
     TRIAL_NO="${2}"
 fi
 
-# Stage the solve file to node-local NVMe so GT lookups mmap a fast local copy.
-bash slurm/stage_solve_data.sh "$CONFIG_FILE"
+# NOTE: no solve-data staging here — the player curve plays vs the DIST/Manhattan
+# baseline (make_baseline) and never reads the solve file, so staging would just
+# waste time/space (esp. the 15G 49-4 file, once per chain link).
+
+# Self-resubmitting chain (opt-in via AUTO_RESUBMIT=1): the eval is resumable
+# (skips already-scored checkpoints), so if the full curve doesn't fit in this
+# job's wall clock we queue a continuation now (afterany on THIS job) that picks
+# up where we left off. The chain self-terminates when no checkpoints remain
+# (or CHAIN_IDX hits MAX_CHAIN). Mirrors slurm/train_a0_gpu.sh.
+AUTO_RESUBMIT="${AUTO_RESUBMIT:-0}"
+CHAIN_IDX="${CHAIN_IDX:-0}"
+MAX_CHAIN="${MAX_CHAIN:-0}"
+SELF_SCRIPT="${SELF_SCRIPT:-slurm/player_eval.sh}"
+
+REMAINING=$(python -m a0.eval.player_progress "$CONFIG_FILE" "$TRIAL_NO")
+echo "Player-eval checkpoints remaining: $REMAINING  (auto_resubmit=$AUTO_RESUBMIT, chain $CHAIN_IDX/$MAX_CHAIN)"
+
+if [ "$AUTO_RESUBMIT" = "1" ] && [ -n "$SLURM_JOB_ID" ] && [ "${REMAINING:-0}" -gt 0 ] && [ "$CHAIN_IDX" -lt "$MAX_CHAIN" ]; then
+    # Chained jobs aren't array tasks, so route their logs next to the sweep's.
+    CHAIN_LOG_DIR="$(dirname "$(dirname "$CONFIG_FILE")")/slurm_logs"
+    mkdir -p "$CHAIN_LOG_DIR"
+    HP_ID="$(basename "$(dirname "$CONFIG_FILE")")"
+    NEXT_IDX=$((CHAIN_IDX + 1))
+    echo "Queuing player-eval continuation (chain $NEXT_IDX/$MAX_CHAIN, afterany:$SLURM_JOB_ID)."
+    sbatch --dependency="afterany:$SLURM_JOB_ID" \
+        --output="$CHAIN_LOG_DIR/player_eval_chain_${HP_ID}_t${TRIAL_NO}_%j.out" \
+        --export=ALL,CHAIN_IDX=$NEXT_IDX "$SELF_SCRIPT" "$CONFIG_FILE" "$TRIAL_NO"
+fi
+
+if [ "${REMAINING:-0}" -le 0 ]; then
+    echo "Player eval complete for ($CONFIG_FILE, trial $TRIAL_NO); nothing to do."
+    exit 0
+fi
 
 echo "Player-curve eval: config=$CONFIG_FILE trial=$TRIAL_NO"
 time python -m a0.eval.player "$CONFIG_FILE" "$TRIAL_NO"
