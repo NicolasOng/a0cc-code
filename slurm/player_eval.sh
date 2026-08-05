@@ -50,7 +50,10 @@ CHAIN_IDX="${CHAIN_IDX:-0}"
 MAX_CHAIN="${MAX_CHAIN:-0}"
 SELF_SCRIPT="${SELF_SCRIPT:-slurm/player_eval.sh}"
 
-REMAINING=$(python -m a0.eval.player_progress "$CONFIG_FILE" "$TRIAL_NO")
+# tail -1: player_progress prints the count last; when the results pkl is absent
+# (fresh/deleted) load_series emits a "series not found" WARNING to stdout first,
+# which would otherwise poison the integer test below and break the chain.
+REMAINING=$(python -m a0.eval.player_progress "$CONFIG_FILE" "$TRIAL_NO" | tail -1)
 echo "Player-eval checkpoints remaining: $REMAINING  (auto_resubmit=$AUTO_RESUBMIT, chain $CHAIN_IDX/$MAX_CHAIN)"
 
 if [ "$AUTO_RESUBMIT" = "1" ] && [ -n "$SLURM_JOB_ID" ] && [ "${REMAINING:-0}" -gt 0 ] && [ "$CHAIN_IDX" -lt "$MAX_CHAIN" ]; then
