@@ -1,3 +1,8 @@
+import os
+import sys
+# moved here from the repo root; keep repo-root imports working
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from a0.players.a0 import Policy
 from cc.core import Move, Board, player_to_tile, Player
 

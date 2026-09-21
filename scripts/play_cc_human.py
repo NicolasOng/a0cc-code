@@ -1,3 +1,8 @@
+import os
+import sys
+# moved here from the repo root; keep repo-root imports working
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import random
 
 from cc.core import Game, Board, Move, Point, Player, Tile
@@ -35,7 +40,7 @@ def main():
         moves = game.start_turn()
         if game.end: break
 
-        game.visualize_move_ends(moves)
+        print(game.board.visualize_move_ends(moves))
         print(f"Available moves: {len(moves)}")
         for i, move in enumerate(moves):
             print(f'{i}: {move}')
@@ -49,7 +54,7 @@ def main():
         moves = game.start_turn()
         if game.end: break
 
-        game.visualize_move_ends(moves)
+        print(game.board.visualize_move_ends(moves))
         print(f"Available moves for AI: {len(moves)}")
         #random_move = random.choice(moves)
         random_move = moves[0]

@@ -1,5 +1,10 @@
+import os
+import sys
+# moved here from the repo root; keep repo-root imports working
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 import pickle
-from a0.eval.dataset_evaluation import plot_given
+from a0.utils.plotting import plot_given
 
 def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float], list[float], list[float]]:
     '''
