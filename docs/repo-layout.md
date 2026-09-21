@@ -149,8 +149,16 @@ module system is not inherited by non-interactive submission.
 
 ## History
 
-The repo carries ~525 commits going back to 2025.
+The repo carries ~535 commits going back to 2025.
 
 `a0_new/` — a from-scratch rewrite started Jan 2026 and abandoned in March —
 was removed during the 2026-09 cleanup and remains in history if it is ever
 wanted. The thesis was produced entirely with `a0/`.
+
+This repository's history was rewritten once, in September 2026, to remove a
+directory (`python2/`) containing an earlier Chinese Checkers implementation by
+other members of the lab. It was never imported by any code here, and it was
+not ours to publish. Because the removal was done with `git filter-repo`,
+commit hashes differ from the pre-publication repository — if you are following
+a reference to a commit in this project from somewhere else and it does not
+resolve, that is why.
