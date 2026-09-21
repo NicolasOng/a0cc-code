@@ -92,7 +92,7 @@ and drop `training_iterations` — 16-3 has a 79 KB solve file and runs quickly.
 |---|---|
 | `example.json` | Template showing `grid`, `points` and the `slurm` block. Not an experiment |
 | `thesis_gt.json` | Ground-truth-target runs (`alternative_target: "gt"`), balanced vs unbalanced. Earlier work — GT targets produced weak players, traced to flat GT policy targets and depthless values rather than a model defect |
-| `td_lambda.json` | **Broken.** Its `base_config` is `config/config-200.json`, which does not exist and never did. Superseded by the per-board `td_lambda*-*.json` specs; kept only as a record |
+| `td_lambda.json` | The original 25-6 λ sweep at 25 seeds, superseded by the per-board `td_lambda*-*.json` specs. It named a `base_config` that no longer exists (`config/config-200.json`) and now points at `config/config.json`. **It therefore inherits `training_iterations: 50`, where the campaign ran this setting at 200** — add `"training_iterations": 200` to the spec if you re-run it |
 
 ## Where the analysis lives
 

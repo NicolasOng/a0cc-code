@@ -153,5 +153,4 @@ re-running the ground-truth-bound analysis pass.
 | `config/config-16-3.json` | 16-3 — smallest, fastest, good for a first run |
 | `config/config-36-6.json` | 36-6 — sets `do_gt_evals: false` |
 | `config/config-49-4.json` | 49-4 — largest solved board |
-| `config/config-test.json` | Short 25-6 run for smoke-testing |
 | `config/config-slbl.json` | Supervised-learning baseline |

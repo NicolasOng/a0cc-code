@@ -38,3 +38,6 @@ memory/
 # stray model checkpoints dropped at the repo root (37MB each); keep them in
 # output/ or input/ instead, both of which are already ignored
 /*.pkl
+
+# local smoke-test config; kept out of the repo deliberately
+config/config-test.json

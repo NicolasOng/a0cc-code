@@ -1,6 +1,6 @@
 {
     "name": "td_lambda",
-    "base_config": "config/config-200.json",
+    "base_config": "config/config.json",
     "num_trials": 25,
     "auto_resubmit": true,
     "grid": {
