@@ -4,6 +4,7 @@ from cc.core import Game, Board, Player, Move
 from a0.model import AlphaZeroModel
 from a0.model_utils import board_to_input, Policy
 from a0.model_utils import get_value_head_policy, get_policy_head_policy
+from a0.mcts.rollout_strategies import PolicyType, RolloutPolicy, make_policy
 #from cc.ground_truth import GroundTruth
 
 import jax.numpy as jnp
@@ -33,6 +34,29 @@ def random_rollout(state: Board, game: Game, max_depth: int) -> tuple[bool, Play
         current_board.apply_move(move)
     
     # if max depth reached without terminal state, return result as non-terminal
+    return False, None, current_board
+
+def strategy_rollout(state: Board, game: Game, max_depth: int, policy: RolloutPolicy) -> tuple[bool, Player | None, Board]:
+    '''Identical to random_rollout except the move at each rollout ply is chosen by
+    `policy` (a RolloutPolicy from a0.mcts.rollout_strategies) instead of uniformly at
+    random. Added for the 2026-07-30 rollout-stochasticity investigation: it lets the
+    NN MCTS use the near-deterministic playout policies (BEST = most-forward move,
+    BACK = most-forward move on the furthest-back piece) that previously only the
+    non-NN MCTSRolloutPlayer could use. The reward path afterwards is unchanged — a
+    non-terminal depth cap still falls through to the model's value head.'''
+    current_board = Board()
+    current_board.copy_board(state)
+    for _ in range(max_depth):
+        is_done, winner = game.get_done_and_winner(current_board)
+        if is_done:
+            return is_done, winner, current_board
+
+        moves = game.generate_moves_for_given_board(current_board)
+        assert len(moves) > 0, "No moves available in non-terminal state"
+
+        move = policy.choose(current_board, moves, game)
+        current_board.apply_move(move)
+
     return False, None, current_board
 
 def policy_max_rollout(state: Board, game: Game, model: AlphaZeroModel, max_depth: int, policy_type: str = "policy") -> tuple[bool, Player | None, Board]:
@@ -70,7 +94,15 @@ def policy_max_rollout(state: Board, game: Game, model: AlphaZeroModel, max_dept
     return False, None, current_board
 
 class MCTS_NN:
-    def __init__(self, initial_state: Board, game: Game, model: AlphaZeroModel, initial_moves: list[Move] | None = None, rollout_type: str = 'none', rollout_depth: int = -1, policy_type: str = 'policy', value_mode: str = 'raw', value_sign_threshold: float = 0.05):
+    # rollout_type values that name a playout policy from a0.mcts.rollout_strategies
+    # (see strategy_rollout). 'random' keeps its own dedicated implementation above.
+    _STRATEGY_ROLLOUTS = {
+        'forward': PolicyType.FORWARD,
+        'best': PolicyType.BEST,
+        'back': PolicyType.BACK,
+    }
+
+    def __init__(self, initial_state: Board, game: Game, model: AlphaZeroModel, initial_moves: list[Move] | None = None, rollout_type: str = 'none', rollout_depth: int = -1, policy_type: str = 'policy', value_mode: str = 'raw', value_sign_threshold: float = 0.05, rollout_policy_epsilon: float = 0.0):
         self._initial_state = initial_state
         self.game = game
         self.model = model
@@ -83,6 +115,12 @@ class MCTS_NN:
         #   'sign' -> use sign(value): +1 / -1, or 0 if within value_sign_threshold of 0
         self.value_mode = value_mode
         self.value_sign_threshold = value_sign_threshold
+        # built once per search (the playout policies are stateless and root-independent,
+        # unlike the evaluators in rollout_strategies, which key off the root player)
+        self.rollout_policy = (
+            make_policy(self._STRATEGY_ROLLOUTS[rollout_type], epsilon=rollout_policy_epsilon)
+            if rollout_type in self._STRATEGY_ROLLOUTS else None
+        )
         #self.gt = GroundTruth()
     
     def initial_state(self) -> Board:
@@ -159,6 +197,13 @@ class MCTS_NN:
                 self.model,
                 max_depth=self.rollout_depth,
                 policy_type=self.policy_type
+            )
+        elif self.rollout_policy is not None:
+            is_done, winner, state = strategy_rollout(
+                state,
+                self.game,
+                max_depth=self.rollout_depth,
+                policy=self.rollout_policy
             )
         elif self.rollout_type == 'none':
             is_done, winner = self.game.get_done_and_winner(state)
