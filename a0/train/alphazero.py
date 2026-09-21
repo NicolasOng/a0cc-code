@@ -1,7 +1,11 @@
 from typing import Optional, Any
 import multiprocessing
+from multiprocessing import Process, Queue, Array, Event, Value
+from multiprocessing.sharedctypes import Synchronized, SynchronizedArray
+from multiprocessing.synchronize import Event as EventType
 import concurrent.futures
 from concurrent.futures import Future, wait, FIRST_COMPLETED
+import threading
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 import gc
@@ -32,6 +36,7 @@ from a0.eval.model_diagnostics import log_iteration_diagnostics
 from a0.eval.training_data import GameDataStats, game_data_list_stats
 from a0.experience_buffer import ExperienceBuffer, ExperienceData
 from a0.utils.states import get_rd_from_states, get_random_states, remove_duplicates
+from a0.train.inference_server import InferenceServer, InferenceClient, InferenceRequest
 from cc.ground_truth import RankUnrank
 
 from utils.log import get_logger, setup_logging
@@ -363,12 +368,20 @@ def _play(serialized_player: bytes, iteration: int, cancel_event: Optional[Any] 
         process_name="training_alphazero"
     )
     # then play the game
+    game = _make_self_play_game()
+    player: A0Player = dill.loads(serialized_player)
+    game_data = play(game, [player, player], config.turn_limit, cancel_event=cancel_event)
+
+    return _game_data_to_training_set(player, game_data, iteration), game_data
+
+def _make_self_play_game() -> Game:
+    '''Builds the Game object used for self-play, honoring the move-rule config flags.'''
     game_has_reverse_moves = config.backwards_moves
     game_has_side_moves = config.sideways_moves
     if config.root_game_has_all_moves:
         game_has_reverse_moves = True
         game_has_side_moves = True
-    game = Game(
+    return Game(
         board_size=config.board_size,
         num_pieces=config.num_pieces,
         repeats_for_draw=config.repeats_for_draw,
@@ -376,29 +389,213 @@ def _play(serialized_player: bytes, iteration: int, cancel_event: Optional[Any] 
         no_illegal_moves=not config.illegal_moves,
         no_side_moves=not game_has_side_moves
     )
-    player: A0Player = dill.loads(serialized_player)
-    game_data = play(game, [player, player], config.turn_limit, cancel_event=cancel_event)
 
+def _game_data_to_training_set(player: A0Player, game_data: GameData, iteration: int) -> list[ExperienceData]:
+    '''
+    Dispatches a finished game's data to the configured target builder. The value-based
+    builders (td_0 / td_lambda / interpolated_td_lambda) run inference via player.model,
+    which is the real model on the single-process path and an InferenceClient on the
+    inference-server path — both expose the same .inference(x) -> (values, policies).
+    '''
     if config.alternative_target == "gt":
-        return game_data_to_gt_training_set(game_data), game_data
+        return game_data_to_gt_training_set(game_data)
     elif config.alternative_target == "gt_value":
-        return game_data_to_gt_value_training_set(game_data), game_data
+        return game_data_to_gt_value_training_set(game_data)
     elif config.alternative_target == "gt_next_value":
-        return game_data_to_gt_next_value_training_set(game_data), game_data
+        return game_data_to_gt_next_value_training_set(game_data)
     elif config.alternative_target == "td_0":
-        return game_data_to_model_value_training_set(game_data, player.model), game_data
+        return game_data_to_model_value_training_set(game_data, player.model)
     elif config.alternative_target == "td_lambda":
         lam = config.td_lambda
-        return game_data_to_td_lambda_training_set(game_data, player.model, lam), game_data
+        return game_data_to_td_lambda_training_set(game_data, player.model, lam)
     elif config.alternative_target == "interpolated_td_lambda":
         # linear interpolation: lam = 1 (td_lambda) at iteration 0, decreasing to
         # lam = 0 (td_0) by 25% of the way through training, then td_0 for the rest.
         warmup = max((config.training_iterations - 1) * 0.25, 1)
         lam = max(1.0 - (iteration / warmup), 0.0)
         logger.info(f"interpolated_td_lambda: iteration={iteration}, lam={lam:.4f}")
-        return game_data_to_td_lambda_training_set(game_data, player.model, lam), game_data
+        return game_data_to_td_lambda_training_set(game_data, player.model, lam)
     else:
-        return game_data_to_training_set(game_data), game_data
+        return game_data_to_training_set(game_data)
+
+def _inference_server_process(
+        serialized_model: bytes,
+        inference_queue: "Queue[InferenceRequest]",
+        response_queues: dict[int, "Queue[Any]"],
+        num_active_clients: Synchronized,
+        max_batch_size: int,
+    ) -> None:
+    '''
+    Entry point for the dedicated inference-server process. Owns the only model on
+    the device and serves batched inference to the worker clients until it receives
+    a shutdown request.
+    '''
+    setup_logging(level=20, log_dir=config.log_dir, process_name="inference_server")
+    logger.info("Inference server process started")
+    model = dill.loads(serialized_model)
+    server = InferenceServer(
+        model,
+        inference_queue,
+        response_queues,
+        num_active_clients=num_active_clients,
+        max_batch_size=max_batch_size,
+    )
+    server.serve()
+    logger.info("Inference server process shutting down")
+
+def _play_worker(
+        serialized_player: bytes,
+        iteration: int,
+        qid: int,
+        inference_queue: "Queue[InferenceRequest]",
+        response_queue: "Queue[Any]",
+        result_queue: "Queue[Any]",
+        shutdown_event: EventType,
+        req_timeout: float,
+        res_timeout: float,
+    ) -> None:
+    '''
+    Plays a SINGLE self-play game (process-per-game), routing all model inference
+    through the shared inference server via an InferenceClient bound to this slot's
+    qid. On completion it puts (qid, training_set, game_data) on the result queue so
+    the coordinator knows which slot is free to respawn. If the shutdown event fires
+    mid-game, the (incomplete) game is discarded and nothing is sent back.
+    '''
+    setup_logging(level=20, log_dir=config.log_dir, process_name=f"self_play_worker_{qid}")
+
+    player: A0Player = dill.loads(serialized_player)
+    # swap the (absent) model for this slot's inference client — a drop-in for
+    # AlphaZeroModel on the self-play path (.inference(x) -> (values, policies)).
+    player.model = InferenceClient(
+        inference_queue, response_queue, qid,
+        req_timeout=req_timeout, res_timeout=res_timeout,
+    )
+
+    game = _make_self_play_game()
+    game_data = play(game, [player, player], config.turn_limit, cancel_event=shutdown_event)
+
+    # discard games interrupted by shutdown — we only want complete games
+    if shutdown_event.is_set():
+        logger.info(f"Self-play worker (qid={qid}) cancelled mid-game; discarding.")
+        return
+
+    training_set = _game_data_to_training_set(player, game_data, iteration)
+    result_queue.put((qid, training_set, game_data))
+
+def self_play_server(player: A0Player, iteration: int) -> tuple[list[ExperienceData], list[GameData]]:
+    '''
+    Inference-server variant of self_play (config.use_inference_server=True).
+
+    One dedicated server process holds the only model on the device; self-play runs
+    as process-per-game over `num_workers` fixed "slots", each owning a stable qid +
+    response queue. When a game finishes, its slot's process is joined and a fresh
+    process is launched in the same slot for the next game. This keeps the per-game
+    isolation of the single-process path while eliminating the per-game model JIT
+    (the model lives in the server) and enabling cross-worker dynamic batching.
+    '''
+    logger.info("Starting self-play (inference-server path)...")
+    num_workers = config.num_workers
+    max_batch_size = config.self_play_batch_size
+    req_timeout = getattr(config, "inference_req_timeout", 60.0)
+    res_timeout = getattr(config, "inference_res_timeout", 60.0)
+
+    # Ship the model to the server once; ship the player WITHOUT the model to workers
+    # (each worker swaps in a lightweight client), so we never re-serialize/JIT the
+    # heavy model per worker.
+    real_model = player.model
+    serialized_model = dill.dumps(real_model)
+    player.model = None
+    serialized_player = dill.dumps(player)
+    player.model = real_model  # restore for the caller
+
+    # IPC: one inference queue (sized to the worker count), one response queue per
+    # slot, one result queue for finished games.
+    inference_queue: "Queue[InferenceRequest]" = Queue(maxsize=num_workers)
+    response_queues: dict[int, "Queue[Any]"] = {i: Queue(maxsize=1) for i in range(num_workers)}
+    result_queue: "Queue[Any]" = Queue(maxsize=num_workers)
+    # fixed at the slot count; the server's 50ms batch timeout bounds any wait when
+    # fewer than num_workers requests are in flight (e.g. during respawn/shutdown).
+    num_active_clients: Synchronized = Value('i', num_workers)
+    shutdown_event = Event()
+
+    # start the inference server
+    logger.info("Starting inference server process...")
+    server_process = Process(
+        target=_inference_server_process,
+        args=(serialized_model, inference_queue, response_queues, num_active_clients, max_batch_size),
+    )
+    server_process.start()
+
+    game_data_list: list[GameData] = []
+    training_set: list[ExperienceData] = []
+    slot_procs: dict[int, Process] = {}
+
+    def launch(qid: int) -> None:
+        p = Process(
+            target=_play_worker,
+            args=(serialized_player, iteration, qid, inference_queue, response_queues[qid],
+                  result_queue, shutdown_event, req_timeout, res_timeout),
+        )
+        p.start()
+        slot_procs[qid] = p
+
+    logger.info(f"Launching {num_workers} self-play slots...")
+    for i in range(num_workers):
+        launch(i)
+
+    # consume finished games; respawn each finished slot until the target is met
+    while True:
+        logger.info(f"Current training set size: {len(training_set)}/{config.training_samples}")
+        qid, game_training_set, game_data = result_queue.get()
+        slot_procs[qid].join()
+        training_set.extend(game_training_set)
+        game_data_list.append(game_data)
+
+        if len(training_set) >= config.training_samples:
+            logger.info("Training set is full, signalling workers to stop.")
+            shutdown_event.set()
+            break
+        # respawn this slot for another game
+        launch(qid)
+
+    # Drain the result queue in a background thread while we join workers: a worker
+    # that already put a result cannot exit until that item is consumed (mp.Queue's
+    # feeder thread blocks on a full pipe). See a0_new/train/self_play.
+    drain_stop = threading.Event()
+    def _drain_queue() -> None:
+        while not drain_stop.is_set():
+            try:
+                result_queue.get(timeout=0.1)
+            except Exception:
+                pass
+    drain_thread = threading.Thread(target=_drain_queue, daemon=True)
+    drain_thread.start()
+
+    # Workers may still be mid-turn issuing inference requests; the server must stay
+    # up until they all observe the cancel event (checked between turns) and exit.
+    for qid, p in slot_procs.items():
+        p.join(timeout=300)
+        if p.is_alive():
+            raise RuntimeError(
+                f"Self-play worker (qid={qid}, pid={p.pid}) did not shut down within 300s. "
+                f"Investigate the worker process."
+            )
+
+    drain_stop.set()
+    drain_thread.join()
+
+    # now that no worker needs inference, shut the server down and wait for it
+    logger.info("Sending shutdown signal to inference server...")
+    inference_queue.put(InferenceRequest(
+        states=np.empty((0, config.board_size, config.board_size, 2), dtype=np.float32),
+        qid=0, nonce=0, shutdown=True,
+    ))
+    server_process.join(timeout=300)
+    if server_process.is_alive():
+        raise RuntimeError("Inference server did not shut down within 300s. Investigate the server process.")
+
+    logger.info(f"Generated training set of size: {len(training_set)}/{config.training_samples}")
+    return training_set, game_data_list
 
 def self_play(player: A0Player, iteration: int) -> tuple[list[ExperienceData], list[GameData]]:
     '''
@@ -412,6 +609,10 @@ def self_play(player: A0Player, iteration: int) -> tuple[list[ExperienceData], l
         The generated training set, containing board states, values, and policies.
         The game data for each game played, which can be used for analysis or debugging.
     '''
+    # opt-in single-model inference-server path (config.use_inference_server)
+    if getattr(config, "use_inference_server", False):
+        return self_play_server(player, iteration)
+
     logger.info("Starting self-play to generate training data...")
     # serialize the player model (JAX models cannot be pickled directly + serialization is needed for multiprocessing)
     player_serialized: bytes = dill.dumps(player)

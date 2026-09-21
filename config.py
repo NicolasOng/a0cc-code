@@ -66,6 +66,9 @@ class Config:
 
     num_workers: int
     self_play_batch_size: int
+    use_inference_server: bool  # route self-play inference through one shared server process (vs a model per worker)
+    inference_req_timeout: float  # client->server request put timeout (seconds); default 60
+    inference_res_timeout: float  # server->client response get timeout (seconds); default 60
 
     illegal_moves: bool
     experiment: str

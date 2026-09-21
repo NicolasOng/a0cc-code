@@ -37,6 +37,7 @@
     "use_gt": false,
     "num_workers": 32,
     "self_play_batch_size": 32,
+    "use_inference_server": false,
     "illegal_moves": true,
     "experiment": "td_lambda",
     "td_lambda": 1.0,
