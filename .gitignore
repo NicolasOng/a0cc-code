@@ -34,3 +34,7 @@ input/
 
 memory/
 .vscode/
+
+# stray model checkpoints dropped at the repo root (37MB each); keep them in
+# output/ or input/ instead, both of which are already ignored
+/*.pkl
