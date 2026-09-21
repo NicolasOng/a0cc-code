@@ -1,3 +1,4 @@
+import sys
 from a0.eval.plotting import Series, load_series
 
 def inspect_series_object(series: Series) -> None:
@@ -20,7 +21,10 @@ def inspect_series_object_given_keys(series: Series, keys: list[str]) -> None:
             print(f"{y_values[x]:.2%}, ", end="")
         print()
 if __name__ == "__main__":
-    series = load_series("/home/nicolas/Downloads/2026-01-12 output-byrrp eval fixed/eval/merged_random_nt_gtv_eval.pkl")
-    #series = load_series("/home/nicolas/Downloads/2026-01-12 output-byrrp eval fixed/eval/merged_training_nt_gtv_eval.pkl")
+    # usage: python scripts/inspect_series_objects.py <series.pkl>
+    # e.g. an eval/merged_*_gtv_eval.pkl from a combined sweep
+    if len(sys.argv) < 2:
+        sys.exit("usage: python scripts/inspect_series_objects.py <series.pkl>")
+    series = load_series(sys.argv[1])
     #inspect_series_object(series)
     inspect_series_object_given_keys(series, ["policy_accuracy", "policy_accuracy_ci"])

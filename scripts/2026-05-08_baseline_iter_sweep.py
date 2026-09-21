@@ -7,6 +7,7 @@ Output: per-iter table with trained EV, W-L-D, mean/max per-game CPU duration,
 matchup wall time, and per-game wall time. The per-game wall time is the
 useful number for budgeting larger eval runs.
 """
+import sys
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
@@ -35,8 +36,10 @@ from utils.log import get_logger, setup_logging
 logger = get_logger(__name__)
 
 
-# Edit this if you've trained a fresher checkpoint.
-MODEL_PATH = "/home/nicolas/Downloads/model_49.pkl"
+# The checkpoint to sweep. Pass a path as argv[2] (argv[1] is the config, read
+# by config.py) or set A0_MODEL_PATH.
+MODEL_PATH = (sys.argv[2] if len(sys.argv) > 2
+              else os.environ.get("A0_MODEL_PATH", "output/training/model_49.pkl"))
 
 ITER_SWEEP = (64, 128, 256, 512, 1024, 2048)
 NUM_GAMES = 64                       # half as P1 (trained), half as P2

@@ -17,8 +17,10 @@ def load_losses(losses_path: str) -> tuple[list[float], list[float], list[float]
     return (losses_data['losses'], losses_data['value_losses'], 
             losses_data['policy_losses'], losses_data['value_accuracies'], losses_data['policy_accuracies'])
 
-base = '/home/nicolas/Downloads/25-6dirichlet/output/eval/'
-base = '/home/nicolas/Documents/Data/Research/a0cc/training_runs/2025-08-01 - now a0 5x5-6/2025-08-12 another run/eval/'
+# directory holding the *_gtv_eval.pkl files -- an output/eval/ from a run
+if len(sys.argv) < 2:
+    sys.exit("usage: python scripts/2025-08-13_gt_accuracy_plot.py <eval_dir>")
+base = sys.argv[1]
 _, _, _, training_acc, _ = load_losses(f'{base}/training_gtv_eval.pkl')
 _, _, _, neighbor_1_acc, _ = load_losses(f'{base}/neighbor_1_gtv_eval.pkl')
 _, _, _, neighbor_2_acc, _ = load_losses(f'{base}/neighbor_2_gtv_eval.pkl')

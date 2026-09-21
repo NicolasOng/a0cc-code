@@ -1,3 +1,4 @@
+import sys
 from a0.players.human import HumanPlayer
 from a0.players.mcts_rollout import MCTSRolloutPlayer
 from a0.players.gt import GroundTruthPlayer
@@ -75,8 +76,10 @@ def compare_models(model_location1, model_location2, num_games=100, mcts_samples
     print(f"Draws by repeated state: {draws_by_repeat} ({draws_by_repeat / num_games:.2%})")
 
 def main():
-    model_location2 = "/home/nicolas/Downloads/output1-sf/training/model_49.pkl"
-    model_location1 = "/home/nicolas/Downloads/output1-f/training/model_49.pkl"
+    # usage: python scripts/versus.py <config.json> <model_1.pkl> <model_2.pkl>
+    if len(sys.argv) < 4:
+        sys.exit("usage: python scripts/versus.py <config.json> <model_1.pkl> <model_2.pkl>")
+    model_location1, model_location2 = sys.argv[2], sys.argv[3]
     compare_models(model_location1, model_location2, num_games=1, mcts_samples=512)
 
 if __name__ == "__main__":

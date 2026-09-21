@@ -1,4 +1,7 @@
 #!/bin/bash
+# NOTE: this is the Alliance/Compute Canada allocation this work ran under.
+# Change it to your own, or override per-stage without editing this file via
+# the "slurm" block in a sweep spec (sbatch CLI flags beat #SBATCH lines).
 #SBATCH --account=aip-nathanst
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=32
